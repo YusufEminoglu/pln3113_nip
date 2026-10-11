@@ -1,0 +1,875 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tire 1/5000 NİP Kentsel Analiz & Metodoloji Rehberi | DEÜ ŞBP PLN3113</title>
+    <style>
+        :root {
+            --primary: #0f766e;
+            --primary-dark: #115e59;
+            --primary-light: #f0fdfa;
+            --accent: #0d9488;
+            --secondary: #d97706;
+            --text-dark: #0f172a;
+            --text-muted: #475569;
+            --bg-light: #f8fafc;
+            --bg-white: #ffffff;
+            --border: #e2e8f0;
+            --danger: #dc2626;
+            --success: #16a34a;
+            --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+            --shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+            --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            color: var(--text-dark);
+            background-color: var(--bg-light);
+            line-height: 1.65;
+            font-size: 15px;
+        }
+
+        /* Top Header */
+        header.hero {
+            background: linear-gradient(135deg, #0f766e 0%, #115e59 50%, #042f2e 100%);
+            color: white;
+            padding: 48px 24px 40px;
+            border-bottom: 4px solid var(--secondary);
+            box-shadow: var(--shadow-lg);
+        }
+
+        .hero-inner {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .badge-academic {
+            display: inline-block;
+            background: rgba(255, 255, 255, 0.18);
+            border: 1px solid rgba(255, 255, 255, 0.35);
+            color: #f0fdfa;
+            padding: 4px 12px;
+            border-radius: 9999px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 16px;
+        }
+
+        h1.hero-title {
+            font-size: 32px;
+            font-weight: 800;
+            line-height: 1.25;
+            margin-bottom: 12px;
+            letter-spacing: -0.02em;
+        }
+
+        p.hero-subtitle {
+            font-size: 17px;
+            color: #ccfbf1;
+            max-width: 900px;
+            line-height: 1.5;
+            margin-bottom: 20px;
+        }
+
+        .hero-meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            font-size: 13px;
+            color: #99f6e4;
+            border-top: 1px solid rgba(255, 255, 255, 0.15);
+            padding-top: 16px;
+        }
+
+        .hero-meta span strong {
+            color: white;
+        }
+
+        /* Layout Container */
+        .container {
+            max-width: 1240px;
+            margin: 0 auto;
+            padding: 32px 20px;
+            display: flex;
+            gap: 32px;
+        }
+
+        /* Sidebar Navigation */
+        aside.sidebar {
+            width: 280px;
+            flex-shrink: 0;
+        }
+
+        .sidebar-sticky {
+            position: sticky;
+            top: 24px;
+            background: white;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: var(--shadow-sm);
+        }
+
+        .sidebar-title {
+            font-size: 13px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--primary);
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        ul.nav-list {
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        ul.nav-list li a {
+            display: block;
+            padding: 8px 12px;
+            border-radius: 6px;
+            color: var(--text-muted);
+            text-decoration: none;
+            font-size: 13.5px;
+            font-weight: 500;
+            transition: all 0.15s ease;
+            line-height: 1.35;
+        }
+
+        ul.nav-list li a:hover {
+            color: var(--primary);
+            background: var(--primary-light);
+            transform: translateX(3px);
+        }
+
+        /* Main Content */
+        main.content {
+            flex-grow: 1;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 40px;
+        }
+
+        section.card {
+            background: white;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 32px;
+            box-shadow: var(--shadow-sm);
+        }
+
+        section.card h2 {
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--primary-dark);
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            border-bottom: 2px solid var(--primary-light);
+            padding-bottom: 12px;
+        }
+
+        section.card h3 {
+            font-size: 18px;
+            font-weight: 700;
+            color: #1e293b;
+            margin: 24px 0 12px;
+        }
+
+        section.card h4 {
+            font-size: 15px;
+            font-weight: 600;
+            color: #334155;
+            margin: 16px 0 8px;
+        }
+
+        p {
+            margin-bottom: 14px;
+            color: #334155;
+        }
+
+        /* Callout Boxes */
+        .callout {
+            border-left: 4px solid;
+            border-radius: 0 8px 8px 0;
+            padding: 16px 20px;
+            margin: 20px 0;
+            font-size: 14px;
+        }
+
+        .callout-info {
+            background-color: #f0fdfa;
+            border-color: var(--primary);
+            color: #0f766e;
+        }
+
+        .callout-warning {
+            background-color: #fffbeb;
+            border-color: var(--secondary);
+            color: #92400e;
+        }
+
+        .callout-academic {
+            background-color: #f8fafc;
+            border-color: #475569;
+            color: #1e293b;
+        }
+
+        .callout-jury {
+            background-color: #fdf4ff;
+            border-color: #a855f7;
+            color: #701a75;
+        }
+
+        .callout-title {
+            font-weight: 700;
+            margin-bottom: 6px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        /* Formula Card */
+        .formula-box {
+            background: #f1f5f9;
+            border: 1px solid #cbd5e1;
+            border-radius: 8px;
+            padding: 16px 20px;
+            margin: 18px 0;
+            font-family: "Courier New", Courier, monospace;
+            font-size: 14px;
+            color: #0f172a;
+            overflow-x: auto;
+        }
+
+        .formula-title {
+            font-family: inherit;
+            font-weight: 700;
+            color: var(--primary);
+            margin-bottom: 6px;
+            text-transform: uppercase;
+            font-size: 11px;
+            letter-spacing: 0.05em;
+        }
+
+        /* Tables */
+        table.ref-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 18px 0;
+            font-size: 13.5px;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: var(--shadow-sm);
+        }
+
+        table.ref-table th, table.ref-table td {
+            border: 1px solid var(--border);
+            padding: 10px 14px;
+            text-align: left;
+        }
+
+        table.ref-table th {
+            background: var(--primary);
+            color: white;
+            font-weight: 600;
+            letter-spacing: 0.02em;
+        }
+
+        table.ref-table tr:nth-child(even) {
+            background: #f8fafc;
+        }
+
+        table.ref-table tr:hover {
+            background: #f1f5f9;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11.5px;
+            font-weight: 700;
+        }
+
+        .badge-green { background: #dcfce7; color: #15803d; }
+        .badge-amber { background: #fef3c7; color: #b45309; }
+        .badge-red { background: #fee2e2; color: #b91c1c; }
+        .badge-blue { background: #e0f2fe; color: #0369a1; }
+
+        /* Step List */
+        ol.step-list {
+            margin-left: 20px;
+            margin-bottom: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        ol.step-list li {
+            padding-left: 6px;
+        }
+
+        ul.bullet-list {
+            margin-left: 20px;
+            margin-bottom: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        /* Footer */
+        footer.doc-footer {
+            border-top: 1px solid var(--border);
+            background: white;
+            padding: 32px 20px;
+            text-align: center;
+            font-size: 13px;
+            color: var(--text-muted);
+            margin-top: 40px;
+        }
+
+        @media (max-width: 900px) {
+            .container {
+                flex-direction: column;
+            }
+            aside.sidebar {
+                width: 100%;
+            }
+            .sidebar-sticky {
+                position: static;
+            }
+        }
+
+        @media print {
+            aside.sidebar { display: none; }
+            header.hero { padding: 20px; background: white; color: black; border-bottom: 2px solid black; }
+            .badge-academic { display: none; }
+            section.card { box-shadow: none; border: none; padding: 10px 0; }
+        }
+    </style>
+</head>
+<body>
+
+<header class="hero">
+    <div class="hero-inner">
+        <span class="badge-academic">Dokuz Eylül Üniversitesi • Mimarlık Fakültesi • ŞBP Bölümü</span>
+        <h1 class="hero-title">Tire 1/5000 NİP Kentsel Analiz, Nüfus ve Kapasite Modelleme Rehberi</h1>
+        <p class="hero-subtitle">
+            PLN3113 Şehir Planlama Projesi III kapsamında; Tire Nazım İmar Planı (NİP) katmanlarının brüt plan nüfusu, 
+            Mekânsal Planlar Yapım Yönetmeliği (MPYY) donatı yeterliliği, Düzenleme Ortaklık Payı (DOP), kamu-özel dengesi 
+            ve ulaşım yüklerinin teorik-yöntemsel hesaplama el kitabı.
+        </p>
+        <div class="hero-meta">
+            <span><strong>Ders:</strong> PLN3113 Şehir Planlama Projesi III (Tire Stüdyosu)</span>
+            <span><strong>Akademik Yıl:</strong> 2026-2027 Güz Dönemi</span>
+            <span><strong>Eklenti & Metodoloji:</strong> Arş. Gör. Yusuf Eminoğlu</span>
+        </div>
+    </div>
+</header>
+
+<div class="container">
+    <aside class="sidebar">
+        <div class="sidebar-sticky">
+            <div class="sidebar-title">📑 Rehber İçindekiler</div>
+            <ul class="nav-list">
+                <li><a href="#bolum1">1. Planlama 101 ve NİP Kavramı</a></li>
+                <li><a href="#bolum2">2. Nüfus & Yoğunluk Kademeleri</a></li>
+                <li><a href="#bolum3">3. MPYY Ek-2 Donatı Dengesi</a></li>
+                <li><a href="#bolum4">4. Kamu-Özel & DOP Hesabı</a></li>
+                <li><a href="#bolum5">5. Kentsel İstihdam Modeli</a></li>
+                <li><a href="#bolum6">6. Ulaşım ve Yolculuk Çekimi</a></li>
+                <li><a href="#bolum7">7. Saha ve Fiili Nüfus Tahmini</a></li>
+                <li><a href="#bolum8">8. Jüri ve Poster Teslim İpuçları</a></li>
+            </ul>
+        </div>
+    </aside>
+
+    <main class="content">
+
+        <!-- BÖLÜM 1 -->
+        <section class="card" id="bolum1">
+            <h2>🏙️ 1. Planlama 101: Nazım İmar Planı (NİP) ve Tire Bağlamı</h2>
+            
+            <div class="callout callout-info">
+                <div class="callout-title">📘 Şehir Planlama Temel İlkesi (101)</div>
+                Nüfus, kentsel planlama disiplininin <strong>en temel bağımsız değişkenidir</strong>. 
+                Sosyal ve teknik donatılardan ulaşım omurgasına, konut alanlarının büyüklüğünden kentin makroformuna 
+                kadar her plan kararı, hedef alınan nüfusun niceliksel ve niteliksel büyüklüğü ile doğrudan ilişkilidir.
+            </div>
+
+            <h3>1.1. Nazım İmar Planı (1/5000) Nedir?</h3>
+            <p>
+                3194 sayılı İmar Kanunu md. 5 uyarınca Nazım İmar Planı (NİP); onaylı halihazır haritalar üzerine varsa 
+                kadastral durumu işlenmiş olan, varsa bölge ve çevre düzeni planlarına uygun olarak hazırlanan ve kentin 
+                <strong>genel arazi kullanım kararlarını, yerleşme alanlarının gelişme yön ve büyüklüklerini, 
+                nüfus yoğunluklarını ve ulaşım sistemlerini</strong> belirleyen 1/5000 ölçekli ana vizyon ve ilke planıdır.
+            </p>
+            <p>
+                NİP'te ada bazında parsel içi çekme mesafesi veya kat adedi belirlenmez; bunun yerine 
+                <strong>yoğunluk aralığı (kişi/hektar - k/ha)</strong> ve <strong>işlevsel bölgelendirme (zoning)</strong> tanımlanır.
+            </p>
+
+            <h3>1.2. Neden Nüfus Hesabı Yapılır?</h3>
+            <ul class="bullet-list">
+                <li><strong>Planın Taşıma Kapasitesini Anlamak:</strong> Çizilen konut ve ticaret adaları kente kaç kişilik yaşam ve çalışma hacmi sunuyor?</li>
+                <li><strong>Donatı Yeterliliğini Test Etmek:</strong> Planlanan nüfusa yetecek kadar okul, sağlık ocağı, park ve teknik altyapı ayrılmış mı?</li>
+                <li><strong>Doygunluk ve Dönüşüm Analizi:</strong> Kent fiilen şu anda kaç kişiyi barındırıyor, plan bu nüfusun ne kadar üzerine çıkıyor?</li>
+            </ul>
+
+            <h3>1.3. Tire Kenti Nüfus Gelişimi, Plan Hedefleri ve Metodolojik Kısıtlar</h3>
+            <p>
+                Tire kentinin demografik yapısı incelenirken hem tarihsel plan kararları, hem projeksiyon modelleri, 
+                hem de idari yasa değişikliklerinin getirdiği istatistiki dönüşümler birlikte ele alınmalıdır:
+            </p>
+
+            <table class="ref-table">
+                <thead>
+                    <tr>
+                        <th>Nüfus Niteliği</th>
+                        <th>1997 Plan Raporu<br><small>(1990 DİE Verisi)</small></th>
+                        <th>2015 Plan Projeksiyonu<br><small>(Resmi Hedef)</small></th>
+                        <th>2015 TÜİK ADNKS<br><small>(Gerçekleşen)</small></th>
+                        <th>Güncel TÜİK ADNKS<br><small>(2025 Kütüğü / 2026 İlanı)</small></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>Kentsel Merkez Nüfusu</strong></td>
+                        <td><strong>37.855</strong></td>
+                        <td><strong>53.629</strong></td>
+                        <td><strong>~57.069</strong><br><small><i>(Merkez mahalleler toplamı)</i></small></td>
+                        <td><strong>~61.738</strong><br><small><i>(Merkez mahalleler toplamı)</i></small></td>
+                    </tr>
+                    <tr>
+                        <td><strong>Kırsal Nüfus (Köy/Belde)</strong></td>
+                        <td><strong>39.459</strong><br><small><i>(65 köy dökümü)</i></small></td>
+                        <td><strong>46.711</strong><br><small><i>(Model projeksiyonu)</i></small></td>
+                        <td><strong>~25.033</strong><br><small><i>(Kırsal mahalleler toplamı)</i></small></td>
+                        <td><strong>~25.833</strong><br><small><i>(Kırsal mahalleler toplamı)</i></small></td>
+                    </tr>
+                    <tr>
+                        <td><strong>İlçe Toplam Nüfusu</strong></td>
+                        <td><strong>77.314</strong></td>
+                        <td><strong>100.340</strong></td>
+                        <td><strong>82.102</strong></td>
+                        <td><strong>87.571</strong></td>
+                    </tr>
+                    <tr style="background: #ecfdf5;">
+                        <td><strong>Hesaplanan 1/5000 NİP Nüfusu<br><small>(Eklenti Kentsel Kapasite Analizi)</small></strong></td>
+                        <td>-</td>
+                        <td><span class="badge badge-green">53.859 Kişi (Üst Sınır)</span><br><small>%99.6 Uyum</small></td>
+                        <td>-</td>
+                        <td><strong>20.956</strong> (Alt) — <strong>53.859</strong> (Üst)<br><small><i>(Kentsel Leke Sınırı)</i></small></td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <div class="callout callout-warning">
+                <div class="callout-title">📌 Metodolojik Açıklamalar ve Veri Kısıtları</div>
+                <ul class="bullet-list" style="margin-top: 6px;">
+                    <li><strong>1997 Plan Raporu (1990 DİE Sayımı):</strong> Raporda kırsal nüfus 65 köyün tek tek dökümüyle (39.459 kişi) verilmiş; kentsel merkez nüfusu ise <strong>37.855 kişi</strong> olarak aktarılmıştır.</li>
+                    <li><strong>2015 Plan Projeksiyonu:</strong> Raporda kentin geçmiş eğilimlerine en yakın kabul edilen <em>Üst Değerli Model (Regresyon)</em> projeksiyonuna göre kentsel nüfus <strong>53.629</strong>, toplam ilçe nüfusu ise <strong>100.340</strong> olarak hesaplanmıştır. Kırsal nüfus farktan türetilmiştir (<code>100.340 - 53.629 = 46.711</code>).</li>
+                    <li><strong>6360 Sayılı Kanun Etkisi:</strong> 2012 yılında kabul edilip 2014 yerel seçimleriyle yürürlüğe giren yasa uyarınca İzmir genelinde tüm köyler ve beldeler (Gökçen dahil) mahalleye dönüştürülmüştür. Bu tarihten sonraki resmi TÜİK ADNKS bültenlerinde idari olarak "kentsel/kırsal" ayrımı bulunmamaktadır; ilçe bütünü tek toplam olarak yayımlanmaktadır.</li>
+                    <li><strong>Merkez / Kırsal Ayrıştırması (2015 ve Güncel):</strong> 2015 ve güncel verilerde yer alan "Kentsel Merkez" satırı, kentsel makroform ve yerleşik leke sınırları içinde kalan kentsel merkez mahallelerinin nüfuslarının toplanmasıyla türetilmiş; kırsal nüfus ise ilçe toplamından bu değer düşülerek elde edilmiştir.</li>
+                    <li><strong>Güncel TÜİK Veri Durumu:</strong> TÜİK ADNKS sisteminde 2026 yılı sayım sonuçları yıl sonunda (31 Aralık 2026) kesinleşip Şubat 2027'de ilan edilmektedir. Bu nedenle yürürlükteki en güncel resmi sayım <strong>31 Aralık 2025 referanslı (Şubat 2026'da ilan edilen) ADNKS</strong> verisidir (<strong>87.571 kişi</strong>).</li>
+                </ul>
+            </div>
+
+            <div class="callout callout-info">
+                <div class="callout-title">💡 Planlama Sentezi ve Jüri Değerlendirmesi</div>
+                Eklentimizle yürürlükteki 1/5000 NİP adaları üzerinden hesaplanan kentsel üst sınır nüfusu 
+                (<strong>53.859 kişi</strong>), 1997 plan raporunun resmi 2015 hedefi (<strong>53.629 kişi</strong>) ile 
+                <strong>%99.6 oranında birebir örtüşmektedir</strong>. 
+                Bu durum, 1997 planının konut adaları kurgusunun matematiksel olarak 53.600 kişilik merkeze göre tasarlandığını; 
+                fakat günümüzde kentsel merkez nüfusunun <strong>~61.738 kişiye</strong> ulaşarak plan sınırını aştığını 
+                ve kentin artık çeperlerde spekülatif yeni alanlar açmak yerine, meskun alanda dönüşüm ve donatı dengesine 
+                ihtiyaç duyduğunu açıkça ortaya koymaktadır.
+            </div>
+        </section>
+
+        <!-- BÖLÜM 2 -->
+        <section class="card" id="bolum2">
+            <h2>👥 2. Kentsel Yoğunluk Kademeleri ve Alt-Üst Sınır Mantığı</h2>
+
+            <h3>2.1. Brüt Yoğunluk vs. Net Yoğunluk</h3>
+            <p>
+                Şehir planlamada yoğunluk genellikle <strong>Hektar Başına Kişi (Kişi/Ha - k/ha)</strong> olarak ölçülür. 
+                1 Hektar = 10.000 m²'dir.
+            </p>
+            <div class="formula-box">
+                <div class="formula-title">Yoğunluk Formülleri</div>
+                Brüt Yoğunluk = Toplam Nüfus / (Konut Adaları + Yollar + Yerel Sosyal Donatılar Alanı [ha])<br>
+                Net Yoğunluk  = Toplam Nüfus / (Sadece Konut Parsellerinin Alanı [ha])
+            </div>
+            <p>
+                1/5000 ölçekli NİP düzeyinde parsel ayrımı bulunmadığından, plan adaları üzerinden <strong>Brüt Konut Yoğunluğu</strong> hesaplanır.
+            </p>
+
+            <h3>2.2. Neden "Tek Bir Sayı" Değil de "Alt ve Üst Sınır (Aralık)"?</h3>
+            <p>
+                İmar planları statik değil, belirli bir planlama periyodunda (15-20 yıl) piyasa ve dönüşüm dinamiklerine esneklik tanıyan yasal belgelerdir:
+            </p>
+            <ul class="bullet-list">
+                <li><strong>Alt Sınır (Minimum Yapılaşma ve Doluluk):</strong> Minimum emsal, geniş bahçeli az katlı kullanım ve ortalama hanehalkının düşük olduğu taban senaryoyu ifade eder.</li>
+                <li><strong>Üst Sınır (Maksimum Yapılaşma ve Tam Doygunluk):</strong> Plandaki imar haklarının (KAKS, TAKS) tamamen kullanıldığı, tüm adaların doygunluğa ulaştığı kentsel tavan kapasiteyi temsil eder.</li>
+            </ul>
+
+            <h3>2.3. Tire NİP Yoğunluk Standartları Tablosu</h3>
+            <table class="ref-table">
+                <thead>
+                    <tr>
+                        <th>Fonksiyon Adı</th>
+                        <th>Alt Sınır (k/ha)</th>
+                        <th>Üst Sınır (k/ha)</th>
+                        <th>Kentsel Tipoloji & Karakter</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>GELİŞME KONUT (SEYREK)</strong></td>
+                        <td>25</td>
+                        <td>50</td>
+                        <td>1-2 katlı bağ/bahçeli evler, topoğrafik eğimli çeperler, koruma geçiş kuşakları.</td>
+                    </tr>
+                    <tr>
+                        <td><strong>GELİŞME KONUT (DÜŞÜK)</strong></td>
+                        <td>51</td>
+                        <td>120</td>
+                        <td>Ayrık nizam, 2-3 katlı müstakil veya ikiz konut adaları.</td>
+                    </tr>
+                    <tr>
+                        <td><strong>GELİŞME KONUT (ORTA)</strong></td>
+                        <td>121</td>
+                        <td>250</td>
+                        <td>Standart 3-4 katlı apartman blokları, Tire'nin ana kentsel gelişme dokusu.</td>
+                    </tr>
+                    <tr>
+                        <td><strong>GELİŞME KONUT (YÜKSEK)</strong></td>
+                        <td>251</td>
+                        <td>400</td>
+                        <td>4-5 katlı blok nizam veya siteler, ana arter çeperleri.</td>
+                    </tr>
+                    <tr>
+                        <td><strong>GELİŞME KONUT (ÇOK YÜKSEK)</strong></td>
+                        <td>401</td>
+                        <td>600</td>
+                        <td>Yoğun kentsel çekirdek, toplu konut veya transfer odaklı gelişme alanları.</td>
+                    </tr>
+                    <tr>
+                        <td><strong>MEVCUT KONUT (ORTA)</strong></td>
+                        <td>151</td>
+                        <td>300</td>
+                        <td>Geleneksel Tire dokusu çevresinde meskun 3-4 katlı konut alanları.</td>
+                    </tr>
+                    <tr>
+                        <td><strong>MEVCUT KONUT (YÜKSEK)</strong></td>
+                        <td>301</td>
+                        <td>600</td>
+                        <td>Meskun dokuda 4-6 katlı yoğun dönüşüm görmüş mahalleler.</td>
+                    </tr>
+                    <tr>
+                        <td><strong>MEVCUT KONUT (ÇOK YÜKSEK)</strong></td>
+                        <td>601</td>
+                        <td>900</td>
+                        <td>Meskun alanlarda yüksek katlı sıkışık yapı adaları.</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>2.4. Karma Kullanımlarda (TİCK - Ticaret-Konut) Mekânsal Çarpan Formülü</h3>
+            <div class="callout callout-academic">
+                <div class="callout-title">📐 Karma Kullanım Formülü (DEÜ ŞBP Metodolojisi)</div>
+                Ticaret-Konut alanlarında zemin katlar dükkan ve işyeridir, üst katlar ise konut veya bürodur. 
+                Bu alanlarda saf konut yoğunluğu doğrudan uygulanamaz. Eklenti, mekânsal en yakın komşuluk algoritmasıyla 
+                en yakın konut adalarının yoğunluğunu bulur ve <strong>%30 çarpanı (0.30)</strong> uygular:
+                <br><br>
+                <code>Nüfus = Alan (ha) × [ Komşu En Düşük Konut Yoğunluğu × 0.30 ]</code>
+            </div>
+        </section>
+
+        <!-- BÖLÜM 3 -->
+        <section class="card" id="bolum3">
+            <h2>📋 3. Mekânsal Planlar Yapım Yönetmeliği (MPYY) Ek-2 Donatı Dengesi</h2>
+
+            <p>
+                Çevre, Şehircilik ve İklim Değişikliği Bakanlığı'nın yürürlükteki <strong>Mekânsal Planlar Yapım Yönetmeliği Ek-2 Tablosu</strong>, 
+                şehir planlarında kişi başına ayrılması zorunlu olan asgari sosyal ve teknik altyapı standartlarını belirler.
+            </p>
+
+            <table class="ref-table">
+                <thead>
+                    <tr>
+                        <th>Donatı Grubu</th>
+                        <th>Yönetmelik Standardı</th>
+                        <th>Kapsamındaki Kullanımlar (NİP)</th>
+                        <th>Tire Planı Durumu</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>Eğitim Tesisleri Alanı</strong></td>
+                        <td><strong>6.50 m² / kişi</strong></td>
+                        <td>Anaokulu, İlkokul, Ortaokul, Lise Alanları</td>
+                        <td><span class="badge badge-red">3.34 m²/k (YETERSİZ)</span></td>
+                    </tr>
+                    <tr>
+                        <td><strong>Sağlık Tesisleri Alanı</strong></td>
+                        <td><strong>1.50 m² / kişi</strong></td>
+                        <td>Hastane, Aile Sağlığı Merkezi, Sağlık Ocağı</td>
+                        <td><span class="badge badge-red">0.73 m²/k (YETERSİZ)</span></td>
+                    </tr>
+                    <tr>
+                        <td><strong>Sosyal ve Kültürel Tesisler</strong></td>
+                        <td><strong>1.00 m² / kişi</strong></td>
+                        <td>Kültür Merkezi, Sosyal Tesis, Kütüphane, Yurt</td>
+                        <td><span class="badge badge-red">0.35 m²/k (YETERSİZ)</span></td>
+                    </tr>
+                    <tr>
+                        <td><strong>Açık ve Yeşil Alanlar</strong></td>
+                        <td><strong>10.00 m² / kişi</strong></td>
+                        <td>Park, Rekreasyon, Semt Spor, Millet Bahçesi</td>
+                        <td><span class="badge badge-green">31.78 m²/k (YETERLİ)</span></td>
+                    </tr>
+                    <tr>
+                        <td><strong>Teknik Altyapı Alanları</strong></td>
+                        <td><strong>1.25 m² / kişi</strong></td>
+                        <td>Trafo, Arıtma, Su Deposu, Terfi Merkezi</td>
+                        <td><span class="badge badge-amber">1.23 m²/k (SINIRDA)</span></td>
+                    </tr>
+                    <tr>
+                        <td><strong>İbadet Alanları</strong></td>
+                        <td><strong>0.50 m² / kişi</strong></td>
+                        <td>Cami, Mescit, Dini Tesis Alanları</td>
+                        <td><span class="badge badge-green">0.86 m²/k (YETERLİ)</span></td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <div class="callout callout-jury">
+                <div class="callout-title">🎓 Jüri ve Pafta Sunum Notu</div>
+                Tire Nazım İmar Planı'nda yeşil alan standardının kişi başı 31.78 m² çıkması (standart olan 10 m²'nin 3 katı!), 
+                kentin batı ve güney yamaçlarındaki geniş rekreasyonel koridorlardan kaynaklanmaktadır. 
+                Buna karşılık eğitim ve sağlık tesislerindeki açık, stüdyo projenizde <strong>yeni gelişme akslarında 
+                donatı transferi ve ek sosyal altyapı alanları önermeniz için en güçlü bilimsel dayanağınızdır!</strong>
+            </div>
+        </section>
+
+        <!-- BÖLÜM 4 -->
+        <section class="card" id="bolum4">
+            <h2>⚖️ 4. Düzenleme Ortaklık Payı (DOP) ve Kamu - Özel Mülkiyet Dengesi</h2>
+
+            <h3>4.1. DOP (3194 İmar Kanunu md. 18) Nedir?</h3>
+            <p>
+                Düzenleme Ortaklık Payı (DOP); imar düzenlemesine tabi tutulan yerlerde, kentin ihtiyacı olan 
+                <strong>yol, meydan, park, otopark, çocuk bahçesi, yeşil alan, ibadet yeri ve karakol</strong> gibi 
+                kamusal alanların bedelsiz olarak kamuya kazandırılması amacıyla özel mülkiyet parsellerinden 
+                yasal olarak kesilen ortaklık payıdır.
+            </p>
+            <p>
+                <strong>Yasal Tavan:</strong> 7181 sayılı Kanun ile 3194 sayılı Kanunun 18. maddesi değiştirilmiş ve 
+                maksimum DOP kesintisi <strong>%40'tan %45'e çıkarılmıştır</strong>. Bir imar planı düzenleme sahasında 
+                DOP oranı %45'i aşarsa, aşan kısım için belediye ya kamulaştırma yapmak zorundadır ya da KOP (Kamu Ortaklık Payı) 
+                yöntemine başvurmalıdır.
+            </p>
+
+            <h3>4.2. Plan Onama Sınırı ile Yol ve DOP Geometrisi</h3>
+            <div class="formula-box">
+                <div class="formula-title">DOP ve Yol Alanı Matematiksel Bağıntıları</div>
+                Net Yol Alanı (m²) = Plan Onama Sınırı Alanı - Toplam İmar Adaları Alanı<br>
+                Düzenleme Sahası (DOP Esas) = Plan Onama Sınırı - DOP Dışı Alanlar (Orman, Mera, Tarım, Su vb.)<br>
+                Toplam Kamu Kesintisi = Kamu Poligon Donatıları + Net Yol Alanı<br>
+                DOP Oranı (%) = (Toplam Kamu Kesintisi / DOP Esas Alan) × 100
+            </div>
+
+            <div class="callout callout-warning">
+                <div class="callout-title">⚠️ Harice Ayrılan (DOP Dışı) Alanlar Mantığı</div>
+                Planda bulunan orman, tarım, mera, su yüzeyleri, askeri alanlar ve sit alanları imar parselasyonu ve 
+                DOP kesintisine tabi tutulamaz. Bu alanlar düzenleme sahasından düşülerek <strong>DOP Esas Alan (Net Düzenleme Sahası)</strong> bulunur.
+            </div>
+
+            <h3>4.3. Ortalama Yol Genişliği Analizi</h3>
+            <p>
+                Eğer eklentiye opsiyonel olarak ulaşım çizgileri (aks katmanı) verilirse; 
+                eklenti net yol alanını toplam çizgi uzunluğuna bölerek planın 
+                <strong>Ortalama Fiili Yol Genişliğini (metre)</strong> hesaplar. 
+                Bu gösterge, planın taşıt-yaya koridorlarının yeterli ferahlıkta olup olmadığını ispatlar.
+            </p>
+        </section>
+
+        <!-- BÖLÜM 5 -->
+        <section class="card" id="bolum5">
+            <h2>💼 5. Kentsel İstihdam Kapasitesi Modeli</h2>
+
+            <p>
+                Planlama sadece gece yaşayan konut nüfusunu değil, gündüz kentin ekonomik canlılığını sağlayan 
+                <strong>çalışan nüfusu (istihdamı)</strong> da planlamak zorundadır.
+            </p>
+
+            <table class="ref-table">
+                <thead>
+                    <tr>
+                        <th>Çalışma Fonksiyonu</th>
+                        <th>m² / Çalışan</th>
+                        <th>Verimlilik Katsayısı</th>
+                        <th>Gerekçe ve Metodoloji</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>TİCARET ALANI / MİA</strong></td>
+                        <td>25 - 30 m²</td>
+                        <td>0.75 - 0.85</td>
+                        <td>Ofis, mağaza, restoran; yoğun çalışan barındırır.</td>
+                    </tr>
+                    <tr>
+                        <td><strong>SANAYİ / ORGANİZE SANAYİ</strong></td>
+                        <td>90 - 95 m²</td>
+                        <td>0.50 - 0.55</td>
+                        <td>Büyük makine parkları, depolama ve avlu boşlukları; kişi başına metrekare yüksektir.</td>
+                    </tr>
+                    <tr>
+                        <td><strong>KÜÇÜK SANAYİ (KSA)</strong></td>
+                        <td>50 m²</td>
+                        <td>0.60</td>
+                        <td>Oto tamir, marangoz, torna atölyeleri; emek-yoğun istihdam.</td>
+                    </tr>
+                    <tr>
+                        <td><strong>KAMU / BELEDİYE HİZMET ALANI</strong></td>
+                        <td>45 m²</td>
+                        <td>0.50</td>
+                        <td>Büro, kamu personeli, idari birimler.</td>
+                    </tr>
+                    <tr>
+                        <td><strong>TURİZM / OTEL ALANI</strong></td>
+                        <td>60 m²</td>
+                        <td>0.45</td>
+                        <td>Konaklama, lobi, servis personeli kapasitesi.</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <div class="callout callout-info">
+                <div class="callout-title">⚙️ Dahil / Hariç Tutma Esnekliği</div>
+                Eklentideki <strong>"İstihdam ve Yolculuk Kuralları"</strong> panelinden; 
+                stüdyo kurgunuza göre örneğin Eğitim ve Sağlık personelini istihdama dahil edebilir, 
+                veya sadece saf özel sektör istihdamını ölçmek isterseniz kamusal alanları tek tıkla hariç tutabilirsiniz.
+            </div>
+        </section>
+
+        <!-- BÖLÜM 6 -->
+        <section class="card" id="bolum6">
+            <h2>🚗 6. Ulaşım ve Yolculuk Üretim Modeli (Trip Generation)</h2>
+
+            <p>
+                Kentsel arazi kullanım kararları doğrudan kentin trafik ve yaya yükünü belirler. 
+                Ulaşım modelimiz, uluslararası standartlar ve Türkiye kentsel ulaşım ana planı etütlerine göre 
+                <strong>100 m² kullanım alanı başına günlük üretilen yolculukları</strong> hesaplar:
+            </p>
+
+            <ul class="bullet-list">
+                <li><strong>PAU (Passenger Car Unit - Otomobil Eşdeğeri):</strong> Otobüs, kamyon, minibüs ve otomobillerin tek bir eşdeğer birime dönüştürülmüş halidir.</li>
+                <li><strong>Konut Alanları:</strong> Sabah zirve saatte kent merkezine ve sanayiye doğru yolculuk üretir (Ortalama 2.0 - 3.5 PAU/100m²).</li>
+                <li><strong>Ticaret ve MİA:</strong> Gün boyu ve akşam saatlerinde kentin her yerinden yolculuk çeker (15 - 20 PAU/100m² ve 12 - 15 yaya/100m²).</li>
+                <li><strong>Pazar Alanları & Otogar:</strong> Belirli gün ve saatlerde aşırı yoğun yaya ve servis trafiği üretir.</li>
+            </ul>
+        </section>
+
+        <!-- BÖLÜM 7 -->
+        <section class="card" id="bolum7">
+            <h2>🏠 7. Mevcut Durum Fiili Nüfus Tahmini (Saha & Bina Sayımı)</h2>
+
+            <p>
+                Eklentinin 3. Sekmesi; Tire'nin fiilen şu anda sahada kaç kişi barındırdığını 
+                kadastro adaları ve bina poligonlarının mekânsal kesişimiyle (Spatial Join) modeller:
+            </p>
+
+            <div class="formula-box">
+                <div class="formula-title">Fiili Bina & Hanehalkı Algoritması</div>
+                Toplam İnşaat Alanı = Taban Alanı (m²) × Kat Adedi<br>
+                Net Konut Alanı     = Toplam İnşaat Alanı × 0.85 (Net/Brüt Oranı)<br>
+                Tahmini Daire Sayısı = Net Konut Alanı / 110 m² (Ortalama Daire Büyüklüğü)<br>
+                Fiili Yaşayan Nüfus  = Tahmini Daire Sayısı × 2.85 (Tire TÜİK Hanehalkı Büyüklüğü)
+            </div>
+
+            <div class="callout callout-warning">
+                <div class="callout-title">⚠️ Kritik Planlama Filtresi</div>
+                Sanayi adalarında, OSB'de, mezarlıkta, saf ticaret ve park alanlarındaki binalarda yaşayan nüfus 
+                <strong>kesinlikle 0 kabul edilir</strong>. Fiili nüfus yalnızca Konut ve Ticaret-Konut adalarında yaşayan insanları toplar. 
+                Ayrıca 35 m²'den küçük baraka, kömürlük ve müştemilatlar filtre dışı bırakılır.
+            </div>
+        </section>
+
+        <!-- BÖLÜM 8 -->
+        <section class="card" id="bolum8">
+            <h2>🎓 8. Stüdyo III (PLN3113) Pafta, Poster ve Jüri Teslim İpuçları</h2>
+
+            <div class="callout callout-jury">
+                <div class="callout-title">🎯 Stüdyo Planlama Süreci Akış Şeması Yönergesi</div>
+                Stüdyo planlama yönergesinde vurgulandığı gibi: 
+                <em>"Planlama süreci; araştırmaların yapılması, sorunların ortaya konulması, veri ve bilgi toplama ile ilgili analiz aşaması; 
+                bilgilerin bir araya getirilmesi ve değerlendirilmesi ile ilgili sentez aşaması ve plan kararlarının oluşturulması aşamalarından oluşur."</em>
+            </div>
+
+            <h3>8.1. Bu Çıktıları Paftanızda Nasıl Kullanacaksınız?</h3>
+            <ol class="step-list">
+                <li>
+                    <strong>Kapasite Karşılaştırma Kartı (Doygunluk Analizi):</strong>
+                    <br>
+                    Paftanızın sol üst köşesine NİP Nüfusu (Alt: ~21.000, Üst: ~54.000) ile Sahadaki Fiili Nüfus (~101.000) ve 
+                    TÜİK Merkez Nüfusunu (~62.000) kıyaslayan bir infografik koyun. 
+                    <em>"Mevcut 1997 planı 54.000 kişiye göre çizilmişken kent bugün fiilen 101.000 kişiyi barındırmaktadır. 
+                    Dolayısıyla plan iflas etmiş ve kaçak yapılaşma/aşırı yoğunluk oluşmuştur"</em> argümanını kurun.
+                </li>
+                <li>
+                    <strong>MPYY Donatı Açığı Bilançosu:</strong>
+                    <br>
+                    Eğitim alanlarındaki 3.34 m² (açık: 3.16 m²/k) ve Sağlık alanlarındaki 0.73 m² (açık: 0.77 m²/k) açığını 
+                    kırmızı rozetlerle gösterin. 
+                    <em>"Vizyon ve stratejimiz doğrultusunda Tire'nin kuzey gelişme aksında 2 adet yeni eğitim kampüsü ve 1 adet bölge hastanesi önerilmektedir"</em> 
+                    cümlesini doğrudan bu analize bağlayın.
+                </li>
+                <li>
+                    <strong>DOP ve Mülkiyet Uygulanabilirlik Kartı:</strong>
+                    <br>
+                    Eklentinin hesapladığı DOP oranını (%35 - %42) göstererek 
+                    <em>"Geliştirilen plan kararları 3194 sayılı Kanunun 18. maddesindeki %45 yasal tavanı aşmamakta olup, 
+                    belediyeye kamulaştırma yükü getirmeden uygulanabilir niteliktedir"</em> vurgusunu yapın.
+                </li>
+                <li>
+                    <strong>CSV ve Tablo Çıktıları:</strong>
+                    <br>
+                    Eklentideki <strong>"Tabloları CSV (Excel) Kaydet"</strong> butonuna basarak aldığınız 4 tabloyu 
+                    ödev raporunuzun ekler kısmına ve sunum paftanızın analiz tabloları bölümüne doğrudan yapıştırın.
+                </li>
+            </ol>
+        </section>
+
+    </main>
+</div>
+
+<footer class="doc-footer">
+    <p>Dokuz Eylül Üniversitesi Mimarlık Fakültesi Şehir ve Bölge Planlama Bölümü</p>
+    <p>PLN3113 Şehir Planlama Projesi III • Tire Kentsel Analiz ve NİP Modelleme Eklentisi Rehberi</p>
+    <p style="margin-top: 6px; font-size: 11.5px; color: #94a3b8;">© 2026 Arş. Gör. Yusuf Eminoğlu • Açık Kaynak QGIS PlanX Altyapısı</p>
+</footer>
+
+</body>
+</html>

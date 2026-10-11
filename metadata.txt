@@ -1,0 +1,18 @@
+[general]
+name=Tire NİP ve Kentsel Analiz Stüdyosu (PLN3113)
+qgisMinimumVersion=3.22
+qgisMaximumVersion=4.99
+description=Tire 1/5000 NİP Nüfus, Donatı, Ulaşım ve Mevcut Durum Kentsel Analiz Eklentisi (DEÜ ŞBP PLN3113)
+version=1.0.0
+author=Yusuf Eminoğlu
+email=yusuf.eminoglu@deu.edu.tr
+about=Dokuz Eylül Üniversitesi Mimarlık Fakültesi Şehir ve Bölge Planlama Bölümü PLN3113 Şehir Planlama Projesi III kapsamında; Tire 1/5000 Nazım İmar Planı (NİP) katmanlarında geometri ve duplike temizliği, alt/üst yoğunluk eşleştirmesi, brüt plan nüfusu, MPYY Ek-2 donatı yeterliliği, araç/yaya yolculuk üretimi ve bina/saha bazlı fiili nüfus tahminini gerçekleştiren entegre analiz eklentisidir.
+category=Vector
+tags=urban planning, master plan, nip, tire, population, mpyy, density, studio, deu, sbp
+experimental=False
+deprecated=False
+hasProcessingProvider=yes
+license=GPL-2.0-or-later
+icon=icons/icon.png
+changelog=1.0.0 - İlk sürüm: Tire 1/5000 NİP nüfus, donatı yeterliliği, DOP ve kentsel analiz araçları.
+
