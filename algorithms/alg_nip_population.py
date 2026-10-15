@@ -16,6 +16,7 @@ from qgis.core import (
     QgsProcessing,
     QgsProcessingAlgorithm,
     QgsProcessingException,
+    QgsProcessingParameterEnum,
     QgsProcessingParameterFeatureSink,
     QgsProcessingParameterField,
     QgsProcessingParameterNumber,
@@ -28,7 +29,9 @@ from ..core.nip_calculator import NipCalculatorEngine
 
 class NipPopulationAlgorithm(QgsProcessingAlgorithm):
     INPUT = 'INPUT'
+    ANALYSIS_MODE = 'ANALYSIS_MODE'
     FONKSIYON_FIELD = 'FONKSIYON_FIELD'
+    SECONDARY_FONKSIYON_FIELD = 'SECONDARY_FONKSIYON_FIELD'
     SINIR_LAYER = 'SINIR_LAYER'
     YOL_LAYER = 'YOL_LAYER'
     PROJ_NUFUS = 'PROJ_NUFUS'
@@ -43,16 +46,33 @@ class NipPopulationAlgorithm(QgsProcessingAlgorithm):
         self.addParameter(
             QgsProcessingParameterVectorLayer(
                 self.INPUT,
-                'Nazım İmar Planı (NİP) Katmanı',
+                'Nazım İmar Planı veya Fiziki Mevcut Durum Katmanı',
                 [QgsProcessing.TypeVectorPolygon]
+            )
+        )
+        self.addParameter(
+            QgsProcessingParameterEnum(
+                self.ANALYSIS_MODE,
+                'Analiz Modu / Kapsam',
+                options=['Nazım İmar Planı (NİP - Öneri / Revizyon)', 'Fiziki Mevcut Durum (TUCBS / Arazi Kullanımı)'],
+                defaultValue=0
             )
         )
         self.addParameter(
             QgsProcessingParameterField(
                 self.FONKSIYON_FIELD,
-                'Plan Fonksiyonu Sütunu (Örn: Ort__Detay, Ort_Detay veya nipfonksiyon)',
+                'Birincil Fonksiyon / TUCBS Sütunu (Örn: Ort__Detay, Ort_Detay veya tucbs_sinifi)',
                 parentLayerParameterName=self.INPUT,
                 type=QgsProcessingParameterField.String
+            )
+        )
+        self.addParameter(
+            QgsProcessingParameterField(
+                self.SECONDARY_FONKSIYON_FIELD,
+                'Tamamlayıcı / İkincil Fonksiyon Sütunu (Opsiyonel - örn: arazi_kullanim_tanimi)',
+                parentLayerParameterName=self.INPUT,
+                type=QgsProcessingParameterField.String,
+                optional=True
             )
         )
         self.addParameter(
@@ -125,13 +145,18 @@ class NipPopulationAlgorithm(QgsProcessingAlgorithm):
 
     def processAlgorithm(self, parameters, context, feedback):
         layer = self.parameterAsVectorLayer(parameters, self.INPUT, context)
+        mode_idx = self.parameterAsEnum(parameters, self.ANALYSIS_MODE, context)
         fonk_col = self.parameterAsString(parameters, self.FONKSIYON_FIELD, context)
+        sec_col = self.parameterAsString(parameters, self.SECONDARY_FONKSIYON_FIELD, context)
         proj_nufus = self.parameterAsInt(parameters, self.PROJ_NUFUS, context)
         sinir_layer = self.parameterAsVectorLayer(parameters, self.SINIR_LAYER, context)
         yol_layer = self.parameterAsVectorLayer(parameters, self.YOL_LAYER, context)
 
         if not layer:
             raise QgsProcessingException("Girdi katmanı bulunamadı!")
+
+        analysis_mode = "TUCBS" if mode_idx == 1 else "NIP"
+        secondary_fonk_col = sec_col.strip() if sec_col and sec_col.strip() else None
 
         da = QgsDistanceArea()
         da.setSourceCrs(layer.sourceCrs(), context.transformContext())
@@ -153,13 +178,15 @@ class NipPopulationAlgorithm(QgsProcessingAlgorithm):
                 if yg and not yg.isEmpty():
                     yol_uzunlugu_m += da.measureLength(yg)
 
-        feedback.pushInfo(f"NİP Nüfus, Kamu-Özel ve DOP Analizi Başlatılıyor: Sütun={fonk_col}...")
+        feedback.pushInfo(f"Analiz Başlatılıyor ({analysis_mode}): Sütun={fonk_col}, İkincil={secondary_fonk_col}...")
 
         feats = list(layer.getFeatures())
         parsed_items, summary = NipCalculatorEngine.calculate(
             feats, layer.fields(), fonk_col, proj_nufus, da,
             sinir_geom=sinir_geom,
-            yol_uzunlugu_m=yol_uzunlugu_m
+            yol_uzunlugu_m=yol_uzunlugu_m,
+            secondary_fonk_col=secondary_fonk_col,
+            analysis_mode=analysis_mode
         )
 
         dop = summary["dop_ozet"]
@@ -342,13 +369,13 @@ class NipPopulationAlgorithm(QgsProcessingAlgorithm):
         return 'tire_nip_nufus_hesapla'
 
     def displayName(self):
-        return '2. Tire NİP Nüfus, Donatı, Kamu-Özel ve DOP Analizi'
+        return '2. PLN3113 NİP Nüfus, Donatı, Kamu-Özel ve DOP Analizi'
 
     def group(self):
-        return 'Tire NİP ve Kentsel Analiz Araçları'
+        return 'PLN3113 NİP ve Kentsel Analiz Araçları'
 
     def groupId(self):
-        return 'tire_nip_tools'
+        return 'pln3113_nip_tools'
 
     def createInstance(self):
         return NipPopulationAlgorithm()

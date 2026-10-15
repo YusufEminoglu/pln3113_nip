@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tire 1/5000 NİP Kentsel Analiz & Metodoloji Rehberi | DEÜ ŞBP PLN3113</title>
+    <title>Tire 1/5000 NİP Kentsel Analiz, Nüfus, Donatı, DOP & Morfoloji Rehberi | DEÜ ŞBP PLN3113</title>
     <style>
         :root {
             --primary: #0f766e;
@@ -11,13 +11,18 @@
             --primary-light: #f0fdfa;
             --accent: #0d9488;
             --secondary: #d97706;
+            --secondary-light: #fefce8;
             --text-dark: #0f172a;
             --text-muted: #475569;
             --bg-light: #f8fafc;
             --bg-white: #ffffff;
             --border: #e2e8f0;
             --danger: #dc2626;
+            --danger-light: #fef2f2;
             --success: #16a34a;
+            --success-light: #f0fdf4;
+            --purple: #7e22ce;
+            --purple-light: #faf5ff;
             --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
             --shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
             --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
@@ -47,7 +52,7 @@
         }
 
         .hero-inner {
-            max-width: 1200px;
+            max-width: 1240px;
             margin: 0 auto;
         }
 
@@ -74,10 +79,10 @@
         }
 
         p.hero-subtitle {
-            font-size: 17px;
+            font-size: 16.5px;
             color: #ccfbf1;
-            max-width: 900px;
-            line-height: 1.5;
+            max-width: 960px;
+            line-height: 1.55;
             margin-bottom: 20px;
         }
 
@@ -97,7 +102,7 @@
 
         /* Layout Container */
         .container {
-            max-width: 1240px;
+            max-width: 1280px;
             margin: 0 auto;
             padding: 32px 20px;
             display: flex;
@@ -106,7 +111,7 @@
 
         /* Sidebar Navigation */
         aside.sidebar {
-            width: 280px;
+            width: 290px;
             flex-shrink: 0;
         }
 
@@ -118,10 +123,12 @@
             border-radius: 12px;
             padding: 20px;
             box-shadow: var(--shadow-sm);
+            max-height: calc(100vh - 48px);
+            overflow-y: auto;
         }
 
         .sidebar-title {
-            font-size: 13px;
+            font-size: 12.5px;
             font-weight: 700;
             text-transform: uppercase;
             letter-spacing: 0.05em;
@@ -141,11 +148,11 @@
 
         ul.nav-list li a {
             display: block;
-            padding: 8px 12px;
+            padding: 7px 10px;
             border-radius: 6px;
             color: var(--text-muted);
             text-decoration: none;
-            font-size: 13.5px;
+            font-size: 13px;
             font-weight: 500;
             transition: all 0.15s ease;
             line-height: 1.35;
@@ -155,6 +162,12 @@
             color: var(--primary);
             background: var(--primary-light);
             transform: translateX(3px);
+        }
+
+        ul.nav-list li.highlight a {
+            color: var(--secondary);
+            font-weight: 700;
+            background: var(--secondary-light);
         }
 
         /* Main Content */
@@ -175,7 +188,7 @@
         }
 
         section.card h2 {
-            font-size: 24px;
+            font-size: 23px;
             font-weight: 700;
             color: var(--primary-dark);
             margin-bottom: 8px;
@@ -187,7 +200,7 @@
         }
 
         section.card h3 {
-            font-size: 18px;
+            font-size: 17.5px;
             font-weight: 700;
             color: #1e293b;
             margin: 24px 0 12px;
@@ -215,7 +228,7 @@
         }
 
         .callout-info {
-            background-color: #f0fdfa;
+            background-color: var(--primary-light);
             border-color: var(--primary);
             color: #0f766e;
         }
@@ -238,6 +251,12 @@
             color: #701a75;
         }
 
+        .callout-success {
+            background-color: var(--success-light);
+            border-color: var(--success);
+            color: #15803d;
+        }
+
         .callout-title {
             font-weight: 700;
             margin-bottom: 6px;
@@ -254,9 +273,10 @@
             padding: 16px 20px;
             margin: 18px 0;
             font-family: "Courier New", Courier, monospace;
-            font-size: 14px;
+            font-size: 13.5px;
             color: #0f172a;
             overflow-x: auto;
+            line-height: 1.6;
         }
 
         .formula-title {
@@ -313,6 +333,7 @@
         .badge-amber { background: #fef3c7; color: #b45309; }
         .badge-red { background: #fee2e2; color: #b91c1c; }
         .badge-blue { background: #e0f2fe; color: #0369a1; }
+        .badge-purple { background: #f3e8ff; color: #7e22ce; }
 
         /* Step List */
         ol.step-list {
@@ -320,7 +341,7 @@
             margin-bottom: 16px;
             display: flex;
             flex-direction: column;
-            gap: 10px;
+            gap: 12px;
         }
 
         ol.step-list li {
@@ -335,6 +356,28 @@
             gap: 6px;
         }
 
+        /* Keyboard shortcut / UI tags */
+        kbd {
+            background: #f1f5f9;
+            border: 1px solid #cbd5e1;
+            border-bottom: 2px solid #94a3b8;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: inherit;
+            font-size: 12px;
+            color: #0f172a;
+            font-weight: 600;
+        }
+
+        .ui-tag {
+            background: #e0f2fe;
+            color: #0369a1;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-weight: 600;
+            font-size: 12px;
+        }
+
         /* Footer */
         footer.doc-footer {
             border-top: 1px solid var(--border);
@@ -346,7 +389,7 @@
             margin-top: 40px;
         }
 
-        @media (max-width: 900px) {
+        @media (max-width: 960px) {
             .container {
                 flex-direction: column;
             }
@@ -355,6 +398,7 @@
             }
             .sidebar-sticky {
                 position: static;
+                max-height: none;
             }
         }
 
@@ -370,17 +414,19 @@
 
 <header class="hero">
     <div class="hero-inner">
-        <span class="badge-academic">Dokuz Eylül Üniversitesi • Mimarlık Fakültesi • ŞBP Bölümü</span>
-        <h1 class="hero-title">Tire 1/5000 NİP Kentsel Analiz, Nüfus ve Kapasite Modelleme Rehberi</h1>
+        <span class="badge-academic">Dokuz Eylül Üniversitesi • Mimarlık Fakültesi • Şehir ve Bölge Planlama Bölümü</span>
+        <h1 class="hero-title">Tire 1/5000 NİP Kentsel Analiz, Nüfus, Donatı, DOP & Morfoloji Rehberi</h1>
         <p class="hero-subtitle">
             PLN3113 Şehir Planlama Projesi III kapsamında; Tire Nazım İmar Planı (NİP) katmanlarının brüt plan nüfusu, 
-            Mekânsal Planlar Yapım Yönetmeliği (MPYY) donatı yeterliliği, Düzenleme Ortaklık Payı (DOP), kamu-özel dengesi 
-            ve ulaşım yüklerinin teorik-yöntemsel hesaplama el kitabı.
+            Mekânsal Planlar Yapım Yönetmeliği (MPYY) donatı yeterliliği, Düzenleme Ortaklık Payı (DOP), kamu-özel mülkiyet dengesi, 
+            ulaşım yükleri ile kadastro adası/bina bazında <strong>TAKS (GSI), KAKS (FSI), Kat Sayısı (L), Açık Alan (OSR), Yapı Nizamı (A4)</strong> 
+            ve kentsel doku tipolojilerinin teorik, mevzuatsal ve adım adım pratik el kitabı.
         </p>
         <div class="hero-meta">
             <span><strong>Ders:</strong> PLN3113 Şehir Planlama Projesi III (Tire Stüdyosu)</span>
             <span><strong>Akademik Yıl:</strong> 2026-2027 Güz Dönemi</span>
-            <span><strong>Eklenti & Metodoloji:</strong> Arş. Gör. Yusuf Eminoğlu</span>
+            <span><strong>Geliştirici & Yazar:</strong> Arş. Gör. Yusuf Eminoğlu</span>
+            <span><strong>Entegrasyon:</strong> QGIS 3.x / QGIS 4 / PlanX Kentsel Morfoloji Motoru</span>
         </div>
     </div>
 </header>
@@ -388,23 +434,227 @@
 <div class="container">
     <aside class="sidebar">
         <div class="sidebar-sticky">
-            <div class="sidebar-title">📑 Rehber İçindekiler</div>
+            <div class="sidebar-title">📑 Hızlı Erişim Menüsü</div>
             <ul class="nav-list">
-                <li><a href="#bolum1">1. Planlama 101 ve NİP Kavramı</a></li>
-                <li><a href="#bolum2">2. Nüfus & Yoğunluk Kademeleri</a></li>
-                <li><a href="#bolum3">3. MPYY Ek-2 Donatı Dengesi</a></li>
-                <li><a href="#bolum4">4. Kamu-Özel & DOP Hesabı</a></li>
-                <li><a href="#bolum5">5. Kentsel İstihdam Modeli</a></li>
-                <li><a href="#bolum6">6. Ulaşım ve Yolculuk Çekimi</a></li>
-                <li><a href="#bolum7">7. Saha ve Fiili Nüfus Tahmini</a></li>
-                <li><a href="#bolum8">8. Jüri ve Poster Teslim İpuçları</a></li>
+                <li class="highlight"><a href="#bolum0">🚀 0. A'dan Z'ye Adım Adım Kullanım</a></li>
+                <li><a href="#bolum1">🏙️ 1. Planlama 101 & Tire Bağlamı</a></li>
+                <li><a href="#bolum2">👥 2. Yoğunluk Kademeleri & Formül</a></li>
+                <li><a href="#bolum3">📋 3. MPYY Ek-2 Donatı Dengesi</a></li>
+                <li><a href="#bolum4">⚖️ 4. DOP & Kamu-Özel Mülkiyet</a></li>
+                <li><a href="#bolum5">💼 5. İstihdam & Ulaşım Çekimi</a></li>
+                <li><a href="#bolum6">📐 6. Morfoloji: TAKS, KAKS, Spacematrix</a></li>
+                <li><a href="#bolum7">🏠 7. Mevcut Saha & Fiili Nüfus</a></li>
+                <li><a href="#bolum8">🎓 8. Stüdyo & Jüri Teslim İpuçları</a></li>
             </ul>
         </div>
     </aside>
 
     <main class="content">
 
-        <!-- BÖLÜM 1 -->
+        <!-- BÖLÜM 0: ADIM ADIM KULLANIM REHBERİ -->
+        <section class="card" id="bolum0">
+            <h2>🚀 0. A'dan Z'ye Adım Adım Kullanım Kılavuzu (Tane Tane Başlangıç)</h2>
+
+            <div class="callout callout-info">
+                <div class="callout-title">💡 Bu Kılavuz Kimin İçindir?</div>
+                Bu bölüm, CBS veya şehir planlama yazılımlarına yeni başlayan bir öğrencinin hiçbir kafa karışıklığı yaşamadan, 
+                eklentiyi açtığı andan itibaren <strong>hangi düğmeye ne zaman basacağını, hangi kutunun ne işe yaradığını 
+                ve çıkan sonuçları nasıl yorumlayacağını</strong> en yalın ve açık dille adım adım öğretmek üzere hazırlanmıştır.
+            </div>
+
+            <h3>0.1. Eklentiyi Açma ve Panel Yerleşimi</h3>
+            <p>
+                Eklenti QGIS'e yüklendiğinde araç çubuğuna yeşil renkli bir <strong>"Tire NİP ve Kentsel Analiz Stüdyosu"</strong> butonu eklenir. 
+                Ayrıca üst menüden <kbd>Eklentiler</kbd> &rarr; <kbd>PLN3113 NİP ve Kentsel Analiz Stüdyosu</kbd> yolunu izleyebilirsiniz. 
+                Tıkladığınızda ekranın sağ tarafına sabitlenen şık bir DockWidget (panel) açılır.
+            </p>
+            <p>Panelin en üstünde 3 ana sekme yer alır:</p>
+            <ul class="bullet-list">
+                <li><span class="ui-tag">Sekme 1: 🏙️ 1/5000 NİP Fonksiyon, Kapasite ve Donatı</span> &rarr; Plan poligonlarından nüfus, donatı yeterliliği, DOP ve kamu-özel dengesini hesaplar.</li>
+                <li><span class="ui-tag">Sekme 2: 📊 Kentsel Veri ve Analiz Merkezi</span> &rarr; Katman geometri özetleri ve matematiksel nüfus projeksiyonları (Doğrusal, Geometrik, Üstel, İller Bankası).</li>
+                <li><span class="ui-tag">Sekme 3: 🏠 Saha ve Bina Bazlı Fiili Nüfus</span> &rarr; Kadastro adası ve bina katmanlarını kesiştirerek TAKS, KAKS, kat yüksekliği, yapı nizamı ve fiili nüfusu modeller.</li>
+            </ul>
+
+            <hr style="border: 0; border-top: 1px dashed var(--border); margin: 24px 0;">
+
+            <h3>0.2. SEKME 1: 1/5000 NİP Analizi Adım Adım Nasıl Çalıştırılır?</h3>
+            <ol class="step-list">
+                <li>
+                    <strong>NİP Katmanını Seçin:</strong>
+                    En üstteki <em>"Nazım İmar Planı (NİP) Katmanı"</em> açılır kutusundan projenizdeki 1/5000 plan poligonlarını seçin (Örn: <code>tire_1_5000_nip_poligon</code>).
+                </li>
+                <li>
+                    <strong>Analiz Modunu Belirleyin:</strong>
+                    <em>"Analiz Modu"</em> kutusundan iki seçenekten birini seçin:
+                    <ul class="bullet-list" style="margin-top: 4px;">
+                        <li><strong>Standart 1/5000 NİP Modu:</strong> Plan kararları, kentsel gelişme konut yoğunlukları ve geleceğe dönük imar hakları için kullanılır.</li>
+                        <li><strong>Fiziki / Mevcut Durum Modu (TUCBS):</strong> Halihazır harita, mevcut kadastro kullanımı veya TUCBS sınıfları için kullanılır.</li>
+                    </ul>
+                </li>
+                <li>
+                    <strong>Fonksiyon Sütununu Doğrulayın:</strong>
+                    Eklenti katmanınızı otomatik tarar ve <code>Ort__Detay</code>, <code>nipfonksiyon</code> veya <code>tucbs_sinifi</code> sütununu kendisi bulur. Gerekirse bu sütunu elle değiştirebilirsiniz.
+                </li>
+                <li>
+                    <strong>(İsteğe Bağlı) Plan Onama Sınırı ve Yol Katmanı:</strong>
+                    Eğer elinizde resmi plan sınırı varsa <em>"Plan Onama Sınırı"</em> kutusundan seçin. Böylece yol alanı adaların boşluğundan kesin olarak hesaplanır. Yol çizgileriniz varsa <em>"Ulaşım ve Yol Ağı (Aks)"</em> kutusundan seçerek ortalama yol genişliğini (metre) türetebilirsiniz.
+                </li>
+                <li>
+                    <strong>Gelişmiş Kurallar Tablosunu İnceleyin ve Düzenleyin (Çok Önemli!):</strong>
+                    Katmandaki fonksiyonlar otomatik okunur ve 9 sütunlu kurallar tablosuna dizilir (Ayrıntılı sütun açıklamaları aşağıda 0.3'tedir). 
+                    Buradan dilediğiniz fonksiyonu <strong>DOP İçi</strong> veya <strong>nDOP (DOP Dışı - Hariç)</strong> yapabilir, istihdam veya trafik hesabına katıp çıkarabilirsiniz.
+                </li>
+                <li>
+                    <strong>"NİP Analizini Çalıştır" Butonuna Basın:</strong>
+                    Büyük yeşil butona basın. Birkaç saniye içinde haritanıza <code>..._NIP_KAPASITE</code> adında renklendirilmiş yeni bir katman eklenir ve alt paneldeki sonuç sekmeleri dolar!
+                </li>
+                <li>
+                    <strong>Sonuçları 5 Sekmede İnceleyin:</strong>
+                    <ul class="bullet-list" style="margin-top: 4px;">
+                        <li><strong>⚖️ Kamu-Özel & DOP:</strong> Plan Onama Alanı, Düzenleme Sahası, Özel Mülkiyet Tahsisi, Kamu Kesintisi ve yasal %45 tavanına uygunluk durumu.</li>
+                        <li><strong>🏛️ Kent Karakteri:</strong> Her fonksiyonun toplam alanı ve kişi başına düşen m² payları.</li>
+                        <li><strong>📋 Ek-2 Donatı:</strong> Eğitim, sağlık, yeşil alan vb. için yönetmelik standartları ile planda ayrılan miktarların karşılaştırması (YETERLİ / YETERSİZ).</li>
+                        <li><strong>📊 Fonksiyon Dağılımı:</strong> Tüm arazi kullanımlarının adet, alan (ha/m²) ve yüzde dağılımı.</li>
+                        <li><strong>📑 Detaylı Rapor:</strong> Tarihsel nüfus kıyaslaması ve metodolojik değerlendirme metni.</li>
+                    </ul>
+                </li>
+                <li>
+                    <strong>Rapor ve Tabloları Bilgisayarınıza Kaydedin:</strong>
+                    Alttaki <kbd>📥 Tabloları CSV (Excel) Kaydet</kbd> butonuna basarak 4 analiz tablosunu UTF-8 Excel formatında kaydedebilir; <kbd>📄 HTML Raporu Kaydet</kbd> butonuyla şık bir web raporu alabilirsiniz.
+                </li>
+            </ol>
+
+            <hr style="border: 0; border-top: 1px dashed var(--border); margin: 24px 0;">
+
+            <h3>0.3. SEKME 1: Kurallar Tablosunun 9 Sütunu Ne İşe Yarar?</h3>
+            <p>
+                Kurallar tablosu, plandaki her bir arazi kullanımının matematiksel modelde nasıl davranacağını yönettiğiniz kumanda merkezidir:
+            </p>
+            <table class="ref-table">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Sütun Adı</th>
+                        <th>Tipi</th>
+                        <th>Ne İşe Yarar? (Nasıl Kullanılır?)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>1</strong></td>
+                        <td><strong>Plan Fonksiyonu</strong></td>
+                        <td>Salt Okunur Metin</td>
+                        <td>Katmandaki öznitelik tablosundan benzersiz olarak okunan arazi kullanım tanımı (Örn: Gelişme Konut, Ticaret, İlkokul, Orman).</td>
+                    </tr>
+                    <tr>
+                        <td><strong>2</strong></td>
+                        <td><strong>DOP İçi (Dahil)?</strong></td>
+                        <td>Onay Kutusu (Checkbox)</td>
+                        <td>
+                            <strong>İşaretli ise:</strong> Bu alan 3194 sayılı Kanun md. 18 uyarınca Düzenleme Sahasına (DOP havuzuna) dahil edilir.<br>
+                            <strong>İşaretsiz ise (nDOP):</strong> Harice ayrılan alandır; düzenleme sahası sınırları dışına çıkarılır (Örn: Orman, Baraj, Tarım, Mera).
+                        </td>
+                    </tr>
+                    <tr>
+                        <td><strong>3</strong></td>
+                        <td><strong>DOP Türü</strong></td>
+                        <td>Açılır Kutu (Dropdown)</td>
+                        <td>
+                            Alanın mülkiyet niteliğini belirler:
+                            <ul class="bullet-list" style="margin-top: 4px;">
+                                <li><strong>DOP İçi - Özel (Tahsis):</strong> Konut, Ticaret, Sanayi gibi şahıslara imar parseli olarak dağıtılacak alanlar.</li>
+                                <li><strong>DOP İçi - Kamu (Kesinti):</strong> Park, Yol, İlkokul, Cami gibi DOP kesintisiyle karşılanan kamusal alanlar.</li>
+                                <li><strong>nDOP - DOP Dışı (Hariç):</strong> Düzenlemeye hiç girmeyen koruma ve doğal alanlar.</li>
+                            </ul>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td><strong>4</strong></td>
+                        <td><strong>İstihdam Dahil?</strong></td>
+                        <td>Onay Kutusu</td>
+                        <td>İşaretli ise bu fonksiyonda çalışan insan sayısı hesaplanır. Saf konutta işaretsizdir, ticaret ve sanayide işaretlidir.</td>
+                    </tr>
+                    <tr>
+                        <td><strong>5</strong></td>
+                        <td><strong>m² / Çalışan</strong></td>
+                        <td>Sayısal Giriş</td>
+                        <td>1 çalışana düşen ortalama brüt/kapalı alan standardı. Örneğin Ticarette 30 m², Sanayide 95 m², Küçük Sanayide 50 m².</td>
+                    </tr>
+                    <tr>
+                        <td><strong>6</strong></td>
+                        <td><strong>Verim (0 - 1.0)</strong></td>
+                        <td>Ondalık Giriş</td>
+                        <td>Alanın aktif kullanım oranı (doluluk verimi). Örneğin 0.85 demek, alanın %85'inin fiilen çalışma amacıyla kullanıldığı anlamına gelir.</td>
+                    </tr>
+                    <tr>
+                        <td><strong>7</strong></td>
+                        <td><strong>Araç Dahil?</strong></td>
+                        <td>Onay Kutusu</td>
+                        <td>İşaretli ise bu fonksiyonun sabah/akşam zirve saatte kente bindireceği otomobil (PAU) yükü hesaplanır.</td>
+                    </tr>
+                    <tr>
+                        <td><strong>8</strong></td>
+                        <td><strong>Yaya Dahil?</strong></td>
+                        <td>Onay Kutusu</td>
+                        <td>İşaretli ise bu fonksiyonun üreteceği yaya hareketliliği hesaplanır.</td>
+                    </tr>
+                    <tr>
+                        <td><strong>9</strong></td>
+                        <td><strong>Araç (100 m²)</strong></td>
+                        <td>Sayısal Giriş</td>
+                        <td>Her 100 m² kullanım alanı başına gün içinde üretilen veya çekilen eşdeğer otomobil (PAU) yolculuk sayısı.</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <div class="callout callout-success">
+                <div class="callout-title">🔄 Dinamik Hücre ve Veri Değişimi Yeteneği</div>
+                Kullanıcı katmanında daha önce bilinmeyen yeni bir hücre değeri (Örn: <code>Özel Sağlık Tesis Alanı</code>, <code>Bölgesel Lojistik Üs</code> vb.) girdiğinde; 
+                eklenti bu değeri otomatik olarak algılar ve kurallar tablosuna yeni bir satır olarak ekler. 
+                Siz tabloda bir kuralı değiştirdiğinizde (örneğin DOP Türünü veya m²/çalışan değerini) bu seçim hafızada saklanır ve sonraki analizlerde korunur.
+            </div>
+
+            <hr style="border: 0; border-top: 1px dashed var(--border); margin: 24px 0;">
+
+            <h3>0.4. SEKME 3: Saha & Bina Morfolojisi (TAKS, KAKS, Spacematrix) Nasıl Kullanılır?</h3>
+            <p>
+                Bu sekme; planlanan geleceği değil, <strong>Tire'nin şu anda sahada gerçekte nasıl bir yapılaşmaya sahip olduğunu</strong> 
+                bina geometrileri ve kat yükseklikleri üzerinden adrese dayalı olarak modeller.
+            </p>
+            <ol class="step-list">
+                <li>
+                    <strong>Adaları ve Binaları Seçin:</strong>
+                    <em>"Kadastro / Saha Adaları"</em> kutusundan ada sınırlarınızı (Örn: <code>tire_ada</code>); <em>"Bina Katmanı"</em> kutusundan binalarınızı (Örn: <code>tire_bina</code>) seçin.
+                </li>
+                <li>
+                    <strong>Parametreleri Belirleyin:</strong>
+                    <ul class="bullet-list" style="margin-top: 4px;">
+                        <li><strong>Ortalama Hanehalkı Büyüklüğü:</strong> TÜİK verisine göre Tire için <strong>2.85 kişi/hane</strong> girilidir.</li>
+                        <li><strong>Ortalama Daire Alanı:</strong> Tire ortalaması için <strong>110 m²</strong> girilidir (Gerekiyorsa 90-130 arası değiştirilebilir).</li>
+                        <li><strong>İnşaat Net Alan Oranı:</strong> Merdiven, asansör, duvar payları düşüldüğünde net konut alanı katsayısıdır (Varsayılan: <strong>0.85</strong>).</li>
+                    </ul>
+                </li>
+                <li>
+                    <strong>"Saha ve Bina Bazlı Fiili Nüfus ve Morfolojiyi Hesapla" Butonuna Basın:</strong>
+                    Analiz çalıştırıldığında haritanıza <code>..._FIILI_NUFUS</code> adında bir poligon katmanı eklenir ve içine 17 adet gelişmiş metrik yazılır!
+                </li>
+                <li>
+                    <strong>🎨 1-Tıkla Tematik Harita Butonlarını Kullanın:</strong>
+                    Analiz bittiği an beliren stil butonlarına tek tıkla basarak haritanızın rengini anında değiştirebilirsiniz:
+                    <ul class="bullet-list" style="margin-top: 4px;">
+                        <li><kbd>👥 Nüfus (k/ha)</kbd> &rarr; Ada bazında yaşayan fiili nüfus yoğunluğu kademeleri (0-50, 51-150, 151-300, 301-600, 600+ k/ha).</li>
+                        <li><kbd>🏗️ TAKS (GSI)</kbd> &rarr; Taban Alanı Katsayısı / Zemin Doluluk Oranı (0.20 altı seyrek bahçeli, 0.60 üzeri sıkışık bitişik doku).</li>
+                        <li><kbd>🏢 KAKS (FSI / Emsal)</kbd> &rarr; Kat Alanı Katsayısı / Emsal (İnşaat yoğunluğu kademeleri: &lt;0.60, 0.60-1.20, 1.20-2.0, 2.0-3.5, &gt;3.5).</li>
+                        <li><kbd>📏 Kat Sayısı (L)</kbd> &rarr; Ağırlıklı ortalama bina kat adedi (1 katlı, 2 katlı, 3-4 katlı, 5-6 katlı, 7+ katlı).</li>
+                        <li><kbd>🌳 Açık Alan (%)</kbd> &rarr; Ada zeminindeki bahçe, avlu ve boşluk oranı (%0-25 çok az açık alan, %85-100 geniş bahçeli).</li>
+                        <li><kbd>🏘️ Yapı Nizamı (A4)</kbd> &rarr; PlanX morfoloji motoruna göre: <strong>Ayrık</strong> (Mavi), <strong>Bitişik / Blok</strong> (Kırmızı), <strong>Karma</strong> (Turuncu), <strong>Boş Ada</strong> (Gri).</li>
+                        <li><kbd>📐 Doku / Spacematrix</kbd> &rarr; Kentsel doku tipolojisi: Seyrek Bahçeli, Orta Yoğunluk, Kompakt Blok, Nokta Kuleler, Geleneksel Doku.</li>
+                    </ul>
+                </li>
+            </ol>
+        </section>
+
+        <!-- BÖLÜM 1: PLANLAMA 101 VE TİRE BAĞLAMI -->
         <section class="card" id="bolum1">
             <h2>🏙️ 1. Planlama 101: Nazım İmar Planı (NİP) ve Tire Bağlamı</h2>
             
@@ -423,11 +673,11 @@
                 nüfus yoğunluklarını ve ulaşım sistemlerini</strong> belirleyen 1/5000 ölçekli ana vizyon ve ilke planıdır.
             </p>
             <p>
-                NİP'te ada bazında parsel içi çekme mesafesi veya kat adedi belirlenmez; bunun yerine 
+                NİP'te ada bazında parsel içi çekme mesafesi veya bina yüksekliği tek tek belirlenmez; bunun yerine 
                 <strong>yoğunluk aralığı (kişi/hektar - k/ha)</strong> ve <strong>işlevsel bölgelendirme (zoning)</strong> tanımlanır.
             </p>
 
-            <h3>1.2. Neden Nüfus Hesabı Yapılır?</h3>
+            <h3>1.2. Neden Nüfus ve Kapasite Hesabı Yapılır?</h3>
             <ul class="bullet-list">
                 <li><strong>Planın Taşıma Kapasitesini Anlamak:</strong> Çizilen konut ve ticaret adaları kente kaç kişilik yaşam ve çalışma hacmi sunuyor?</li>
                 <li><strong>Donatı Yeterliliğini Test Etmek:</strong> Planlanan nüfusa yetecek kadar okul, sağlık ocağı, park ve teknik altyapı ayrılmış mı?</li>
@@ -505,7 +755,7 @@
             </div>
         </section>
 
-        <!-- BÖLÜM 2 -->
+        <!-- BÖLÜM 2: YOĞUNLUK KADEMELERİ VE FORMÜL -->
         <section class="card" id="bolum2">
             <h2>👥 2. Kentsel Yoğunluk Kademeleri ve Alt-Üst Sınır Mantığı</h2>
 
@@ -605,7 +855,7 @@
             </div>
         </section>
 
-        <!-- BÖLÜM 3 -->
+        <!-- BÖLÜM 3: MPYY EK-2 DONATI DENGESİ -->
         <section class="card" id="bolum3">
             <h2>📋 3. Mekânsal Planlar Yapım Yönetmeliği (MPYY) Ek-2 Donatı Dengesi</h2>
 
@@ -672,7 +922,7 @@
             </div>
         </section>
 
-        <!-- BÖLÜM 4 -->
+        <!-- BÖLÜM 4: DOP VE KAMU-ÖZEL MÜLKİYET DENGESİ -->
         <section class="card" id="bolum4">
             <h2>⚖️ 4. Düzenleme Ortaklık Payı (DOP) ve Kamu - Özel Mülkiyet Dengesi</h2>
 
@@ -686,7 +936,7 @@
             <p>
                 <strong>Yasal Tavan:</strong> 7181 sayılı Kanun ile 3194 sayılı Kanunun 18. maddesi değiştirilmiş ve 
                 maksimum DOP kesintisi <strong>%40'tan %45'e çıkarılmıştır</strong>. Bir imar planı düzenleme sahasında 
-                DOP oranı %45'i aşarsa, aşan kısım için belediye ya kamulaştırma yapmak zorundadır ya da KOP (Kamu Ortaklık Payı) 
+                DOP oranı %45'i aşarsa, aşan kısım için idare ya kamulaştırma yapmak zorundadır ya da KOP (Kamu Ortaklık Payı) 
                 yöntemine başvurmalıdır.
             </p>
 
@@ -700,9 +950,10 @@
             </div>
 
             <div class="callout callout-warning">
-                <div class="callout-title">⚠️ Harice Ayrılan (DOP Dışı) Alanlar Mantığı</div>
+                <div class="callout-title">⚠️ Harice Ayrılan (DOP Dışı - nDOP) Alanlar Mantığı</div>
                 Planda bulunan orman, tarım, mera, su yüzeyleri, askeri alanlar ve sit alanları imar parselasyonu ve 
-                DOP kesintisine tabi tutulamaz. Bu alanlar düzenleme sahasından düşülerek <strong>DOP Esas Alan (Net Düzenleme Sahası)</strong> bulunur.
+                DOP kesintisine tabi tutulamaz. Bu alanlar düzenleme sahasından düşülerek <strong>DOP Esas Alan (Net Düzenleme Sahası)</strong> bulunur. 
+                Eklentideki kurallar tablosundan bir fonksiyonun karşısındaki onay kutusunu kaldırdığınızda o fonksiyon nDOP (DOP Dışı) ilan edilir ve kesinti hesabından çıkarılır.
             </div>
 
             <h3>4.3. Ortalama Yol Genişliği Analizi</h3>
@@ -714,13 +965,13 @@
             </p>
         </section>
 
-        <!-- BÖLÜM 5 -->
+        <!-- BÖLÜM 5: İSTİHDAM VE ULAŞIM ÇEKİMİ -->
         <section class="card" id="bolum5">
-            <h2>💼 5. Kentsel İstihdam Kapasitesi Modeli</h2>
+            <h2>💼 5. Kentsel İstihdam ve Ulaşım Çekim Modeli</h2>
 
             <p>
                 Planlama sadece gece yaşayan konut nüfusunu değil, gündüz kentin ekonomik canlılığını sağlayan 
-                <strong>çalışan nüfusu (istihdamı)</strong> da planlamak zorundadır.
+                <strong>çalışan nüfusu (istihdamı)</strong> ve bunun ürettiği trafik akışını da planlamak zorundadır.
             </p>
 
             <table class="ref-table">
@@ -766,33 +1017,156 @@
                 </tbody>
             </table>
 
-            <div class="callout callout-info">
-                <div class="callout-title">⚙️ Dahil / Hariç Tutma Esnekliği</div>
-                Eklentideki <strong>"İstihdam ve Yolculuk Kuralları"</strong> panelinden; 
-                stüdyo kurgunuza göre örneğin Eğitim ve Sağlık personelini istihdama dahil edebilir, 
-                veya sadece saf özel sektör istihdamını ölçmek isterseniz kamusal alanları tek tıkla hariç tutabilirsiniz.
-            </div>
-        </section>
-
-        <!-- BÖLÜM 6 -->
-        <section class="card" id="bolum6">
-            <h2>🚗 6. Ulaşım ve Yolculuk Üretim Modeli (Trip Generation)</h2>
-
-            <p>
-                Kentsel arazi kullanım kararları doğrudan kentin trafik ve yaya yükünü belirler. 
-                Ulaşım modelimiz, uluslararası standartlar ve Türkiye kentsel ulaşım ana planı etütlerine göre 
-                <strong>100 m² kullanım alanı başına günlük üretilen yolculukları</strong> hesaplar:
-            </p>
-
+            <h3>5.2. PAU Araç ve Yaya Yolculuk Üretimi (Trip Generation)</h3>
             <ul class="bullet-list">
                 <li><strong>PAU (Passenger Car Unit - Otomobil Eşdeğeri):</strong> Otobüs, kamyon, minibüs ve otomobillerin tek bir eşdeğer birime dönüştürülmüş halidir.</li>
                 <li><strong>Konut Alanları:</strong> Sabah zirve saatte kent merkezine ve sanayiye doğru yolculuk üretir (Ortalama 2.0 - 3.5 PAU/100m²).</li>
                 <li><strong>Ticaret ve MİA:</strong> Gün boyu ve akşam saatlerinde kentin her yerinden yolculuk çeker (15 - 20 PAU/100m² ve 12 - 15 yaya/100m²).</li>
-                <li><strong>Pazar Alanları & Otogar:</strong> Belirli gün ve saatlerde aşırı yoğun yaya ve servis trafiği üretir.</li>
             </ul>
         </section>
 
-        <!-- BÖLÜM 7 -->
+        <!-- BÖLÜM 6: MORFOLOJİ: TAKS, KAKS VE SPACEMATRIX -->
+        <section class="card" id="bolum6">
+            <h2>📐 6. Kentsel Morfoloji, TAKS / KAKS ve Spacematrix Modeli</h2>
+
+            <div class="callout callout-academic">
+                <div class="callout-title">🏛️ PlanX Kentsel Morfoloji Motoru ve Spacematrix Entegrasyonu</div>
+                Bu bölüm; Meta Pont & Haupt (2010) tarafından geliştirilen <strong>Spacematrix</strong> kentsel morfoloji matrisi ile 
+                <strong>PlanX Kentsel Morfoloji Motoru</strong> metodolojisine (A4 Yapı Nizamı, Zarf Büyüklüğü, IPQ Kompaklık) 
+                tam uyumlu olarak tasarlanmıştır.
+            </div>
+
+            <h3>6.1. TAKS (Ground Space Index - GSI) Nedir?</h3>
+            <p>
+                <strong>Taban Alanı Katsayısı (TAKS)</strong>; bir ada içindeki binaların zemine oturduğu toplam ayak izi alanının (taban m²), 
+                o adanın toplam yüzölçümüne (ada m²) oranıdır:
+            </p>
+            <div class="formula-box">
+                <div class="formula-title">TAKS (GSI) Formülü</div>
+                TAKS (GSI) = Toplam Bina Taban Alanı (m²) / Toplam Ada Alanı (m²)
+            </div>
+            <p>
+                <strong>Nasıl Yorumlanır?</strong> TAKS değeri 0.0 ile 1.0 arasında değişir.
+            </p>
+            <ul class="bullet-list">
+                <li><code>TAKS &lt; 0.20</code> &rarr; <strong>Çok Düşük Zemin Doluluğu:</strong> Adanın %80'inden fazlası açık bahçe ve boştur (Bağ evleri, villa dokusu).</li>
+                <li><code>TAKS = 0.20 - 0.40</code> &rarr; <strong>Düşük/Orta Doluluk:</strong> Tipik ayrık nizam 3-4 katlı apartman adaları (Tire'nin geniş bahçeli konutları).</li>
+                <li><code>TAKS = 0.40 - 0.60</code> &rarr; <strong>Orta/Yüksek Doluluk:</strong> Yoğun blok nizam veya az bahçeli geleneksel doku.</li>
+                <li><code>TAKS &gt; 0.60</code> &rarr; <strong>Aşırı Yoğun / Bitişik Dokusu:</strong> Adanın yarısından fazlası beton ayak iziyle kaplıdır; avlu ve hava koridoru yetersizdir.</li>
+            </ul>
+
+            <h3>6.2. KAKS / Emsal (Floor Space Index - FSI) Nedir?</h3>
+            <p>
+                <strong>Kat Alanı Katsayısı (KAKS veya Emsal)</strong>; adadaki tüm binaların tüm katlarının toplam inşaat alanının, 
+                ada alanına oranıdır:
+            </p>
+            <div class="formula-box">
+                <div class="formula-title">KAKS (FSI) Formülü</div>
+                KAKS (FSI) = Toplam İnşaat Alanı (m²) / Toplam Ada Alanı (m²)<br>
+                Toplam İnşaat Alanı = Σ [ Bina Taban Alanı (m²) × Bina Kat Sayısı ]
+            </div>
+            <p>
+                <strong>Nasıl Yorumlanır?</strong> Emsal kentin düşey yükseklik ve inşaat yoğunluğunu belirler.
+            </p>
+            <ul class="bullet-list">
+                <li><code>KAKS &lt; 0.60</code> &rarr; Düşük yoğunluklu az katlı kırsal/banliyö dokusu.</li>
+                <li><code>KAKS = 0.60 - 1.40</code> &rarr; Standart kasaba ve ilçe merkezi dokusu (Tire genel karakteri).</li>
+                <li><code>KAKS = 1.40 - 2.50</code> &rarr; Yüksek yoğunluklu çok katlı kentsel doku.</li>
+                <li><code>KAKS &gt; 3.00</code> &rarr; Metropoliten kentsel merkez veya gökdelen/kule adaları.</li>
+            </ul>
+
+            <h3>6.3. Ağırlıklı Ortalama Kat Adedi (Layers - L)</h3>
+            <p>
+                Adadaki binaların kat sayısının taban alanlarıyla ağırlıklandırılmış ortalamasıdır:
+            </p>
+            <div class="formula-box">
+                <div class="formula-title">Ortalama Kat (L) Formülü</div>
+                L = Toplam İnşaat Alanı (m²) / Toplam Taban Alanı (m²) = FSI / GSI
+            </div>
+
+            <h3>6.4. Açık Alan Oranı (%) ve Spacematrix OSR (Open Space Ratio)</h3>
+            <p>
+                Adanın zemininde binaların dışında kalan yeşil, bahçe, otopark ve avlu alanının yüzdesidir:
+            </p>
+            <div class="formula-box">
+                <div class="formula-title">Açık Alan ve OSR Formülleri</div>
+                Açık Alan Oranı (%) = [ (Ada m² - Taban m²) / Ada m² ] × 100 = (1 - GSI) × 100<br>
+                Spacematrix OSR     = (1 - GSI) / FSI  [Her 1 m² kapalı alana düşen açık alan miktarı]
+            </div>
+
+            <h3>6.5. Yapı Nizamı (A4) ve Zarf Büyüklüğü (Disjoint-Set Algoritması)</h3>
+            <p>
+                PlanX morfolojik komşuluk grafı standardında binaların birbirine teğetliği ve mesafesi analiz edilir:
+            </p>
+            <ul class="bullet-list">
+                <li><strong>Ayrık Nizam:</strong> Adadaki hiçbir bina bir diğerine temas etmez (Mesafe &gt; 0.35m). Binaların etrafı 4 taraftan bahçeyle çevrilidir.</li>
+                <li><strong>Bitişik / Blok Nizam:</strong> Binalar yan yana ortak duvara (kalkan duvara) sahiptir veya sırt sırta yapışıktır.</li>
+                <li><strong>Karma Nizam:</strong> Adada hem bitişik diziler hem de tekil ayrık bloklar bir arada yer alır.</li>
+                <li><strong>Maksimum Bitişik Dizi (Zarf Büyüklüğü):</strong> Birbirine yapışık en uzun bina zincirinin parça sayısıdır. Örneğin yan yana 8 bina bitişik nizam dizilmişse zarf büyüklüğü 8'dir.</li>
+            </ul>
+
+            <h3>6.6. Binaların Şekilsel Kompaklığı (IPQ - Isoperimetric Quotient)</h3>
+            <div class="formula-box">
+                <div class="formula-title">İzoperimetrik Kompaklık Formülü</div>
+                IPQ = (4 × π × Bina Taban Alanı) / (Bina Çevre Uzunluğu)²
+            </div>
+            <p>
+                Daire formunda IPQ = 1.0'dır (en kompakt form). Kare formunda 0.785'tir. 
+                IPQ değeri 0.50'nin altına indikçe binalar girintili çıkıntılı, enerji/ısı kaybı yüksek ve mimari olarak verimsiz hale gelir.
+            </p>
+
+            <h3>6.7. Kentsel Doku / Spacematrix Tipolojisi Matrisi</h3>
+            <table class="ref-table">
+                <thead>
+                    <tr>
+                        <th>Tipoloji Sınıfı</th>
+                        <th>TAKS (GSI) Eşiği</th>
+                        <th>KAKS (FSI) Eşiği</th>
+                        <th>Ortalama Kat (L)</th>
+                        <th>Kentsel Açıklama & Karakter</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>Seyrek / Az Katlı Bahçeli</strong></td>
+                        <td>&lt; 0.30</td>
+                        <td>&lt; 0.60</td>
+                        <td>1 - 2 Kat</td>
+                        <td>Geniş bahçeli müstakil evler, bağ/bahçe konutları, çeper yerleşmeler.</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Orta Yoğunluklu Doku</strong></td>
+                        <td>&lt; 0.45</td>
+                        <td>0.60 - 1.40</td>
+                        <td>2 - 4 Kat</td>
+                        <td>Tire'nin tipik gelişme konut mahalleleri; dengeli bahçe ve bina oranı.</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Yüksek Yoğunluklu / Kompakt Blok</strong></td>
+                        <td>&ge; 0.45</td>
+                        <td>&ge; 2.00</td>
+                        <td>4 - 6 Kat</td>
+                        <td>Sıkışık nizam, bitişik bloklar; az açık alan, yüksek taban oturumu.</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Nokta / Kule Bloklar</strong></td>
+                        <td>&lt; 0.30</td>
+                        <td>&ge; 1.50</td>
+                        <td>&ge; 5 Kat</td>
+                        <td>Tabanda az yer kaplayan fakat düşeyde yükselen siteler ve kule bloklar.</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Geleneksel / Karma Doku</strong></td>
+                        <td>Değişken</td>
+                        <td>1.00 - 2.00</td>
+                        <td>2 - 3 Kat</td>
+                        <td>Tarihi Tire merkezi, iç avlulu organik doku, zemin ticaret üst konut alanları.</td>
+                    </tr>
+                </tbody>
+            </table>
+        </section>
+
+        <!-- BÖLÜM 7: MEVCUT DURUM FİİLİ NÜFUS -->
         <section class="card" id="bolum7">
             <h2>🏠 7. Mevcut Durum Fiili Nüfus Tahmini (Saha & Bina Sayımı)</h2>
 
@@ -813,11 +1187,11 @@
                 <div class="callout-title">⚠️ Kritik Planlama Filtresi</div>
                 Sanayi adalarında, OSB'de, mezarlıkta, saf ticaret ve park alanlarındaki binalarda yaşayan nüfus 
                 <strong>kesinlikle 0 kabul edilir</strong>. Fiili nüfus yalnızca Konut ve Ticaret-Konut adalarında yaşayan insanları toplar. 
-                Ayrıca 35 m²'den küçük baraka, kömürlük ve müştemilatlar filtre dışı bırakılır.
+                Ayrıca 35 m²'den küçük baraka, kömürlük ve müştemilatlar konut birimi üretiminden filtrelenir.
             </div>
         </section>
 
-        <!-- BÖLÜM 8 -->
+        <!-- BÖLÜM 8: STÜDYO VE JÜRİ TESLİM İPUÇLARI -->
         <section class="card" id="bolum8">
             <h2>🎓 8. Stüdyo III (PLN3113) Pafta, Poster ve Jüri Teslim İpuçları</h2>
 
@@ -835,8 +1209,8 @@
                     <br>
                     Paftanızın sol üst köşesine NİP Nüfusu (Alt: ~21.000, Üst: ~54.000) ile Sahadaki Fiili Nüfus (~101.000) ve 
                     TÜİK Merkez Nüfusunu (~62.000) kıyaslayan bir infografik koyun. 
-                    <em>"Mevcut 1997 planı 54.000 kişiye göre çizilmişken kent bugün fiilen 101.000 kişiyi barındırmaktadır. 
-                    Dolayısıyla plan iflas etmiş ve kaçak yapılaşma/aşırı yoğunluk oluşmuştur"</em> argümanını kurun.
+                    <em>"Mevcut 1997 planı 54.000 kişiye göre çizilmişken kent bugün fiilen 101.000 kişilik inşaat hacmini barındırmaktadır. 
+                    Dolayısıyla plan sınırlarına ulaşmış ve meskun alanda aşırı yoğunluk/dönüşüm baskısı oluşmuştur"</em> argümanını kurun.
                 </li>
                 <li>
                     <strong>MPYY Donatı Açığı Bilançosu:</strong>
@@ -851,7 +1225,14 @@
                     <br>
                     Eklentinin hesapladığı DOP oranını (%35 - %42) göstererek 
                     <em>"Geliştirilen plan kararları 3194 sayılı Kanunun 18. maddesindeki %45 yasal tavanı aşmamakta olup, 
-                    belediyeye kamulaştırma yükü getirmeden uygulanabilir niteliktedir"</em> vurgusunu yapın.
+                    kamulaştırma yükü getirmeden uygulanabilir niteliktedir"</em> vurgusunu yapın.
+                </li>
+                <li>
+                    <strong>Morfoloji ve Tipoloji Paftası (1-Tıkla Stiller):</strong>
+                    <br>
+                    Sekme 3'te ürettiğiniz <strong>TAKS (Zemin Doluluğu)</strong>, <strong>KAKS (Emsal)</strong> ve <strong>Yapı Nizamı (A4)</strong> haritalarını 
+                    analiz paftanıza 3'lü karşılaştırma dizisi olarak yerleştirin. Hangi adaların nefes alamayacak kadar sıkışık (TAKS &gt; 0.60), 
+                    hangi adaların ise bahçeli ve ferah olduğunu gösterin.
                 </li>
                 <li>
                     <strong>CSV ve Tablo Çıktıları:</strong>
@@ -867,7 +1248,7 @@
 
 <footer class="doc-footer">
     <p>Dokuz Eylül Üniversitesi Mimarlık Fakültesi Şehir ve Bölge Planlama Bölümü</p>
-    <p>PLN3113 Şehir Planlama Projesi III • Tire Kentsel Analiz ve NİP Modelleme Eklentisi Rehberi</p>
+    <p>PLN3113 Şehir Planlama Projesi III • Tire Kentsel Analiz, NİP ve Morfoloji Modelleme Eklentisi Rehberi</p>
     <p style="margin-top: 6px; font-size: 11.5px; color: #94a3b8;">© 2026 Arş. Gör. Yusuf Eminoğlu • Açık Kaynak QGIS PlanX Altyapısı</p>
 </footer>
 

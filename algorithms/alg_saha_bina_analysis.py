@@ -36,7 +36,7 @@ class SahaBinaAnalysisAlgorithm(QgsProcessingAlgorithm):
         self.addParameter(
             QgsProcessingParameterVectorLayer(
                 self.ADA_LAYER,
-                'Kadastro / TUCBS Saha Adaları Katmanı (PLN3113_Tire_Kadastro_Tapu_Master)',
+                'Kadastro / Saha Adaları Katmanı',
                 [QgsProcessing.TypeVectorPolygon]
             )
         )
@@ -119,6 +119,16 @@ class SahaBinaAnalysisAlgorithm(QgsProcessingAlgorithm):
         out_fields.append(QgsField('FIILI_KONUT_SAYISI', QVariant.Int))
         out_fields.append(QgsField('FIILI_TAHMINI_NUFUS', QVariant.Int))
         out_fields.append(QgsField('FIILI_BRUT_YOGUNLUK_HA', QVariant.Double))
+        out_fields.append(QgsField('FIILI_TAKS', QVariant.Double))
+        out_fields.append(QgsField('FIILI_KAKS', QVariant.Double))
+        out_fields.append(QgsField('ORT_KAT', QVariant.Double))
+        out_fields.append(QgsField('ACIK_ALAN_YUZDE', QVariant.Double))
+        out_fields.append(QgsField('SPACEMATRIX_OSR', QVariant.Double))
+        out_fields.append(QgsField('BINA_YOGUNLUK_HA', QVariant.Double))
+        out_fields.append(QgsField('ORT_KOMPAKLIK_IPQ', QVariant.Double))
+        out_fields.append(QgsField('YAPI_NIZAMI', QVariant.String))
+        out_fields.append(QgsField('MAX_BITISIK_DIZI', QVariant.Int))
+        out_fields.append(QgsField('DOKU_TIPI', QVariant.String))
         out_fields.append(QgsField('FIILI_ISTIHDAM', QVariant.Int))
         out_fields.append(QgsField('FIILI_ARAC_YOLCULUK', QVariant.Int))
         out_fields.append(QgsField('FIILI_YAYA_YOLCULUK', QVariant.Int))
@@ -142,6 +152,16 @@ class SahaBinaAnalysisAlgorithm(QgsProcessingAlgorithm):
                 item["konut_birim_sayisi"],
                 item["tahmini_nufus"],
                 item["fiili_brut_yogunluk_ha"],
+                item["fiili_taks"],
+                item["fiili_kaks"],
+                item["ort_kat"],
+                item["acik_alan_yuzde"],
+                item["spacematrix_osr"],
+                item["bina_yogunluk_ha"],
+                item["ort_kompaklik_ipq"],
+                item["yapi_nizami"],
+                item["max_bitisik_dizi"],
+                item["doku_tipi"],
                 item["istihdam"],
                 item["gunluk_arac"],
                 item["gunluk_yaya"]
@@ -167,7 +187,13 @@ class SahaBinaAnalysisAlgorithm(QgsProcessingAlgorithm):
             ("Toplam Kadastro Ada Sayısı", f"{stats['toplam_ada_sayisi']:,}"),
             ("Eşleşen Toplam Bina Sayısı", f"{stats['toplam_eslesen_bina']:,}"),
             ("Tahmini Konut Sayısı (Bağımsız Birim)", f"{stats['toplam_konut_birimi']:,}"),
-            ("Tahmini Fiili Yaşayan Nüfus (TÜİK ~2.85)", f"{stats['toplam_fiili_nufus']:,} Kişi"),
+            ("Tahmini Fiili Yaşayan Nüfus", f"{stats['toplam_fiili_nufus']:,} Kişi"),
+            ("Ortalama Fiili TAKS (Taban Doluluğu)", f"{stats['ortalama_taks']:.3f}"),
+            ("Ortalama Fiili KAKS / Emsal (İnşaat Yoğunluğu)", f"{stats['ortalama_kaks']:.3f}"),
+            ("Ağırlıklı Ortalama Kat Yüksekliği", f"{stats['ortalama_kat']:.1f} Kat"),
+            ("Ortalama Açık Alan Oranı (%)", f"% {stats['ortalama_acik_alan_yuzde']:.1f}"),
+            ("Toplam Bina Taban Alanı", f"{stats['toplam_taban_m2']:,.0f} m²"),
+            ("Toplam İnşaat Alanı (Brüt Yapılaşma)", f"{stats['toplam_insaat_m2']:,.0f} m²"),
             ("Tahmini Fiili İstihdam Kapasitesi", f"{stats['toplam_fiili_istihdam']:,} Çalışan"),
             ("Hanehalkı Büyüklüğü Parametresi", f"{stats['ortalama_hanehalki']}"),
             ("Ortalama Konut Alanı Parametresi", f"{stats['ortalama_daire_m2']} m²")
@@ -190,10 +216,10 @@ class SahaBinaAnalysisAlgorithm(QgsProcessingAlgorithm):
         return '3. Saha ve Bina Bazlı Fiili Nüfus/İstihdam Tahmini'
 
     def group(self):
-        return 'Tire NİP ve Kentsel Analiz Araçları'
+        return 'PLN3113 NİP ve Kentsel Analiz Araçları'
 
     def groupId(self):
-        return 'tire_nip_tools'
+        return 'pln3113_nip_tools'
 
     def createInstance(self):
         return SahaBinaAnalysisAlgorithm()

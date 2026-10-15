@@ -26,21 +26,18 @@ from .tire_constants import (
     MPYY_DONATI_STANDARTLARI,
     get_employment_for_function,
     get_trips_for_function,
-    norm_tr
+    norm_tr,
+    get_tucbs_info,
+    OZEL_TAHSIS_ANAHTARLAR,
+    DOP_DISI_ANAHTARLAR,
+    get_default_dop_rule
 )
 
 class NipCalculatorEngine:
-    """NİP Plan adalarında nüfus, donatı, Kamu-Özel dengesi, DOP ve ulaşım hesaplamalarını yürütür."""
+    """NİP Plan ve Fiziki Mevcut Durum adalarında nüfus, donatı, Kamu-Özel dengesi, DOP ve ulaşım hesaplamalarını yürütür."""
 
-    OZEL_TAHSIS_ANAHTARLAR = [
-        "KONUT", "TICARET", "SANAYI", "TURIZM", "AKARYAKIT", "DEPOLAMA", "OZEL",
-        "BETON", "LIMAN", "TERSANE", "ENERJI", "YAPAY ADA", "SERBEST BOLGE", "TEKNE", "TIR", "REKREATIF"
-    ]
-
-    DOP_DISI_ANAHTARLAR = [
-        "ORMAN", "MERA", "TARIM", "ZEYTINLIK", "SU YUZEYI", "ASKERI", "DEMIRYOLU",
-        "SIT ALANI", "AGACLANDIRILACAK"
-    ]
+    OZEL_TAHSIS_ANAHTARLAR = OZEL_TAHSIS_ANAHTARLAR
+    DOP_DISI_ANAHTARLAR = DOP_DISI_ANAHTARLAR
 
     @staticmethod
     def calculate(
@@ -51,10 +48,13 @@ class NipCalculatorEngine:
         distance_area: QgsDistanceArea = None,
         sinir_geom: QgsGeometry | None = None,
         yol_uzunlugu_m: float = 0.0,
-        rules_config: dict | None = None
+        rules_config: dict | None = None,
+        secondary_fonk_col: str = "",
+        analysis_mode: str = "nip"
     ) -> tuple[list[dict], dict]:
         """Tüm öznitelikleri, Kamu-Özel dengesini, DOP ve kent karakter tablolarını üretir."""
         rules_config = rules_config or {}
+        dop_rules = rules_config.get("dop", {})
         emp_rules = rules_config.get("employment", {})
         trip_rules = rules_config.get("trips", {})
         
@@ -62,7 +62,9 @@ class NipCalculatorEngine:
         parsed_items = []
         residential_features = [] # (geom, alt_snr, ust_snr)
         
-        idx_fonk = source_fields.indexOf(fonksiyon_col)
+        idx_fonk = source_fields.indexOf(fonksiyon_col) if fonksiyon_col else -1
+        idx_sec = source_fields.indexOf(secondary_fonk_col) if secondary_fonk_col else -1
+        idx_grup = source_fields.indexOf("grup_no") if "grup_no" in source_fields.names() else -1
 
         for feat in features:
             geom = feat.geometry()
@@ -79,23 +81,59 @@ class NipCalculatorEngine:
 
             alan_ha = alan_m2 / 10000.0
 
-            fonk_val = str(feat[idx_fonk]) if (idx_fonk != -1 and feat[idx_fonk] is not None) else ""
+            # Fonksiyon değerini birincil sütundan al; boşsa ikincil (yedek) sütundan tamamla
+            fonk_val = ""
+            if idx_fonk != -1 and feat[idx_fonk] is not None:
+                fonk_val = str(feat[idx_fonk]).strip()
+            
+            if not fonk_val and idx_sec != -1 and feat[idx_sec] is not None:
+                fonk_val = str(feat[idx_sec]).strip()
+
+            if not fonk_val and idx_grup != -1 and feat[idx_grup] is not None:
+                grup_val = str(feat[idx_grup]).strip()
+                if "OSB" in grup_val.upper():
+                    fonk_val = "Organize Sanayi Bölgesi (OSB)"
+
+            tucbs = get_tucbs_info(fonk_val)
             alt_snr, ust_snr, kategori = resolve_nip_density(fonk_val)
 
-            # DOP ve Kamu - Özel Sınıflandırması
+            # DOP ve Kamu - Özel Sınıflandırması (Kullanıcı Kuralı veya Varsayılan)
             fn = norm_tr(fonk_val)
-            is_dop_disi = any(k in fn for k in NipCalculatorEngine.DOP_DISI_ANAHTARLAR)
-            is_ozel = any(k in fn for k in NipCalculatorEngine.OZEL_TAHSIS_ANAHTARLAR)
-
-            if is_dop_disi:
-                dop_durumu = "DOP DIŞI"
-                dop_turu = "DOP DIŞI (HARİÇ)"
-            elif is_ozel:
-                dop_durumu = "DOP İÇİ"
-                dop_turu = "DOP İÇİ - ÖZEL (TAHSİS)"
+            dop_rule = dop_rules.get(fn) or dop_rules.get(fonk_val)
+            if dop_rule is not None:
+                inc_dop = dop_rule.get("include", True)
+                if not inc_dop:
+                    dop_durumu = "DOP DIŞI"
+                    dop_turu = "DOP DIŞI (HARİÇ)"
+                else:
+                    dop_durumu = "DOP İÇİ"
+                    custom_turu = dop_rule.get("dop_turu")
+                    if custom_turu and "HARİÇ" not in custom_turu.upper() and "HARIC" not in norm_tr(custom_turu):
+                        dop_turu = custom_turu
+                    else:
+                        if tucbs and "ÖZEL" in tucbs["dop_turu"]:
+                            dop_turu = "DOP İÇİ - ÖZEL (TAHSİS)"
+                        elif any(k in fn for k in NipCalculatorEngine.OZEL_TAHSIS_ANAHTARLAR):
+                            dop_turu = "DOP İÇİ - ÖZEL (TAHSİS)"
+                        else:
+                            dop_turu = "DOP İÇİ - KAMU (KESİNTİ)"
             else:
-                dop_durumu = "DOP İÇİ"
-                dop_turu = "DOP İÇİ - KAMU (KESİNTİ)"
+                if tucbs:
+                    dop_durumu = tucbs["dop_durumu"]
+                    dop_turu = tucbs["dop_turu"]
+                else:
+                    is_dop_disi = any(k in fn for k in NipCalculatorEngine.DOP_DISI_ANAHTARLAR)
+                    is_ozel = any(k in fn for k in NipCalculatorEngine.OZEL_TAHSIS_ANAHTARLAR)
+
+                    if is_dop_disi:
+                        dop_durumu = "DOP DIŞI"
+                        dop_turu = "DOP DIŞI (HARİÇ)"
+                    elif is_ozel:
+                        dop_durumu = "DOP İÇİ"
+                        dop_turu = "DOP İÇİ - ÖZEL (TAHSİS)"
+                    else:
+                        dop_durumu = "DOP İÇİ"
+                        dop_turu = "DOP İÇİ - KAMU (KESİNTİ)"
 
             item = {
                 "feat": feat,

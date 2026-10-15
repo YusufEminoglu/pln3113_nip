@@ -74,10 +74,10 @@ class GeometryCleanAlgorithm(QgsProcessingAlgorithm):
         return '1. Geometri ve Duplike Temizleme Aracı'
 
     def group(self):
-        return 'Tire NİP ve Kentsel Analiz Araçları'
+        return 'PLN3113 NİP ve Kentsel Analiz Araçları'
 
     def groupId(self):
-        return 'tire_nip_tools'
+        return 'pln3113_nip_tools'
 
     def createInstance(self):
         return GeometryCleanAlgorithm()

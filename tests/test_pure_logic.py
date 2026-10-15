@@ -1,18 +1,19 @@
 # -*- coding: utf-8 -*-
-"""Pure-Python logic and parameter tests for tire_nip."""
+"""Pure-Python logic and parameter tests for pln3113_nip."""
 from __future__ import annotations
 
 import os
 import re
 import unittest
 
-from tire_nip.core.tire_constants import (
+from pln3113_nip.core.tire_constants import (
     TIRE_POPULATION_BENCHMARKS,
     norm_tr,
     resolve_nip_density,
     identify_facility_category,
     get_employment_for_function,
-    get_trips_for_function
+    get_trips_for_function,
+    get_default_dop_rule
 )
 
 
@@ -72,6 +73,82 @@ class TestTireConstants(unittest.TestCase):
         arac, yaya = get_trips_for_function("Ticaret Alanı", alan_m2=1000.0)
         self.assertGreater(arac, 0)
         self.assertGreater(yaya, 0)
+
+    def test_tucbs_mapping(self):
+        from pln3113_nip.core.tire_constants import get_tucbs_info
+        # Konut
+        info_k = get_tucbs_info("dusukYogunluktaKonutAlani")
+        self.assertIsNotNone(info_k)
+        self.assertEqual(info_k["alt"], 51.0)
+        self.assertEqual(info_k["ust"], 150.0)
+        self.assertEqual(info_k["dop_turu"], "DOP İÇİ - ÖZEL (TAHSİS)")
+
+        # Boş arsa özel mülkiyettir (Kamu kesintisi yapılamaz)
+        info_a = get_tucbs_info("bosArsa")
+        self.assertIsNotNone(info_a)
+        self.assertEqual(info_a["dop_turu"], "DOP İÇİ - ÖZEL (TAHSİS)")
+
+        # Eğitim ve Sağlık donatıdır (Kamu kesintisidir)
+        info_e = get_tucbs_info("egitimAlani")
+        self.assertEqual(info_e["donati"], "EGITIM")
+        self.assertEqual(info_e["dop_turu"], "DOP İÇİ - KAMU (KESİNTİ)")
+
+        # Tarım ve Zeytinlik DOP dışıdır
+        info_t = get_tucbs_info("zeytinlik")
+        self.assertEqual(info_t["dop_durumu"], "DOP DIŞI")
+
+    def test_tucbs_density_and_facility(self):
+        # TUCBS density
+        alt, ust, label = resolve_nip_density("ortaYogunluktaKonutAlani")
+        self.assertEqual(alt, 151.0)
+        self.assertEqual(ust, 300.0)
+
+        # TUCBS facility
+        sag = identify_facility_category("saglikAlani")
+        self.assertEqual(sag, "SAGLIK")
+        park = identify_facility_category("parkVeYesilAlan")
+        self.assertEqual(park, "YESIL_ALAN")
+
+    def test_get_default_dop_rule(self):
+        # Konut (DOP İçi - Özel Tahsis)
+        inc_k, durumu_k, turu_k = get_default_dop_rule("Gelişme Konut Alanı (Orta)")
+        self.assertTrue(inc_k)
+        self.assertEqual(durumu_k, "DOP İÇİ")
+        self.assertIn("ÖZEL", turu_k)
+
+        # Eğitim ve Sağlık (DOP İçi - Kamu Kesinti)
+        inc_e, durumu_e, turu_e = get_default_dop_rule("Eğitim Alanı (İlkokul)")
+        self.assertTrue(inc_e)
+        self.assertEqual(durumu_e, "DOP İÇİ")
+        self.assertIn("KAMU", turu_e)
+
+        # Park (DOP İçi - Kamu Kesinti)
+        inc_p, durumu_p, turu_p = get_default_dop_rule("Park ve Yeşil Alan")
+        self.assertTrue(inc_p)
+        self.assertEqual(durumu_p, "DOP İÇİ")
+        self.assertIn("KAMU", turu_p)
+
+        # Boş Arsa (DOP İçi - Özel Tahsis)
+        inc_a, durumu_a, turu_a = get_default_dop_rule("Boş Arsa / Yapılaşmamış Parsel")
+        self.assertTrue(inc_a)
+        self.assertEqual(durumu_a, "DOP İÇİ")
+        self.assertIn("ÖZEL", turu_a)
+
+        # Tarım, Orman, Mera (DOP Dışı - nDOP Hariç)
+        inc_t, durumu_t, turu_t = get_default_dop_rule("Tarım Alanı")
+        self.assertFalse(inc_t)
+        self.assertEqual(durumu_t, "DOP DIŞI")
+        self.assertIn("HARİÇ", turu_t)
+
+        inc_o, durumu_o, turu_o = get_default_dop_rule("Orman")
+        self.assertFalse(inc_o)
+        self.assertEqual(durumu_o, "DOP DIŞI")
+        self.assertIn("HARİÇ", turu_o)
+
+        inc_m, durumu_m, turu_m = get_default_dop_rule("Askeri Alan")
+        self.assertFalse(inc_m)
+        self.assertEqual(durumu_m, "DOP DIŞI")
+        self.assertIn("HARİÇ", turu_m)
 
 
 class TestQt6EnumSafety(unittest.TestCase):

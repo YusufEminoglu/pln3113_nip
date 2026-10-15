@@ -20,13 +20,13 @@ class NipEklentiProvider(QgsProcessingProvider):
         self.addAlgorithm(SahaBinaAnalysisAlgorithm())
 
     def id(self):
-        return 'tire_nip'
+        return 'pln3113_nip'
 
     def name(self):
-        return 'Tire NİP Stüdyosu'
+        return 'PLN3113 NİP Stüdyosu'
 
     def longName(self):
-        return 'Tire 1/5000 NİP ve Kentsel Analiz Araçları (PLN3113)'
+        return 'PLN3113 1/5000 NİP ve Kentsel Analiz Araçları'
 
     def icon(self):
         icon_path = os.path.join(PLUGIN_DIR, "icons", "icon.png")

@@ -23,7 +23,7 @@ from qgis.PyQt.QtCore import QVariant
 from .tire_constants import get_employment_for_function, get_trips_for_function
 
 class FieldEstimatorEngine:
-    """Saha master tapu adaları ile bina katmanını mekânsal bütünleştirerek fiili nüfusu tahmin eder."""
+    """Saha adaları ile bina katmanını mekânsal bütünleştirerek fiili nüfus ve morfoloji metriklerini hesaplar."""
 
     # Kesinlikle konut nüfusu yaşamayacak saf çalışma, altyapı ve kırsal sınıflar
     SIFIR_NUFUS_FONKSIYONLARI = {
@@ -91,6 +91,9 @@ class FieldEstimatorEngine:
                 "is_zero_pop": is_zero_pop,
                 "bina_sayisi": 0,
                 "toplam_bina_taban_m2": 0.0,
+                "toplam_insaat_m2": 0.0,
+                "toplam_ipq": 0.0,
+                "bina_geoms": [],
                 "konut_birim_sayisi": 0,
                 "tahmini_nufus": 0,
                 "istihdam": 0,
@@ -158,6 +161,19 @@ class FieldEstimatorEngine:
                 continue
 
             insaat_m2 = taban_m2 * kat * net_oran
+            ada_info["toplam_insaat_m2"] += insaat_m2
+
+            # Bina Kompaklığı (IPQ - Isoperimetric Quotient)
+            perim = b_geom.length()
+            if perim > 0:
+                ipq = (4.0 * 3.141592653589793 * taban_m2) / (perim * perim)
+                ada_info["toplam_ipq"] += max(0.0, min(1.0, ipq))
+            else:
+                ada_info["toplam_ipq"] += 0.75
+
+            # Bitişiklik analizi için geometri referansı sakla (maks. 500 bina/ada)
+            if len(ada_info["bina_geoms"]) < 500:
+                ada_info["bina_geoms"].append(b_geom)
 
             # 2. Saf Çalışma / Sanayi / Ticaret / Donatı
             if ada_info["is_zero_pop"]:
@@ -215,15 +231,113 @@ class FieldEstimatorEngine:
             if feedback and b_idx % 1000 == 0:
                 feedback.setProgress(int((b_idx / max(1, bina_count)) * 100))
 
-        # 3. Ada bazlı brüt yoğunluk ve özetler
+        # 3. Ada bazlı brüt yoğunluk, TAKS, KAKS, Spacematrix morfoloji ve özetler
         toplam_fiili_nufus = 0
         toplam_fiili_bina = 0
         toplam_fiili_istihdam = 0
         toplam_fiili_konut = 0
+        toplam_taban_tum = 0.0
+        toplam_insaat_tum = 0.0
+        toplam_alan_tum = 0.0
 
         result_list = []
         for aid, item in ada_dict.items():
+            alan_m2 = max(1.0, item["alan_m2"])
             alan_ha = max(0.0001, item["alan_ha"])
+            taban_m2 = item["toplam_bina_taban_m2"]
+            insaat_m2 = item["toplam_insaat_m2"]
+            b_count = item["bina_sayisi"]
+
+            # 1. TAKS (GSI - Ground Space Index)
+            fiili_taks = round(min(1.0, taban_m2 / alan_m2), 3)
+            item["fiili_taks"] = fiili_taks
+
+            # 2. KAKS (FSI - Floor Space Index / Emsal)
+            fiili_kaks = round(insaat_m2 / alan_m2, 3)
+            item["fiili_kaks"] = fiili_kaks
+
+            # 3. Ortalama Kat Yüksekliği (L - Layers)
+            ort_kat = round(insaat_m2 / max(1.0, taban_m2), 1) if taban_m2 > 0 else 0.0
+            item["ort_kat"] = ort_kat
+
+            # 4. Açık Alan Oranı (%)
+            acik_alan_yuzde = round(max(0.0, (alan_m2 - taban_m2) / alan_m2 * 100.0), 1)
+            item["acik_alan_yuzde"] = acik_alan_yuzde
+
+            # 5. Spacematrix OSR (Open Space Ratio: (1 - GSI) / FSI)
+            spacematrix_osr = round((1.0 - fiili_taks) / max(0.05, fiili_kaks), 2) if fiili_kaks > 0 else 0.0
+            item["spacematrix_osr"] = spacematrix_osr
+
+            # 6. Bina Yoğunluğu (Bina / Hektar)
+            item["bina_yogunluk_ha"] = round(b_count / alan_ha, 1)
+
+            # 7. Ortalama Bina Kompaklığı (IPQ)
+            item["ort_kompaklik_ipq"] = round(item["toplam_ipq"] / max(1, b_count), 2) if b_count > 0 else 0.0
+
+            # 8. Yapı Nizamı (A4) ve Zarf Büyüklüğü (Bitişik Dizi)
+            b_geoms = item.get("bina_geoms", [])
+            if b_count == 0:
+                yapi_nizami = "Boş Ada"
+                max_bitisik_dizi = 0
+            elif b_count == 1:
+                yapi_nizami = "Ayrık"
+                max_bitisik_dizi = 1
+            else:
+                n = len(b_geoms)
+                parent = list(range(n))
+                def find(i):
+                    path = []
+                    while parent[i] != i:
+                        path.append(i)
+                        i = parent[i]
+                    for node in path:
+                        parent[node] = i
+                    return i
+                def union(i, j):
+                    root_i = find(i)
+                    root_j = find(j)
+                    if root_i != root_j:
+                        parent[root_i] = root_j
+
+                for i in range(n):
+                    gi = b_geoms[i]
+                    for j in range(i + 1, n):
+                        gj = b_geoms[j]
+                        if gi.intersects(gj) or gi.distance(gj) <= 0.35:
+                            union(i, j)
+
+                comp_sizes = {}
+                for i in range(n):
+                    r = find(i)
+                    comp_sizes[r] = comp_sizes.get(r, 0) + 1
+
+                max_bitisik_dizi = max(comp_sizes.values()) if comp_sizes else 1
+                if max_bitisik_dizi == 1:
+                    yapi_nizami = "Ayrık"
+                elif min(comp_sizes.values()) > 1:
+                    yapi_nizami = "Bitişik / Blok"
+                else:
+                    yapi_nizami = "Karma (Ayrık + Bitişik)"
+
+            item["yapi_nizami"] = yapi_nizami
+            item["max_bitisik_dizi"] = max_bitisik_dizi
+
+            # 9. Kentsel Doku / Spacematrix Tipolojisi
+            if b_count == 0:
+                doku_tipi = "Boş / Yapılaşmamış Ada"
+            elif fiili_kaks < 0.60 and fiili_taks < 0.30:
+                doku_tipi = "Seyrek / Az Katlı Bahçeli"
+            elif fiili_kaks < 1.40 and fiili_taks < 0.45:
+                doku_tipi = "Orta Yoğunluklu Doku"
+            elif fiili_taks >= 0.45 or fiili_kaks >= 2.0:
+                doku_tipi = "Yüksek Yoğunluklu / Kompakt Blok"
+            elif ort_kat >= 5.0 and fiili_taks < 0.30:
+                doku_tipi = "Nokta / Kule Bloklar"
+            else:
+                doku_tipi = "Geleneksel / Karma Kentsel Doku"
+
+            item["doku_tipi"] = doku_tipi
+
             brut_yogunluk = round(item["tahmini_nufus"] / alan_ha, 1)
             item["fiili_brut_yogunluk_ha"] = brut_yogunluk
             item["gunluk_arac"] = int(round(item["gunluk_arac"]))
@@ -233,6 +347,9 @@ class FieldEstimatorEngine:
             toplam_fiili_bina += item["bina_sayisi"]
             toplam_fiili_istihdam += item["istihdam"]
             toplam_fiili_konut += item["konut_birim_sayisi"]
+            toplam_taban_tum += taban_m2
+            toplam_insaat_tum += insaat_m2
+            toplam_alan_tum += alan_m2
 
             result_list.append(item)
 
@@ -242,6 +359,12 @@ class FieldEstimatorEngine:
             "toplam_konut_birimi": toplam_fiili_konut,
             "toplam_fiili_nufus": toplam_fiili_nufus,
             "toplam_fiili_istihdam": toplam_fiili_istihdam,
+            "toplam_taban_m2": round(toplam_taban_tum, 2),
+            "toplam_insaat_m2": round(toplam_insaat_tum, 2),
+            "ortalama_taks": round(toplam_taban_tum / max(1.0, toplam_alan_tum), 3),
+            "ortalama_kaks": round(toplam_insaat_tum / max(1.0, toplam_alan_tum), 3),
+            "ortalama_kat": round(toplam_insaat_tum / max(1.0, toplam_taban_tum), 1) if toplam_taban_tum > 0 else 0.0,
+            "ortalama_acik_alan_yuzde": round(max(0.0, (toplam_alan_tum - toplam_taban_tum) / max(1.0, toplam_alan_tum) * 100.0), 1),
             "ortalama_hanehalki": hanehalki_buyuklugu,
             "ortalama_daire_m2": ortalama_daire_m2
         }

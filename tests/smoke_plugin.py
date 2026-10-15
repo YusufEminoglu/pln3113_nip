@@ -20,7 +20,7 @@ from qgis.PyQt.QtWidgets import QMainWindow, QToolBar
 from qgis.core import QgsApplication
 from qgis.gui import QgsMapCanvas
 
-PACKAGE = "tire_nip"
+PACKAGE = "pln3113_nip"
 
 
 def _ok(name: str, condition: bool, detail: str = "") -> bool:
@@ -175,9 +175,60 @@ def test_lifecycle(iface):
     )
 
 
+def test_dop_calculation_engine():
+    from qgis.core import QgsFeature, QgsGeometry, QgsFields, QgsField, QgsRectangle
+    from qgis.PyQt.QtCore import QVariant
+    from pln3113_nip.core.nip_calculator import NipCalculatorEngine
+
+    fields = QgsFields()
+    fields.append(QgsField("fonk"))
+
+    # 1. Konut poligonu (100x100 = 10,000 m2)
+    f1 = QgsFeature(fields)
+    f1.setGeometry(QgsGeometry.fromRect(QgsRectangle(0.0, 0.0, 100.0, 100.0)))
+    f1.setAttribute("fonk", "Gelişme Konut Alanı (Orta)")
+
+    # 2. Tarım poligonu (100x100 = 10,000 m2)
+    f2 = QgsFeature(fields)
+    f2.setGeometry(QgsGeometry.fromRect(QgsRectangle(200.0, 0.0, 300.0, 100.0)))
+    f2.setAttribute("fonk", "Tarım Alanı")
+
+    features = [f1, f2]
+
+    # Varsayılan hesap: Konut -> DOP İçi (Özel), Tarım -> DOP Dışı (10,000 m2)
+    items_def, summary_def = NipCalculatorEngine.calculate(
+        features, fields, "fonk", projeksiyon_nufus=50000
+    )
+    dop_def = summary_def["dop_ozet"]
+    ok_default = (
+        dop_def["dop_disi_alan_m2"] == 10000.0
+        and dop_def["toplam_ozel_tahsis_m2"] == 10000.0
+    )
+
+    # Özel DOP Kuralı ile hesap: Tarım -> DOP İçi yap, Konut -> nDOP (DOP Dışı) yap
+    rules = {
+        "dop": {
+            "GELISME KONUT ALANI (ORTA)": {"include": False, "dop_durumu": "DOP DIŞI", "dop_turu": "DOP DIŞI (HARİÇ)"},
+            "TARIM ALANI": {"include": True, "dop_durumu": "DOP İÇİ", "dop_turu": "DOP İÇİ - ÖZEL (TAHSİS)"}
+        }
+    }
+    items_custom, summary_custom = NipCalculatorEngine.calculate(
+        features, fields, "fonk", projeksiyon_nufus=50000, rules_config=rules
+    )
+    dop_custom = summary_custom["dop_ozet"]
+    ok_custom = (
+        items_custom[0]["dop_durumu"] == "DOP DIŞI"
+        and items_custom[1]["dop_durumu"] == "DOP İÇİ"
+        and dop_custom["dop_disi_alan_m2"] == 10000.0  # Konut harice ayrıldı
+        and dop_custom["toplam_ozel_tahsis_m2"] == 10000.0  # Tarım özel tahsise girdi
+    )
+
+    return _ok("dop calculation engine applies default and user rules correctly", ok_default and ok_custom)
+
+
 def run_all(iface):
     print("=" * 60)
-    print(" tire_nip - lifecycle smoke")
+    print(" pln3113_nip - lifecycle smoke")
     print("=" * 60)
     results = [
         test_metadata(),
@@ -185,6 +236,7 @@ def run_all(iface):
         test_icon_exists(),
         test_class_factory(),
         test_lifecycle(iface),
+        test_dop_calculation_engine(),
     ]
     passed = sum(1 for r in results if r)
     print("-" * 60)
@@ -197,7 +249,7 @@ def main():
     owns_app = app is None
     profile = None
     if owns_app:
-        profile = tempfile.TemporaryDirectory(prefix="tire_nip-smoke-")
+        profile = tempfile.TemporaryDirectory(prefix="pln3113_nip-smoke-")
         app = QgsApplication([], True, profile.name, "external")
         app.initQgis()
     iface = _Iface()

@@ -42,6 +42,251 @@ TIRE_POPULATION_BENCHMARKS = {
     }
 }
 
+def norm_tr(text: str) -> str:
+    """Türkçe karakterleri ve boşlukları tek bir standart forma sokar."""
+    if not text:
+        return ""
+    t = text.strip()
+    for o, n in [
+        ("İ", "I"), ("i", "I"), ("ı", "I"),
+        ("Ğ", "G"), ("ğ", "G"),
+        ("Ü", "U"), ("ü", "U"),
+        ("Ş", "S"), ("ş", "S"),
+        ("Ö", "O"), ("ö", "O"),
+        ("Ç", "C"), ("ç", "C")
+    ]:
+        t = t.replace(o, n)
+    return t.upper()
+
+def clean_key(text: str) -> str:
+    """Metni arama ve eşleme için küçük harfe ve noktalama/boşluksuz forma çevirir."""
+    if not text:
+        return ""
+    t = norm_tr(text).lower()
+    for ch in [" ", "_", "-", "(", ")", "/", "+", ".", ",", ":"]:
+        t = t.replace(ch, "")
+    return t
+
+# =====================================================================
+# TUCBS & FİZİKİ MEVCUT DURUM ARAZİ KULLANIM STANDART SÖZLÜĞÜ
+# (std_fonksiyon, alt_snr, ust_snr, kategori, dop_durumu, dop_turu, donati, emp_dahil, std_m2, eff, trip_arac, trip_yaya)
+# =====================================================================
+_TUCBS_RAW_MAPPING = {
+    # 1. Konut Alanları (Mevcut Durum Yoğunluk Aralıkları)
+    "dusukyogunluktakonutalani": ("Mevcut Konut Alanı (Düşük)", 51.0, 150.0, "MEVCUT KONUT ALANI (DÜŞÜK)", "DOP İÇİ", "DOP İÇİ - ÖZEL (TAHSİS)", None, False, 0.0, 0.0, 2.5, 4.0),
+    "konutdusukyogunluk": ("Mevcut Konut Alanı (Düşük)", 51.0, 150.0, "MEVCUT KONUT ALANI (DÜŞÜK)", "DOP İÇİ", "DOP İÇİ - ÖZEL (TAHSİS)", None, False, 0.0, 0.0, 2.5, 4.0),
+    "konut (düşük yoğunluk)": ("Mevcut Konut Alanı (Düşük)", 51.0, 150.0, "MEVCUT KONUT ALANI (DÜŞÜK)", "DOP İÇİ", "DOP İÇİ - ÖZEL (TAHSİS)", None, False, 0.0, 0.0, 2.5, 4.0),
+    
+    "ortayogunluktakonutalani": ("Mevcut Konut Alanı (Orta)", 151.0, 300.0, "MEVCUT KONUT ALANI (ORTA)", "DOP İÇİ", "DOP İÇİ - ÖZEL (TAHSİS)", None, False, 0.0, 0.0, 2.5, 4.5),
+    "konutortayogunluk": ("Mevcut Konut Alanı (Orta)", 151.0, 300.0, "MEVCUT KONUT ALANI (ORTA)", "DOP İÇİ", "DOP İÇİ - ÖZEL (TAHSİS)", None, False, 0.0, 0.0, 2.5, 4.5),
+    "konut (orta yoğunluk)": ("Mevcut Konut Alanı (Orta)", 151.0, 300.0, "MEVCUT KONUT ALANI (ORTA)", "DOP İÇİ", "DOP İÇİ - ÖZEL (TAHSİS)", None, False, 0.0, 0.0, 2.5, 4.5),
+
+    "yuksekyogunluktakonutalani": ("Mevcut Konut Alanı (Yüksek)", 301.0, 600.0, "MEVCUT KONUT ALANI (YÜKSEK)", "DOP İÇİ", "DOP İÇİ - ÖZEL (TAHSİS)", None, False, 0.0, 0.0, 2.0, 5.5),
+    "konutyuksekyogunluk": ("Mevcut Konut Alanı (Yüksek)", 301.0, 600.0, "MEVCUT KONUT ALANI (YÜKSEK)", "DOP İÇİ", "DOP İÇİ - ÖZEL (TAHSİS)", None, False, 0.0, 0.0, 2.0, 5.5),
+    "konut (yüksek yoğunluk)": ("Mevcut Konut Alanı (Yüksek)", 301.0, 600.0, "MEVCUT KONUT ALANI (YÜKSEK)", "DOP İÇİ", "DOP İÇİ - ÖZEL (TAHSİS)", None, False, 0.0, 0.0, 2.0, 5.5),
+
+    "cokyuksekyogunluktakonutalani": ("Mevcut Konut Alanı (Çok Yüksek)", 601.0, 900.0, "MEVCUT KONUT ALANI (ÇOK YÜKSEK)", "DOP İÇİ", "DOP İÇİ - ÖZEL (TAHSİS)", None, False, 0.0, 0.0, 2.2, 6.0),
+    "konut (çok yüksek yoğunluk)": ("Mevcut Konut Alanı (Çok Yüksek)", 601.0, 900.0, "MEVCUT KONUT ALANI (ÇOK YÜKSEK)", "DOP İÇİ", "DOP İÇİ - ÖZEL (TAHSİS)", None, False, 0.0, 0.0, 2.2, 6.0),
+
+    "seyrekyogunluktakonutalani": ("Mevcut Konut Alanı (Seyrek)", 25.0, 50.0, "MEVCUT KONUT ALANI (SEYREK)", "DOP İÇİ", "DOP İÇİ - ÖZEL (TAHSİS)", None, False, 0.0, 0.0, 3.5, 2.0),
+    "konut (seyrek / kırsal)": ("Mevcut Konut Alanı (Seyrek)", 25.0, 50.0, "MEVCUT KONUT ALANI (SEYREK)", "DOP İÇİ", "DOP İÇİ - ÖZEL (TAHSİS)", None, False, 0.0, 0.0, 3.5, 2.0),
+    "kırsal gelişme alanı": ("Mevcut Konut Alanı (Seyrek)", 25.0, 50.0, "MEVCUT KONUT ALANI (SEYREK)", "DOP İÇİ", "DOP İÇİ - ÖZEL (TAHSİS)", None, False, 0.0, 0.0, 3.5, 2.0),
+
+    # 2. Karma Kullanımlar (Ticaret + Konut)
+    "karmakullanimalanlari": ("Karma Kullanım (Ticaret + Konut)", None, None, "KARMA_KONUT", "DOP İÇİ", "DOP İÇİ - ÖZEL (TAHSİS)", None, True, 40.0, 0.35, 8.0, 8.0),
+    "karmaticaretkonut": ("Karma Kullanım (Ticaret + Konut)", None, None, "KARMA_KONUT", "DOP İÇİ", "DOP İÇİ - ÖZEL (TAHSİS)", None, True, 40.0, 0.35, 8.0, 8.0),
+    "karma kullanım (ticaret + konut)": ("Karma Kullanım (Ticaret + Konut)", None, None, "KARMA_KONUT", "DOP İÇİ", "DOP İÇİ - ÖZEL (TAHSİS)", None, True, 40.0, 0.35, 8.0, 8.0),
+
+    # 3. Ticaret ve Çalışma Alanları
+    "ticaretalani": ("Ticaret Alanı", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - ÖZEL (TAHSİS)", None, True, 30.0, 0.75, 15.0, 12.0),
+    "ticaretmerkezi": ("Ticaret Alanı (Çarşı / İş Merkezi)", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - ÖZEL (TAHSİS)", None, True, 25.0, 0.85, 20.0, 15.0),
+    "digerticaretalanlari": ("Ticaret Alanı (Tali / Hizmet)", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - ÖZEL (TAHSİS)", None, True, 35.0, 0.70, 12.0, 10.0),
+    "ticaret alanı (çarşı / iş merkezi)": ("Ticaret Alanı (Çarşı / İş Merkezi)", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - ÖZEL (TAHSİS)", None, True, 25.0, 0.85, 20.0, 15.0),
+    "ticaret alanı (tali / hizmet)": ("Ticaret Alanı (Tali / Hizmet)", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - ÖZEL (TAHSİS)", None, True, 35.0, 0.70, 12.0, 10.0),
+
+    # 4. Sanayi, İmalat, Depolama ve Akaryakıt
+    "sanayialani": ("Sanayi Alanı", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - ÖZEL (TAHSİS)", None, True, 90.0, 0.50, 2.5, 0.8),
+    "sanayi alanı": ("Sanayi Alanı", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - ÖZEL (TAHSİS)", None, True, 90.0, 0.50, 2.5, 0.8),
+    "sanayi / imalathane": ("Sanayi Alanı", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - ÖZEL (TAHSİS)", None, True, 80.0, 0.50, 3.0, 1.0),
+    "organizesanayibolgesi": ("Organize Sanayi Bölgesi (OSB)", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - ÖZEL (TAHSİS)", None, True, 95.0, 0.55, 2.8, 0.9),
+    "organize sanayi bölgesi (osb)": ("Organize Sanayi Bölgesi (OSB)", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - ÖZEL (TAHSİS)", None, True, 95.0, 0.55, 2.8, 0.9),
+    "kucuksanayialani": ("Küçük Sanayi Sitesi", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - ÖZEL (TAHSİS)", None, True, 50.0, 0.60, 5.0, 1.5),
+    "küçük sanayi sitesi": ("Küçük Sanayi Sitesi", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - ÖZEL (TAHSİS)", None, True, 50.0, 0.60, 5.0, 1.5),
+    "imalathanetesisalani": ("İmalathane / Atölye", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - ÖZEL (TAHSİS)", None, True, 50.0, 0.60, 5.0, 1.5),
+    "imalathane / atölye": ("İmalathane / Atölye", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - ÖZEL (TAHSİS)", None, True, 50.0, 0.60, 5.0, 1.5),
+    "depolamaalani": ("Depolama Alanı", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - ÖZEL (TAHSİS)", None, True, 150.0, 0.40, 1.2, 0.3),
+    "depolama alanı": ("Depolama Alanı", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - ÖZEL (TAHSİS)", None, True, 150.0, 0.40, 1.2, 0.3),
+    "akaryakiturunleridepolamaalani": ("Akaryakıt ve Servis İstasyonu", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - ÖZEL (TAHSİS)", None, True, 100.0, 0.20, 35.0, 1.0),
+    "akaryakıt / depolama": ("Akaryakıt ve Servis İstasyonu", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - ÖZEL (TAHSİS)", None, True, 100.0, 0.20, 35.0, 1.0),
+
+    # 5. Turizm ve Konaklama
+    "otelalani": ("Otel / Turizm Tesisi", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - ÖZEL (TAHSİS)", None, True, 60.0, 0.45, 4.0, 5.0),
+    "otel / turizm tesisi": ("Otel / Turizm Tesisi", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - ÖZEL (TAHSİS)", None, True, 60.0, 0.45, 4.0, 5.0),
+
+    # 6. Arsa, Şantiye ve Boş Parseller (Özel Mülkiyet Tahsis)
+    "arsa": ("Boş Arsa / Yapılaşmamış Parsel", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - ÖZEL (TAHSİS)", None, False, 0.0, 0.0, 0.0, 0.0),
+    "bosarsa": ("Boş Arsa / Yapılaşmamış Parsel", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - ÖZEL (TAHSİS)", None, False, 0.0, 0.0, 0.0, 0.0),
+    "boş arsa / yapılaşmamış parsel": ("Boş Arsa / Yapılaşmamış Parsel", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - ÖZEL (TAHSİS)", None, False, 0.0, 0.0, 0.0, 0.0),
+    "ciplakarazi": ("Açık / Çıplak Arazi", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - ÖZEL (TAHSİS)", None, False, 0.0, 0.0, 0.0, 0.0),
+    "açık / çıplak arazi": ("Açık / Çıplak Arazi", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - ÖZEL (TAHSİS)", None, False, 0.0, 0.0, 0.0, 0.0),
+    "santiyesahalari": ("İnşaat / Şantiye Sahası", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - ÖZEL (TAHSİS)", None, False, 0.0, 0.0, 0.5, 0.5),
+    "inşaat / şantiye sahası": ("İnşaat / Şantiye Sahası", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - ÖZEL (TAHSİS)", None, False, 0.0, 0.0, 0.5, 0.5),
+
+    # 7. Kamu Donatıları - Eğitim
+    "egitimalani": ("Eğitim Alanı / Okul", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)", "EGITIM", True, 70.0, 0.35, 5.0, 10.0),
+    "eğitim alanı / okul": ("Eğitim Alanı / Okul", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)", "EGITIM", True, 70.0, 0.35, 5.0, 10.0),
+    "ilkokul": ("İlkokul", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)", "EGITIM", True, 70.0, 0.35, 5.0, 10.0),
+    "ortaokul": ("Ortaokul", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)", "EGITIM", True, 70.0, 0.35, 5.0, 10.0),
+    "lise": ("Lise", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)", "EGITIM", True, 70.0, 0.35, 5.0, 10.0),
+    "meslekiteknikogretimtesisi": ("Mesleki ve Teknik Öğretim Tesis Alanı", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)", "EGITIM", True, 70.0, 0.35, 5.0, 10.0),
+
+    # 8. Kamu Donatıları - Sağlık
+    "digersaglikalanlari": ("Sağlık Ocağı / ASM", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)", "SAGLIK", True, 60.0, 0.45, 10.0, 8.0),
+    "sağlık ocağı / asm": ("Sağlık Ocağı / ASM", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)", "SAGLIK", True, 60.0, 0.45, 10.0, 8.0),
+
+    # 9. Kamu Donatıları - Açık ve Yeşil Alanlar / Spor
+    "park": ("Park ve Oyun Alanı", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)", "YESIL_ALAN", False, 0.0, 0.0, 0.5, 3.0),
+    "parkoyunalani": ("Park ve Oyun Alanı", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)", "YESIL_ALAN", False, 0.0, 0.0, 0.5, 3.0),
+    "park ve oyun alanı": ("Park ve Oyun Alanı", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)", "YESIL_ALAN", False, 0.0, 0.0, 0.5, 3.0),
+    "park ve rekreasyon alanı": ("Park ve Rekreasyon Alanı", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)", "YESIL_ALAN", False, 0.0, 0.0, 1.0, 4.0),
+    "pasifyesilalan": ("Pasif Yeşil Alan / Refüj", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)", "YESIL_ALAN", False, 0.0, 0.0, 0.0, 0.0),
+    "pasif yeşil alan / refüj": ("Pasif Yeşil Alan / Refüj", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)", "YESIL_ALAN", False, 0.0, 0.0, 0.0, 0.0),
+    "sporkompleksialani": ("Spor Kompleksi / Tesis", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)", "YESIL_ALAN", False, 0.0, 0.0, 2.0, 4.0),
+    "spor kompleksi / tesis": ("Spor Kompleksi / Tesis", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)", "YESIL_ALAN", False, 0.0, 0.0, 2.0, 4.0),
+
+    # 10. Kamu Donatıları - İbadet Alanları
+    "ibadetalani": ("İbadet Alanı", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)", "IBADET", False, 0.0, 0.0, 1.0, 3.0),
+    "ibadet alanı": ("İbadet Alanı", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)", "IBADET", False, 0.0, 0.0, 1.0, 3.0),
+
+    # 11. Kamu Donatıları - Sosyal ve Kültürel Tesisler
+    "sosyalkultureltesis": ("Sosyal ve Kültürel Tesis", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)", "SOSYAL_KULTUREL", True, 60.0, 0.40, 3.0, 5.0),
+    "sosyal ve kültürel tesis": ("Sosyal ve Kültürel Tesis", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)", "SOSYAL_KULTUREL", True, 60.0, 0.40, 3.0, 5.0),
+    "digersosyaltesisler": ("Sosyal ve Kültürel Tesis", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)", "SOSYAL_KULTUREL", True, 60.0, 0.40, 3.0, 5.0),
+    "muze": ("Müze / Sergi Alanı", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)", "SOSYAL_KULTUREL", True, 100.0, 0.20, 2.0, 4.0),
+    "müze / sergi alanı": ("Müze / Sergi Alanı", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)", "SOSYAL_KULTUREL", True, 100.0, 0.20, 2.0, 4.0),
+    "yurtlar": ("Öğrenci Yurdu", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)", "SOSYAL_KULTUREL", True, 80.0, 0.25, 2.0, 8.0),
+    "öğrenci yurdu": ("Öğrenci Yurdu", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)", "SOSYAL_KULTUREL", True, 80.0, 0.25, 2.0, 8.0),
+
+    # 12. Resmi Kurum ve Belediye Hizmet Alanları (Kamu)
+    "belediyehizmetalani": ("Belediye Hizmet Alanı (BHA)", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)", None, True, 45.0, 0.50, 10.0, 6.0),
+    "belediyehizmetalanlari": ("Belediye Hizmet Alanı (BHA)", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)", None, True, 45.0, 0.50, 10.0, 6.0),
+    "belediye hizmet alanı (bha)": ("Belediye Hizmet Alanı (BHA)", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)", None, True, 45.0, 0.50, 10.0, 6.0),
+    "resmikurum": ("Resmi Kurum / Kamu Hizmet Alanı", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)", None, True, 45.0, 0.50, 8.0, 5.0),
+    "resmikurumalanlari": ("Resmi Kurum / Kamu Hizmet Alanı", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)", None, True, 45.0, 0.50, 8.0, 5.0),
+    "resmi kurum / kamu hizmet alanı": ("Resmi Kurum / Kamu Hizmet Alanı", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)", None, True, 45.0, 0.50, 8.0, 5.0),
+
+    # 13. Teknik Altyapı ve Genel Otopark
+    "genelotopark": ("Genel Otopark Alanı", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)", "TEKNIK_ALTYAPI", True, 500.0, 0.05, 15.0, 2.0),
+    "genel otopark alanı": ("Genel Otopark Alanı", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)", "TEKNIK_ALTYAPI", True, 500.0, 0.05, 15.0, 2.0),
+    "enerjiuretimalani": ("Teknik Altyapı / Enerji", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)", "TEKNIK_ALTYAPI", False, 0.0, 0.0, 0.5, 0.1),
+    "teknik altyapı / enerji": ("Teknik Altyapı / Enerji", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)", "TEKNIK_ALTYAPI", False, 0.0, 0.0, 0.5, 0.1),
+
+    # 14. DOP DIŞI ALANLAR (Tarım, Orman, Mera, Askeri vb.)
+    "askerialanlar": ("Askeri Alan (DOP Dışı)", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP DIŞI", "DOP DIŞI (HARİÇ)", None, False, 0.0, 0.0, 0.0, 0.0),
+    "askeri alan": ("Askeri Alan (DOP Dışı)", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP DIŞI", "DOP DIŞI (HARİÇ)", None, False, 0.0, 0.0, 0.0, 0.0),
+    "raylitoplutasimahatti": ("Ulaşım / Demiryolu", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP DIŞI", "DOP DIŞI (HARİÇ)", None, False, 0.0, 0.0, 0.0, 0.0),
+    "ulaşım / demiryolu": ("Ulaşım / Demiryolu", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP DIŞI", "DOP DIŞI (HARİÇ)", None, False, 0.0, 0.0, 0.0, 0.0),
+    "mezarlikalani": ("Mezarlık Alanı", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP DIŞI", "DOP DIŞI (HARİÇ)", None, False, 0.0, 0.0, 0.5, 0.5),
+    "mezarlık alanı": ("Mezarlık Alanı", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP DIŞI", "DOP DIŞI (HARİÇ)", None, False, 0.0, 0.0, 0.5, 0.5),
+    "karisiktarim": ("Tarım Alanı", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP DIŞI", "DOP DIŞI (HARİÇ)", None, False, 0.0, 0.0, 0.0, 0.0),
+    "karisiktarimalanlari": ("Tarım Alanı", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP DIŞI", "DOP DIŞI (HARİÇ)", None, False, 0.0, 0.0, 0.0, 0.0),
+    "kurumarjinaltarim": ("Tarım Alanı", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP DIŞI", "DOP DIŞI (HARİÇ)", None, False, 0.0, 0.0, 0.0, 0.0),
+    "sulumarjinaltarim": ("Tarım Alanı", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP DIŞI", "DOP DIŞI (HARİÇ)", None, False, 0.0, 0.0, 0.0, 0.0),
+    "tarım alanı": ("Tarım Alanı", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP DIŞI", "DOP DIŞI (HARİÇ)", None, False, 0.0, 0.0, 0.0, 0.0),
+    "karışık tarım alanı": ("Tarım Alanı", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP DIŞI", "DOP DIŞI (HARİÇ)", None, False, 0.0, 0.0, 0.0, 0.0),
+    "ormanlakarisiktarimalani": ("Ormanla Karışık Tarım", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP DIŞI", "DOP DIŞI (HARİÇ)", None, False, 0.0, 0.0, 0.0, 0.0),
+    "ormanla karışık tarım": ("Ormanla Karışık Tarım", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP DIŞI", "DOP DIŞI (HARİÇ)", None, False, 0.0, 0.0, 0.0, 0.0),
+    "zeytinlik": ("Zeytinlik", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP DIŞI", "DOP DIŞI (HARİÇ)", None, False, 0.0, 0.0, 0.0, 0.0),
+    "zeytinlikler": ("Zeytinlik", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP DIŞI", "DOP DIŞI (HARİÇ)", None, False, 0.0, 0.0, 0.0, 0.0),
+    "kentormani": ("Kent Ormanı", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP DIŞI", "DOP DIŞI (HARİÇ)", None, False, 0.0, 0.0, 0.0, 0.0),
+    "kent ormanı": ("Kent Ormanı", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP DIŞI", "DOP DIŞI (HARİÇ)", None, False, 0.0, 0.0, 0.0, 0.0),
+    "çayır mera": ("Çayır Mera", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP DIŞI", "DOP DIŞI (HARİÇ)", None, False, 0.0, 0.0, 0.0, 0.0),
+    "digerkullanimlar": ("Diğer Kullanımlar", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)", None, False, 0.0, 0.0, 1.0, 2.0),
+    "diğer kullanımlar": ("Diğer Kullanımlar", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)", None, False, 0.0, 0.0, 1.0, 2.0),
+}
+
+TUCBS_ARAZI_KULLANIM_LOOKUP = {clean_key(k): v for k, v in _TUCBS_RAW_MAPPING.items()}
+
+def get_tucbs_info(fonk_str: str) -> dict | None:
+    """TUCBS veya arazi kullanım sınıflandırmasını tanır ve standart planlama parametrelerini döndürür."""
+    if not fonk_str:
+        return None
+    ck = clean_key(fonk_str)
+    item = TUCBS_ARAZI_KULLANIM_LOOKUP.get(ck)
+    if not item:
+        # Patern tabanlı esnek yedek eşleşme
+        if "gelisme" in ck and "konut" in ck:
+            if "cokyuksek" in ck or "401" in ck:
+                item = ("Gelişme Konut Alanı (Çok Yüksek)", 401.0, 600.0, "GELİŞME KONUT ALANI (ÇOK YÜKSEK)", "DOP İÇİ", "DOP İÇİ - ÖZEL (TAHSİS)", None, False, 0.0, 0.0, 2.5, 5.0)
+            elif "yuksek" in ck or "251" in ck:
+                item = ("Gelişme Konut Alanı (Yüksek)", 251.0, 400.0, "GELİŞME KONUT ALANI (YÜKSEK)", "DOP İÇİ", "DOP İÇİ - ÖZEL (TAHSİS)", None, False, 0.0, 0.0, 2.5, 4.5)
+            elif "orta" in ck or "121" in ck:
+                item = ("Gelişme Konut Alanı (Orta)", 121.0, 250.0, "GELİŞME KONUT ALANI (ORTA)", "DOP İÇİ", "DOP İÇİ - ÖZEL (TAHSİS)", None, False, 0.0, 0.0, 2.5, 4.0)
+            elif "dusuk" in ck or "51" in ck:
+                item = ("Gelişme Konut Alanı (Düşük)", 51.0, 120.0, "GELİŞME KONUT ALANI (DÜŞÜK)", "DOP İÇİ", "DOP İÇİ - ÖZEL (TAHSİS)", None, False, 0.0, 0.0, 2.5, 3.5)
+            elif "seyrek" in ck or "25" in ck:
+                item = ("Gelişme Konut Alanı (Seyrek)", 25.0, 50.0, "GELİŞME KONUT ALANI (SEYREK)", "DOP İÇİ", "DOP İÇİ - ÖZEL (TAHSİS)", None, False, 0.0, 0.0, 3.5, 2.0)
+            else:
+                item = ("Gelişme Konut Alanı (Orta)", 121.0, 250.0, "GELİŞME KONUT ALANI (ORTA)", "DOP İÇİ", "DOP İÇİ - ÖZEL (TAHSİS)", None, False, 0.0, 0.0, 2.5, 4.0)
+        elif "konut" in ck:
+            if "cokyuksek" in ck or "601" in ck:
+                item = ("Mevcut Konut Alanı (Çok Yüksek)", 601.0, 900.0, "MEVCUT KONUT ALANI (ÇOK YÜKSEK)", "DOP İÇİ", "DOP İÇİ - ÖZEL (TAHSİS)", None, False, 0.0, 0.0, 2.2, 6.0)
+            elif "yuksek" in ck or "301" in ck:
+                item = ("Mevcut Konut Alanı (Yüksek)", 301.0, 600.0, "MEVCUT KONUT ALANI (YÜKSEK)", "DOP İÇİ", "DOP İÇİ - ÖZEL (TAHSİS)", None, False, 0.0, 0.0, 2.0, 5.5)
+            elif "orta" in ck or "151" in ck:
+                item = ("Mevcut Konut Alanı (Orta)", 151.0, 300.0, "MEVCUT KONUT ALANI (ORTA)", "DOP İÇİ", "DOP İÇİ - ÖZEL (TAHSİS)", None, False, 0.0, 0.0, 2.5, 4.5)
+            elif "dusuk" in ck or "51" in ck:
+                item = ("Mevcut Konut Alanı (Düşük)", 51.0, 150.0, "MEVCUT KONUT ALANI (DÜŞÜK)", "DOP İÇİ", "DOP İÇİ - ÖZEL (TAHSİS)", None, False, 0.0, 0.0, 2.5, 4.0)
+            elif "seyrek" in ck or "kirsal" in ck or "25" in ck:
+                item = ("Mevcut Konut Alanı (Seyrek)", 25.0, 50.0, "MEVCUT KONUT ALANI (SEYREK)", "DOP İÇİ", "DOP İÇİ - ÖZEL (TAHSİS)", None, False, 0.0, 0.0, 3.5, 2.0)
+            else:
+                item = ("Mevcut Konut Alanı (Orta)", 151.0, 300.0, "MEVCUT KONUT ALANI (ORTA)", "DOP İÇİ", "DOP İÇİ - ÖZEL (TAHSİS)", None, False, 0.0, 0.0, 2.5, 4.5)
+        elif "karma" in ck or ("ticaret" in ck and "konut" in ck):
+            item = ("Karma Kullanım (Ticaret + Konut)", None, None, "KARMA_KONUT", "DOP İÇİ", "DOP İÇİ - ÖZEL (TAHSİS)", None, True, 40.0, 0.35, 8.0, 8.0)
+        elif "ticaret" in ck or "carsi" in ck or "ismerkezi" in ck:
+            item = ("Ticaret Alanı", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - ÖZEL (TAHSİS)", None, True, 30.0, 0.75, 15.0, 12.0)
+        elif "sanayi" in ck or "osb" in ck or "imalat" in ck:
+            item = ("Sanayi Alanı", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - ÖZEL (TAHSİS)", None, True, 90.0, 0.50, 2.5, 0.8)
+        elif "depo" in ck or "akaryakit" in ck:
+            item = ("Depolama Alanı", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - ÖZEL (TAHSİS)", None, True, 150.0, 0.40, 1.2, 0.3)
+        elif "otel" in ck or "turizm" in ck:
+            item = ("Turizm / Otel Alanı", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - ÖZEL (TAHSİS)", None, True, 60.0, 0.45, 4.0, 5.0)
+        elif "arsa" in ck or "santiye" in ck or "ciplak" in ck:
+            item = ("Boş Arsa / Yapılaşmamış Parsel", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - ÖZEL (TAHSİS)", None, False, 0.0, 0.0, 0.0, 0.0)
+        elif "egitim" in ck or "okul" in ck or "lise" in ck or "ilkokul" in ck or "ortaokul" in ck:
+            item = ("Eğitim Alanı", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)", "EGITIM", True, 70.0, 0.35, 5.0, 10.0)
+        elif "saglik" in ck or "asm" in ck or "hastane" in ck:
+            item = ("Sağlık Alanı", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)", "SAGLIK", True, 60.0, 0.45, 10.0, 8.0)
+        elif "park" in ck or "yesil" in ck or "rekreasyon" in ck or "spor" in ck:
+            item = ("Park ve Yeşil Alan", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)", "YESIL_ALAN", False, 0.0, 0.0, 0.5, 3.0)
+        elif "ibadet" in ck or "cami" in ck:
+            item = ("İbadet Alanı", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)", "IBADET", False, 0.0, 0.0, 1.0, 3.0)
+        elif "sosyal" in ck or "kultur" in ck or "muze" in ck or "yurt" in ck:
+            item = ("Sosyal ve Kültürel Tesis", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)", "SOSYAL_KULTUREL", True, 60.0, 0.40, 3.0, 5.0)
+        elif "tarim" in ck or "zeytin" in ck or "mera" in ck or "orman" in ck or "asker" in ck or "demiryol" in ck or "mezarlik" in ck:
+            item = ("DOP Dışı Alan", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP DIŞI", "DOP DIŞI (HARİÇ)", None, False, 0.0, 0.0, 0.0, 0.0)
+        elif "otopark" in ck or "enerji" in ck or "trafo" in ck:
+            item = ("Teknik Altyapı / Otopark", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)", "TEKNIK_ALTYAPI", True, 500.0, 0.05, 15.0, 2.0)
+        elif "belediye" in ck or "bha" in ck or "resmi" in ck or "kamu" in ck:
+            item = ("Belediye / Kamu Hizmet Alanı", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)", None, True, 45.0, 0.50, 8.0, 5.0)
+        else:
+            return None
+
+    return {
+        "std_fonksiyon": item[0],
+        "alt": item[1],
+        "ust": item[2],
+        "kategori": item[3],
+        "dop_durumu": item[4],
+        "dop_turu": item[5],
+        "donati": item[6],
+        "emp_dahil": item[7],
+        "std_m2": item[8],
+        "eff": item[9],
+        "trip_arac": item[10],
+        "trip_yaya": item[11]
+    }
+
 # =====================================================================
 # 2. NİP KONUT BRÜT YOĞUNLUK ARALIKLARI (KİŞİ / HEKTAR)
 # =====================================================================
@@ -61,7 +306,7 @@ NIP_DENSITY_LOOKUP = {
 }
 
 def resolve_nip_density(fonk_str: str) -> tuple[float | None, float | None, str]:
-    """Verilen fonksiyon metninden (örn. Ort_Detay) alt ve üst sınırları bulur."""
+    """Verilen fonksiyon metninden (örn. Ort_Detay veya TUCBS) alt ve üst sınırları bulur."""
     if not fonk_str:
         return None, None, "TANIMSIZ"
     
@@ -70,10 +315,10 @@ def resolve_nip_density(fonk_str: str) -> tuple[float | None, float | None, str]
     clean = clean.replace("İ", "I").replace("ı", "I").replace("Ğ", "G").replace("Ü", "U").replace("Ş", "S").replace("Ö", "O")
 
     # 1. Karma Kullanım Kontrolü
-    if any(k in clean for k in ["TICARET - KONUT", "TICARET-KONUT", "TICARET TURIZM KONUT", "TICARET-TURIZM- KONUT", "TICARET VE KONUT"]):
+    if any(k in clean for k in ["TICARET - KONUT", "TICARET-KONUT", "TICARET TURIZM KONUT", "TICARET-TURIZM- KONUT", "TICARET VE KONUT", "KARMA KULLANIM", "KARMA TICARET"]):
         return None, None, "KARMA_KONUT"
 
-    # 2. Konut Yoğunluk Kontrolleri (Öncelikli Çok Yüksek, Yüksek, vb.)
+    # 2. Standart NİP Gelişme / Mevcut Konut Yoğunluk Kontrolleri
     is_gelisme = "GELISME" in clean
     is_meskun = ("MEVCUT" in clean) or ("MESKUN" in clean)
 
@@ -89,7 +334,6 @@ def resolve_nip_density(fonk_str: str) -> tuple[float | None, float | None, str]
         elif "SEYREK" in clean or "25" in clean:
             return 25.0, 50.0, "GELİŞME KONUT ALANI (SEYREK)"
         else:
-            # Genel gelişme varsayılan orta yoğunluk
             return 121.0, 250.0, "GELİŞME KONUT ALANI (ORTA)"
 
     if is_meskun:
@@ -101,10 +345,32 @@ def resolve_nip_density(fonk_str: str) -> tuple[float | None, float | None, str]
             return 151.0, 300.0, "MEVCUT KONUT ALANI (ORTA)"
         elif "DUSUK" in clean or "51" in clean:
             return 51.0, 150.0, "MEVCUT KONUT ALANI (DÜŞÜK)"
-        elif "SEYREK" in clean or "25" in clean:
+        elif "SEYREK" in clean or "25" in clean or "KIRSAL" in clean:
             return 25.0, 50.0, "MEVCUT KONUT ALANI (SEYREK)"
         else:
             return 151.0, 300.0, "MEVCUT KONUT ALANI (ORTA)"
+
+    # 3. TUCBS / Arazi Kullanım Doğrudan Eşleşmesi
+    tucbs = get_tucbs_info(fonk_str)
+    if tucbs and tucbs["kategori"] != "DONATI_VEYA_CALISMA":
+        return tucbs["alt"], tucbs["ust"], tucbs["kategori"]
+
+    if "KONUT" in clean:
+        if "COK YUKSEK" in clean or "601" in clean:
+            return 601.0, 900.0, "MEVCUT KONUT ALANI (ÇOK YÜKSEK)"
+        elif "YUKSEK" in clean or "301" in clean:
+            return 301.0, 600.0, "MEVCUT KONUT ALANI (YÜKSEK)"
+        elif "ORTA" in clean or "151" in clean:
+            return 151.0, 300.0, "MEVCUT KONUT ALANI (ORTA)"
+        elif "DUSUK" in clean or "51" in clean:
+            return 51.0, 150.0, "MEVCUT KONUT ALANI (DÜŞÜK)"
+        elif "SEYREK" in clean or "25" in clean or "KIRSAL" in clean:
+            return 25.0, 50.0, "MEVCUT KONUT ALANI (SEYREK)"
+        else:
+            return 151.0, 300.0, "MEVCUT KONUT ALANI (ORTA)"
+
+    if tucbs:
+        return tucbs["alt"], tucbs["ust"], tucbs["kategori"]
 
     # Diğer kullanımlar nüfus dışıdır
     return 0.0, 0.0, "DONATI_VEYA_CALISMA"
@@ -149,17 +415,23 @@ def identify_facility_category(fonk_str: str) -> str | None:
     """Verilen fonksiyonun hangi MPYY Ek-2 donatı grubuna girdiğini döndürür."""
     if not fonk_str:
         return None
-    upper = fonk_str.strip().upper()
+    
+    # 0. TUCBS / Arazi Kullanım Doğrudan Eşleşmesi
+    tucbs = get_tucbs_info(fonk_str)
+    if tucbs and tucbs["donati"]:
+        return tucbs["donati"]
+
+    upper = norm_tr(fonk_str)
     # Otopark ve makine parkını yeşil alandan kesinlikle koru
-    if "OTOPARK" in upper or "MAKİNE PARKI" in upper or "MAKINE PARKI" in upper:
-        return None
+    if "OTOPARK" in upper or "MAKINE PARKI" in upper:
+        return "TEKNIK_ALTYAPI" if "OTOPARK" in upper else None
 
     for cat_id, info in MPYY_DONATI_STANDARTLARI.items():
-        if any(k in upper for k in info["anahtarlar"]):
+        if any(norm_tr(k) in upper for k in info["anahtarlar"]):
             return cat_id
     
     # Yalın 'PARK' kelimesi kontrolü
-    if "PARK" in upper and "OTOPARK" not in upper and "MAKİNE" not in upper:
+    if "PARK" in upper and "OTOPARK" not in upper and "MAKINE" not in upper:
         return "YESIL_ALAN"
 
     return None
@@ -241,22 +513,6 @@ TRIP_GENERATION_RATES = {
     "TEKNİK ALTYAPI ALANI": (0.5, 0.1)
 }
 
-def norm_tr(text: str) -> str:
-    """Türkçe karakterleri ve boşlukları tek bir standart forma sokar."""
-    if not text:
-        return ""
-    t = text.strip()
-    for o, n in [
-        ("İ", "I"), ("i", "I"), ("ı", "I"),
-        ("Ğ", "G"), ("ğ", "G"),
-        ("Ü", "U"), ("ü", "U"),
-        ("Ş", "S"), ("ş", "S"),
-        ("Ö", "O"), ("ö", "O"),
-        ("Ç", "C"), ("ç", "C")
-    ]:
-        t = t.replace(o, n)
-    return t.upper()
-
 # Standart Normalleştirilmiş Anahtarlar
 CANONICAL_EMPLOYMENT_RATES = {
     "TICARET": (30.0, 0.75),
@@ -298,6 +554,11 @@ def get_employment_for_function(fonk_str: str, alan_m2: float, resolved_cat: str
     """Fonksiyon adı ve alanına göre tahmini istihdam sayısını hesaplar."""
     if not fonk_str or alan_m2 <= 0:
         return 0
+    
+    tucbs = get_tucbs_info(fonk_str)
+    if tucbs and tucbs["emp_dahil"]:
+        return max(0, int((alan_m2 * tucbs["eff"]) / tucbs["std_m2"]))
+
     fn = norm_tr(fonk_str)
     cat_fn = norm_tr(resolved_cat) if resolved_cat else ""
 
@@ -317,6 +578,12 @@ def get_trips_for_function(fonk_str: str, alan_m2: float, resolved_cat: str = ""
     """100 m2 başına günlük araç ve yaya yolculuğunu hesaplar."""
     if not fonk_str or alan_m2 <= 0:
         return 0.0, 0.0
+    
+    tucbs = get_tucbs_info(fonk_str)
+    if tucbs:
+        units = alan_m2 / 100.0
+        return round(units * tucbs["trip_arac"], 1), round(units * tucbs["trip_yaya"], 1)
+
     fn = norm_tr(fonk_str)
     cat_fn = norm_tr(resolved_cat) if resolved_cat else ""
 
@@ -341,6 +608,11 @@ def get_default_employment_rule(fonk_str: str) -> tuple[bool, float, float]:
     """
     if not fonk_str:
         return False, 0.0, 0.0
+
+    tucbs = get_tucbs_info(fonk_str)
+    if tucbs:
+        return tucbs["emp_dahil"], tucbs["std_m2"], tucbs["eff"]
+
     fn = norm_tr(fonk_str)
 
     # 1. Kanonik sözlük
@@ -362,6 +634,13 @@ def get_default_trip_rule(fonk_str: str) -> tuple[bool, bool, float, float]:
     """
     if not fonk_str:
         return False, False, 0.0, 0.0
+
+    tucbs = get_tucbs_info(fonk_str)
+    if tucbs:
+        inc_arac = tucbs["trip_arac"] > 0
+        inc_yaya = tucbs["trip_yaya"] > 0
+        return inc_arac, inc_yaya, tucbs["trip_arac"], tucbs["trip_yaya"]
+
     fn = norm_tr(fonk_str)
 
     # Tarım, mera, orman, sit, su vb. koruma alanları varsayılan olarak yolculuk dışıdır
@@ -377,4 +656,48 @@ def get_default_trip_rule(fonk_str: str) -> tuple[bool, bool, float, float]:
     if "TICARET" in fn or "SANAYI" in fn:
         return True, True, 10.0, 8.0
     return True, True, 1.0, 2.0
+
+
+# =====================================================================
+# 5. DOP DAHİL / HARİÇ VE KAMU-ÖZEL TAHSİS PARAMETRELERİ
+# =====================================================================
+OZEL_TAHSIS_ANAHTARLAR = [
+    "KONUT", "TICARET", "SANAYI", "TURIZM", "AKARYAKIT", "DEPOLAMA", "OZEL",
+    "BETON", "LIMAN", "TERSANE", "ENERJI", "YAPAY ADA", "SERBEST BOLGE", "TEKNE", "TIR", "REKREATIF",
+    "ARSA", "BOS ARSA", "BOSARSA", "KARMA", "OTEL", "IMALATHANE", "SANTIYE", "CIPLAK"
+]
+
+DOP_DISI_ANAHTARLAR = [
+    "ORMAN", "MERA", "TARIM", "ZEYTINLIK", "ZEYTINLIKLER", "SU YUZEYI", "ASKERI", "DEMIRYOLU",
+    "SIT ALANI", "AGACLANDIRILACAK", "CAYIR", "MARJINAL"
+]
+
+
+def get_default_dop_rule(fonk_str: str) -> tuple[bool, str, str]:
+    """Fonksiyon için varsayılan DOP dahil/hariç (DOP içi / nDOP) ve türünü döndürür.
+
+    Dönüş: (dop_dahil_mi, dop_durumu, dop_turu)
+      - dop_dahil_mi: True ise Düzenleme Sahasına Dahil (DOP İçi), False ise Harice Ayrılan (nDOP / DOP Dışı)
+      - dop_durumu: "DOP İÇİ" veya "DOP DIŞI"
+      - dop_turu: "DOP İÇİ - ÖZEL (TAHSİS)", "DOP İÇİ - KAMU (KESİNTİ)" veya "DOP DIŞI (HARİÇ)"
+    """
+    if not fonk_str:
+        return False, "DOP DIŞI", "DOP DIŞI (HARİÇ)"
+
+    tucbs = get_tucbs_info(fonk_str)
+    if tucbs:
+        is_ici = (tucbs["dop_durumu"] == "DOP İÇİ")
+        return is_ici, tucbs["dop_durumu"], tucbs["dop_turu"]
+
+    fn = norm_tr(fonk_str)
+    is_dop_disi = any(k in fn for k in DOP_DISI_ANAHTARLAR)
+    is_ozel = any(k in fn for k in OZEL_TAHSIS_ANAHTARLAR)
+
+    if is_dop_disi:
+        return False, "DOP DIŞI", "DOP DIŞI (HARİÇ)"
+    elif is_ozel:
+        return True, "DOP İÇİ", "DOP İÇİ - ÖZEL (TAHSİS)"
+    else:
+        return True, "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)"
+
 
