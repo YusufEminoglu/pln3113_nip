@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import csv
 import os
-from qgis.PyQt.QtCore import Qt, QVariant, QUrl
+from qgis.PyQt.QtCore import QSize, Qt, QUrl, QVariant
 from qgis.PyQt.QtGui import QColor, QDesktopServices, QFont, QIcon
 from qgis.PyQt.QtWidgets import (
     QComboBox,
@@ -21,16 +21,21 @@ from qgis.PyQt.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QListView,
+    QListWidget,
+    QListWidgetItem,
     QMessageBox,
     QProgressBar,
     QPushButton,
     QScrollArea,
     QSpinBox,
     QSplitter,
+    QStackedWidget,
     QTabWidget,
     QTableWidget,
     QTableWidgetItem,
     QTextEdit,
+    QToolButton,
     QVBoxLayout,
     QWidget
 )
@@ -62,9 +67,41 @@ from .core.tire_constants import (
     get_default_trip_rule,
     norm_tr
 )
-from .ui_theme import NIP_STUDIO_QSS
+from .ui_theme import NIP_STUDIO_QSS, studio_colors, studio_stylesheet
+
+# Scoped Qt enums (fully compatible across Qt5 and Qt6)
+_POINTING_HAND = Qt.CursorShape.PointingHandCursor
+_CHECKED = Qt.CheckState.Checked
+_UNCHECKED = Qt.CheckState.Unchecked
+_ITEM_USER_CHECKABLE = Qt.ItemFlag.ItemIsUserCheckable
+_ITEM_EDITABLE = Qt.ItemFlag.ItemIsEditable
+_ALIGN_CENTER = Qt.AlignmentFlag.AlignCenter
+_SCROLL_OFF = Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+_NO_FRAME = QFrame.Shape.NoFrame
+_VIEW_MODE_ICON = QListView.ViewMode.IconMode
+_MOVEMENT_STATIC = QListView.Movement.Static
 
 PLUGIN_DIR = os.path.dirname(__file__)
+
+
+class _TabsAdapter:
+    """Compatibility adapter for test suites or scripts calling dock.tabs."""
+
+    def __init__(self, dock):
+        self._dock = dock
+
+    def count(self) -> int:
+        return self._dock.nav_list.count()
+
+    def currentIndex(self) -> int:
+        return self._dock.main_stack.currentIndex()
+
+    def setCurrentIndex(self, index: int) -> None:
+        self._dock.set_page(index)
+
+    def tabText(self, index: int) -> str:
+        item = self._dock.nav_list.item(index)
+        return item.text() if item else ""
 
 
 class TireNipDockWidget(QDockWidget):
@@ -74,7 +111,7 @@ class TireNipDockWidget(QDockWidget):
         super().__init__("Tire NİP Analiz Stüdyosu (PLN3113)", parent)
         self.iface = iface
         self.setObjectName("TireNipDockWidget")
-        self.setStyleSheet(NIP_STUDIO_QSS)
+        self.setStyleSheet(studio_stylesheet())
 
         self._last_nip_summary = None
         self._last_nip_html = ""
@@ -82,76 +119,209 @@ class TireNipDockWidget(QDockWidget):
 
         self._setup_ui()
 
+    def set_page(self, index: int) -> None:
+        """Switch current navigation page."""
+        if 0 <= index < self.nav_list.count():
+            self.nav_list.setCurrentRow(index)
+            self.main_stack.setCurrentIndex(index)
+
     def _setup_ui(self):
         container = QWidget()
-        container.setObjectName("TireNipDockBody")
+        container.setObjectName("nipRoot")
         main_layout = QVBoxLayout(container)
-        main_layout.setContentsMargins(8, 8, 8, 8)
-        main_layout.setSpacing(8)
+        main_layout.setContentsMargins(6, 6, 6, 6)
+        main_layout.setSpacing(6)
 
         # 1. HEADER BANNER
-        header_widget = QWidget()
-        header_widget.setStyleSheet(
-            "background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #0f766e, stop:1 #0d9488); "
-            "border-radius: 8px; padding: 8px;"
-        )
-        header_layout = QHBoxLayout(header_widget)
+        header_frame = QFrame()
+        header_frame.setObjectName("nipHeaderFrame")
+        header_layout = QHBoxLayout(header_frame)
         header_layout.setContentsMargins(8, 6, 8, 6)
+        header_layout.setSpacing(10)
 
         icon_label = QLabel()
-        icon_label.setObjectName("HeaderAvatarLabel")
+        icon_label.setObjectName("nipAvatarLabel")
         avatar_path = os.path.join(PLUGIN_DIR, "icons", "avatar.png")
         if not os.path.exists(avatar_path):
             avatar_path = os.path.join(PLUGIN_DIR, "icons", "icon.png")
         if os.path.exists(avatar_path):
-            icon_label.setPixmap(QIcon(avatar_path).pixmap(48, 48))
+            icon_label.setPixmap(QIcon(avatar_path).pixmap(46, 46))
+        icon_label.setToolTip("Stüdyo Koordinatörü & PlanX Studio")
         header_layout.addWidget(icon_label)
 
-        title_layout = QVBoxLayout()
-        lbl_title = QLabel("PLN3113 NİP ve Kentsel Analiz Stüdyosu")
-        lbl_title.setObjectName("HeaderTitle")
+        title_box = QVBoxLayout()
+        title_box.setSpacing(2)
+
+        title_row = QHBoxLayout()
+        title_row.setSpacing(6)
+        lbl_title = QLabel("PLN3113 NİP Analiz Stüdyosu")
+        lbl_title.setObjectName("nipHeroTitle")
+        title_row.addWidget(lbl_title)
+
+        badge_version = QLabel("v1.0.0")
+        badge_version.setObjectName("nipVersionBadge")
+        title_row.addWidget(badge_version)
+        title_row.addStretch()
+        title_box.addLayout(title_row)
+
         lbl_sub = QLabel("Dokuz Eylül Üniversitesi | PLN3113 Şehir Planlama Projesi III")
-        lbl_sub.setObjectName("HeaderSubtitle")
-        title_layout.addWidget(lbl_title)
-        title_layout.addWidget(lbl_sub)
-        header_layout.addLayout(title_layout)
+        lbl_sub.setObjectName("nipHeaderSubtitle")
+        title_box.addWidget(lbl_sub)
+        header_layout.addLayout(title_box)
         header_layout.addStretch()
 
-        self.btn_open_guide = QPushButton("  📚 Metodoloji Rehberi")
-        self.btn_open_guide.setCursor(Qt.PointingHandCursor)
+        self.btn_open_guide = QToolButton()
+        self.btn_open_guide.setObjectName("nipHeaderGuideBtn")
+        self.btn_open_guide.setText("📚 Metodoloji")
+        self.btn_open_guide.setCursor(_POINTING_HAND)
         self.btn_open_guide.setToolTip("A'dan Z'ye NİP nüfus, donatı, DOP ve ulaşım teorik metodoloji el kitabını tarayıcıda açar.")
-        self.btn_open_guide.setStyleSheet(
-            "QPushButton { background: rgba(255, 255, 255, 0.22); color: white; font-weight: bold; "
-            "border: 1px solid rgba(255, 255, 255, 0.45); border-radius: 6px; padding: 6px 12px; font-size: 12px; } "
-            "QPushButton:hover { background: rgba(255, 255, 255, 0.35); border-color: white; }"
-        )
         self.btn_open_guide.clicked.connect(self._open_theoretical_guide)
         header_layout.addWidget(self.btn_open_guide)
 
-        main_layout.addWidget(header_widget)
+        main_layout.addWidget(header_frame)
 
-        # 2. TAB WIDGET
-        self.tabs = QTabWidget()
-        self.tabs.addTab(self._create_tab_cleaner(), "1. Geometri Temizleme")
-        self.tabs.addTab(self._create_tab_nip(), "2. NİP Nüfus, Donatı & DOP")
-        self.tabs.addTab(self._create_tab_field(), "3. Saha & Bina Fiili Nüfus")
-        main_layout.addWidget(self.tabs)
+        # 2. BODY SPLIT: VERTICAL NAV RAIL + CONTENT STACK
+        body_widget = QWidget()
+        body_layout = QHBoxLayout(body_widget)
+        body_layout.setContentsMargins(0, 0, 0, 0)
+        body_layout.setSpacing(6)
 
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.Shape.NoFrame)
-        scroll.setWidget(container)
-        self.setWidget(scroll)
+        # Vertical Navigation Rail
+        self.nav_list = QListWidget()
+        self.nav_list.setObjectName("nipNavRail")
+        self.nav_list.setFixedWidth(70)
+        self.nav_list.setViewMode(_VIEW_MODE_ICON)
+        self.nav_list.setIconSize(QSize(28, 28))
+        self.nav_list.setMovement(_MOVEMENT_STATIC)
+        self.nav_list.setHorizontalScrollBarPolicy(_SCROLL_OFF)
+        self.nav_list.setVerticalScrollBarPolicy(_SCROLL_OFF)
+        self.nav_list.setSpacing(4)
+
+        nav_items = [
+            ("clean.png", "Geometri", "1. Geometri Onarımı ve Duplike Ayıklama"),
+            ("plan.png", "NİP & DOP", "2. NİP Nüfus, Donatı (Ek-2) ve DOP Analizi"),
+            ("field.png", "Saha/Yapı", "3. Saha ve Bina Fiili Nüfus Kestirimi"),
+            ("report.png", "Rehber", "4. NİP Metodolojisi, Standartlar ve El Kitabı"),
+        ]
+
+        for icon_file, text, tip in nav_items:
+            icon_p = os.path.join(PLUGIN_DIR, "icons", icon_file)
+            item = QListWidgetItem(QIcon(icon_p) if os.path.exists(icon_p) else QIcon(), text)
+            item.setToolTip(tip)
+            item.setTextAlignment(_ALIGN_CENTER)
+            item.setSizeHint(QSize(62, 54))
+            self.nav_list.addItem(item)
+
+        body_layout.addWidget(self.nav_list)
+
+        # Right-side Content Stack wrapped in ScrollArea
+        self.main_stack = QStackedWidget()
+        self.main_stack.setObjectName("nipMainStack")
+        self.main_stack.addWidget(self._create_tab_cleaner())
+        self.main_stack.addWidget(self._create_tab_nip())
+        self.main_stack.addWidget(self._create_tab_field())
+        self.main_stack.addWidget(self._create_tab_guide())
+
+        stack_scroll = QScrollArea()
+        stack_scroll.setWidgetResizable(True)
+        stack_scroll.setFrameShape(_NO_FRAME)
+        stack_scroll.setWidget(self.main_stack)
+        body_layout.addWidget(stack_scroll, 1)
+
+        main_layout.addWidget(body_widget, 1)
+
+        self.nav_list.currentRowChanged.connect(self.main_stack.setCurrentIndex)
+        self.nav_list.setCurrentRow(1)  # Default to NİP tab
+
+        self.tabs = _TabsAdapter(self)
+
+        self.setWidget(container)
 
     def _open_theoretical_guide(self):
         """A'dan Z'ye teorik metodoloji el kitabını kullanıcının varsayılan tarayıcısında açar."""
         guide_path = os.path.join(PLUGIN_DIR, "docs", "teorik_rehber.html")
         if os.path.exists(guide_path):
-            from qgis.PyQt.QtCore import QUrl
-            from qgis.PyQt.QtGui import QDesktopServices
             QDesktopServices.openUrl(QUrl.fromLocalFile(guide_path))
         else:
             QMessageBox.warning(self, "Uyarı", f"Metodoloji rehberi dosyası bulunamadı:\n{guide_path}")
+
+    def _create_tab_guide(self) -> QWidget:
+        """Metodoloji ve Mevzuat El Kitabı sayfası."""
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(4, 4, 4, 4)
+        layout.setSpacing(8)
+
+        card_intro = QFrame()
+        card_intro.setObjectName("nipAccentCard")
+        intro_lay = QVBoxLayout(card_intro)
+        intro_lay.setContentsMargins(10, 8, 10, 8)
+        intro_lay.setSpacing(6)
+
+        t_lbl = QLabel("📚 DEÜ ŞBP PLN3113 NİP Metodoloji El Kitabı")
+        t_lbl.setStyleSheet("font-weight: 700; font-size: 10pt;")
+        intro_lay.addWidget(t_lbl)
+
+        d_lbl = QLabel(
+            "Mekânsal Planlar Yapım Yönetmeliği (MPYY), 3194 sayılı İmar Kanunu Madde 18 (DOP) "
+            "ve DEÜ Şehir ve Bölge Planlama Bölümü PLN3113 Stüdyo standartlarını içeren "
+            "kapsamlı referans ve teorik hesap kütüphanesi."
+        )
+        d_lbl.setWordWrap(True)
+        intro_lay.addWidget(d_lbl)
+
+        btn_launch = QPushButton("  📖 Metodoloji El Kitabını Tarayıcıda Aç (Tam Rehber)")
+        btn_launch.setObjectName("PrimaryButton")
+        btn_launch.setCursor(_POINTING_HAND)
+        btn_launch.clicked.connect(self._open_theoretical_guide)
+        intro_lay.addWidget(btn_launch)
+        layout.addWidget(card_intro)
+
+        # Quick reference cards
+        box_ek2 = QGroupBox("1. MPYY Ek-2 Kentsel Donatı Standartları (Kişi Başı m²)")
+        ek2_lay = QVBoxLayout(box_ek2)
+        ek2_info = QLabel(
+            "• <b>Eğitim Alanları (Toplam 7.0 m²/kişi):</b><br>"
+            "  - Anaokulu + İlkokul: 2.5 m²/kişi (Yürüme yarıçapı: 500 m)<br>"
+            "  - Ortaokul: 2.0 m²/kişi (Yürüme yarıçapı: 1000 m)<br>"
+            "  - Ortaöğretim / Lise: 2.5 m²/kişi (Yürüme yarıçapı: 2500 m)<br>"
+            "• <b>Sağlık Tesisleri:</b> 1.5 m²/kişi (Aile Sağlığı, TSM vb.)<br>"
+            "• <b>Sosyal ve Kültürel Tesis:</b> 1.5 m²/kişi (Kültür merkezi, gençlik merk.)<br>"
+            "• <b>İbadet Alanları:</b> 0.5 m²/kişi (Küçük cami, mescit, orta ibadet)<br>"
+            "• <b>Açık ve Yeşil Alanlar:</b> 10.0 m²/kişi (Park, çocuk bahçesi, rekreasyon)<br>"
+            "• <b>Teknik Altyapı:</b> 1.0 m²/kişi (Trafo, arıtma, terfi merkezi vb.)<br>"
+            "➡️ <i>Toplam Asgari Sosyal ve Teknik Altyapı: <b>21.5 m²/kişi</b></i>"
+        )
+        ek2_info.setWordWrap(True)
+        ek2_lay.addWidget(ek2_info)
+        layout.addWidget(box_ek2)
+
+        box_dop = QGroupBox("2. 3194 Sayılı İmar Kanunu Madde 18 & DOP İlkeleri")
+        dop_lay = QVBoxLayout(box_dop)
+        dop_info = QLabel(
+            "• <b>DOP Oranı Formülü:</b> <code>DOP = (Toplam DOP İçi Donatı) / (Toplam Parsel Alanı)</code><br>"
+            "• <b>Yasal Tavan:</b> 3194 sayılı Kanun uyarınca azami DOP oranı <b>%45.0</b>'dir.<br>"
+            "• <b>Kamu - Özel Ayrımı:</b><br>"
+            "  - <i>DOP İçi (Kamusal):</i> Yol, Meydan, Park, Temel Eğitim, İbadet, vb.<br>"
+            "  - <i>DOP Dışı (Özel / Tahsis):</i> Konut, Ticaret, Sanayi, Özel Okul, Özel Hastane, Tarım vb."
+        )
+        dop_info.setWordWrap(True)
+        dop_lay.addWidget(dop_info)
+        layout.addWidget(box_dop)
+
+        box_field = QGroupBox("3. Fiili Yapı & Saha Nüfusu Kestirim Metodu")
+        field_lay = QVBoxLayout(box_field)
+        field_info = QLabel(
+            "• <b>Formül:</b> <code>Nüfus = (Taban Alanı × Kat Adedi × Konut Payı) ÷ (Ortalama Konut m²) × (Ortalama Hanehalkı)</code><br>"
+            "• Kat verisi olmayan binalar için mahalle/bölge ortalaması otomatik atanır.<br>"
+            "• NİP brüt yoğunluk kapasitesi ile sahadaki fiili mevcut nüfus karşılaştırılarak kapasite doygunluk analizi üretilir."
+        )
+        field_info.setWordWrap(True)
+        field_lay.addWidget(field_info)
+        layout.addWidget(box_field)
+
+        layout.addStretch()
+        return page
 
     # -----------------------------------------------------------------
     # SEKME 1: GEOMETRİ & DUPLİKE TEMİZLEME
@@ -293,7 +463,7 @@ class TireNipDockWidget(QDockWidget):
         lbl_hint = QLabel("💡 <b>Tire NİP Metodolojisi:</b> Nüfus aralıkları, MPYY Ek-2 standartları, DOP ve yol formülleri.")
         lbl_hint.setStyleSheet("color: #1e40af; font-size: 11px;")
         btn_hint_guide = QPushButton("📖 Metodoloji El Kitabı")
-        btn_hint_guide.setCursor(Qt.PointingHandCursor)
+        btn_hint_guide.setCursor(_POINTING_HAND)
         btn_hint_guide.setStyleSheet("background: #2563eb; color: white; border-radius: 4px; padding: 3px 8px; font-size: 11px; font-weight: bold;")
         btn_hint_guide.clicked.connect(self._open_theoretical_guide)
         info_l.addWidget(lbl_hint)
@@ -595,13 +765,13 @@ class TireNipDockWidget(QDockWidget):
                 y_item = self.tbl_rules.item(r, 7)
                 ra_item = self.tbl_rules.item(r, 8)
                 existing_custom[f_txt] = {
-                    "dop_inc": (d_item.checkState() == Qt.Checked) if d_item else True,
+                    "dop_inc": (d_item.checkState() == _CHECKED) if d_item else True,
                     "dop_combo_idx": c_dop.currentIndex() if (c_dop and isinstance(c_dop, QComboBox)) else 0,
-                    "emp_inc": (e_item.checkState() == Qt.Checked) if e_item else True,
+                    "emp_inc": (e_item.checkState() == _CHECKED) if e_item else True,
                     "std_m2": s_item.text().strip() if s_item else "50.0",
                     "eff": ef_item.text().strip() if ef_item else "0.50",
-                    "tr_arac": (a_item.checkState() == Qt.Checked) if a_item else True,
-                    "tr_yaya": (y_item.checkState() == Qt.Checked) if y_item else True,
+                    "tr_arac": (a_item.checkState() == _CHECKED) if a_item else True,
+                    "tr_yaya": (y_item.checkState() == _CHECKED) if y_item else True,
                     "r_arac": ra_item.text().strip() if ra_item else "1.0",
                 }
 
@@ -610,7 +780,7 @@ class TireNipDockWidget(QDockWidget):
         for r_idx, fonk in enumerate(unique_fonks):
             # 0. Fonksiyon adı (Salt okunur)
             item_f = QTableWidgetItem(fonk)
-            item_f.setFlags(item_f.flags() & ~Qt.ItemIsEditable)
+            item_f.setFlags(item_f.flags() & ~_ITEM_EDITABLE)
             self.tbl_rules.setItem(r_idx, 0, item_f)
 
             if fonk in existing_custom:
@@ -641,8 +811,8 @@ class TireNipDockWidget(QDockWidget):
 
             # 1-2. DOP Dahil / Hariç ve DOP Türü
             item_dop = QTableWidgetItem("DOP İçi" if dop_inc else "nDOP (Hariç)")
-            item_dop.setFlags(item_dop.flags() | Qt.ItemIsUserCheckable)
-            item_dop.setCheckState(Qt.Checked if dop_inc else Qt.Unchecked)
+            item_dop.setFlags(item_dop.flags() | _ITEM_USER_CHECKABLE)
+            item_dop.setCheckState(_CHECKED if dop_inc else _UNCHECKED)
             item_dop.setToolTip("İşaretli ise Düzenleme Sahasına Dahil (DOP İçi) edilir. İşaretsiz ise Harice Ayrılan (nDOP / DOP Dışı) alandır.")
             self.tbl_rules.setItem(r_idx, 1, item_dop)
 
@@ -658,8 +828,8 @@ class TireNipDockWidget(QDockWidget):
 
             # 3-5. İstihdam varsayılanları
             item_emp = QTableWidgetItem("Dahil" if emp_inc else "Hariç")
-            item_emp.setFlags(item_emp.flags() | Qt.ItemIsUserCheckable)
-            item_emp.setCheckState(Qt.Checked if emp_inc else Qt.Unchecked)
+            item_emp.setFlags(item_emp.flags() | _ITEM_USER_CHECKABLE)
+            item_emp.setCheckState(_CHECKED if emp_inc else _UNCHECKED)
             self.tbl_rules.setItem(r_idx, 3, item_emp)
 
             item_std = QTableWidgetItem(std_m2_str)
@@ -670,13 +840,13 @@ class TireNipDockWidget(QDockWidget):
 
             # 6-8. Yolculuk varsayılanları
             item_arac = QTableWidgetItem("Dahil" if tr_arac else "Hariç")
-            item_arac.setFlags(item_arac.flags() | Qt.ItemIsUserCheckable)
-            item_arac.setCheckState(Qt.Checked if tr_arac else Qt.Unchecked)
+            item_arac.setFlags(item_arac.flags() | _ITEM_USER_CHECKABLE)
+            item_arac.setCheckState(_CHECKED if tr_arac else _UNCHECKED)
             self.tbl_rules.setItem(r_idx, 6, item_arac)
 
             item_yaya = QTableWidgetItem("Dahil" if tr_yaya else "Hariç")
-            item_yaya.setFlags(item_yaya.flags() | Qt.ItemIsUserCheckable)
-            item_yaya.setCheckState(Qt.Checked if tr_yaya else Qt.Unchecked)
+            item_yaya.setFlags(item_yaya.flags() | _ITEM_USER_CHECKABLE)
+            item_yaya.setCheckState(_CHECKED if tr_yaya else _UNCHECKED)
             self.tbl_rules.setItem(r_idx, 7, item_yaya)
 
             item_r_arac = QTableWidgetItem(r_arac_str)
@@ -690,7 +860,7 @@ class TireNipDockWidget(QDockWidget):
         row = item.row()
 
         if col == 1:  # DOP İçi (Dahil)?
-            is_checked = (item.checkState() == Qt.Checked)
+            is_checked = (item.checkState() == _CHECKED)
             self.tbl_rules.blockSignals(True)
             item.setText("DOP İçi" if is_checked else "nDOP (Hariç)")
             self.tbl_rules.blockSignals(False)
@@ -710,17 +880,17 @@ class TireNipDockWidget(QDockWidget):
 
         elif col == 3:  # İstihdam Dahil?
             self.tbl_rules.blockSignals(True)
-            item.setText("Dahil" if item.checkState() == Qt.Checked else "Hariç")
+            item.setText("Dahil" if item.checkState() == _CHECKED else "Hariç")
             self.tbl_rules.blockSignals(False)
 
         elif col == 6:  # Araç Dahil?
             self.tbl_rules.blockSignals(True)
-            item.setText("Dahil" if item.checkState() == Qt.Checked else "Hariç")
+            item.setText("Dahil" if item.checkState() == _CHECKED else "Hariç")
             self.tbl_rules.blockSignals(False)
 
         elif col == 7:  # Yaya Dahil?
             self.tbl_rules.blockSignals(True)
-            item.setText("Dahil" if item.checkState() == Qt.Checked else "Hariç")
+            item.setText("Dahil" if item.checkState() == _CHECKED else "Hariç")
             self.tbl_rules.blockSignals(False)
 
     def _on_dop_combo_changed(self, row: int, index: int):
@@ -730,10 +900,10 @@ class TireNipDockWidget(QDockWidget):
             return
         self.tbl_rules.blockSignals(True)
         if index == 2:  # nDOP - DOP Dışı (Hariç)
-            item_dop.setCheckState(Qt.Unchecked)
+            item_dop.setCheckState(_UNCHECKED)
             item_dop.setText("nDOP (Hariç)")
         else:
-            item_dop.setCheckState(Qt.Checked)
+            item_dop.setCheckState(_CHECKED)
             item_dop.setText("DOP İçi")
         self.tbl_rules.blockSignals(False)
 
@@ -759,7 +929,7 @@ class TireNipDockWidget(QDockWidget):
 
             # 1. DOP Kuralı (DOP İçi vs nDOP / Harice Ayrılan)
             dop_item = self.tbl_rules.item(r, 1)
-            inc_dop = (dop_item.checkState() == Qt.Checked) if dop_item else True
+            inc_dop = (dop_item.checkState() == _CHECKED) if dop_item else True
             combo_dop = self.tbl_rules.cellWidget(r, 2)
             if combo_dop and isinstance(combo_dop, QComboBox):
                 c_idx = combo_dop.currentIndex()
@@ -789,7 +959,7 @@ class TireNipDockWidget(QDockWidget):
 
             # 2. İstihdam Kuralı
             emp_item = self.tbl_rules.item(r, 3)
-            inc_emp = (emp_item.checkState() == Qt.Checked) if emp_item else True
+            inc_emp = (emp_item.checkState() == _CHECKED) if emp_item else True
             try:
                 std_m2 = float(self.tbl_rules.item(r, 4).text().strip())
             except (ValueError, AttributeError):
@@ -804,8 +974,8 @@ class TireNipDockWidget(QDockWidget):
             # 3. Yolculuk Kuralı
             arac_item = self.tbl_rules.item(r, 6)
             yaya_item = self.tbl_rules.item(r, 7)
-            inc_arac = (arac_item.checkState() == Qt.Checked) if arac_item else True
-            inc_yaya = (yaya_item.checkState() == Qt.Checked) if yaya_item else True
+            inc_arac = (arac_item.checkState() == _CHECKED) if arac_item else True
+            inc_yaya = (yaya_item.checkState() == _CHECKED) if yaya_item else True
             try:
                 r_arac = float(self.tbl_rules.item(r, 8).text().strip())
             except (ValueError, AttributeError):
@@ -1424,7 +1594,7 @@ tr:hover {{ background: #f1f5f9; }}
         lbl_hint = QLabel("💡 <b>Mevcut Durum Fiili Nüfus Metodolojisi:</b> Bina kat, taban alanı, TÜİK hanehalkı ve fiili istihdam hesabı.")
         lbl_hint.setStyleSheet("color: #854d0e; font-size: 11px;")
         btn_hint_guide = QPushButton("📖 Rehberde İncele")
-        btn_hint_guide.setCursor(Qt.PointingHandCursor)
+        btn_hint_guide.setCursor(_POINTING_HAND)
         btn_hint_guide.setStyleSheet("background: #d97706; color: white; border-radius: 4px; padding: 3px 8px; font-size: 11px; font-weight: bold;")
         btn_hint_guide.clicked.connect(self._open_theoretical_guide)
         info_l.addWidget(lbl_hint)
