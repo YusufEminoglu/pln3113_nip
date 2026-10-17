@@ -37,21 +37,21 @@ class SahaBinaAnalysisAlgorithm(QgsProcessingAlgorithm):
             QgsProcessingParameterVectorLayer(
                 self.ADA_LAYER,
                 'Kadastro / Saha Adaları Katmanı',
-                [QgsProcessing.TypeVectorPolygon]
+                [QgsProcessing.SourceType.TypeVectorPolygon]
             )
         )
         self.addParameter(
             QgsProcessingParameterVectorLayer(
                 self.BINA_LAYER,
                 'Bina Katmanı (tire_bina.gpkg)',
-                [QgsProcessing.TypeVectorPolygon]
+                [QgsProcessing.SourceType.TypeVectorPolygon]
             )
         )
         self.addParameter(
             QgsProcessingParameterNumber(
                 self.HANEHALKI,
                 'TÜİK Ortalama Hanehalkı Büyüklüğü (Tire ~ 2.85)',
-                QgsProcessingParameterNumber.Double,
+                QgsProcessingParameterNumber.Type.Double,
                 defaultValue=2.85,
                 minValue=1.0,
                 maxValue=10.0
@@ -61,7 +61,7 @@ class SahaBinaAnalysisAlgorithm(QgsProcessingAlgorithm):
             QgsProcessingParameterNumber(
                 self.DAIRE_M2,
                 'Ortalama Bağımsız Konut Alanı (m²)',
-                QgsProcessingParameterNumber.Double,
+                QgsProcessingParameterNumber.Type.Double,
                 defaultValue=110.0,
                 minValue=40.0,
                 maxValue=500.0
@@ -71,7 +71,7 @@ class SahaBinaAnalysisAlgorithm(QgsProcessingAlgorithm):
             QgsProcessingParameterNumber(
                 self.NET_ORAN,
                 'İnşaat Alanı Net/Brüt Kullanım Oranı',
-                QgsProcessingParameterNumber.Double,
+                QgsProcessingParameterNumber.Type.Double,
                 defaultValue=0.85,
                 minValue=0.5,
                 maxValue=1.0
@@ -81,14 +81,14 @@ class SahaBinaAnalysisAlgorithm(QgsProcessingAlgorithm):
             QgsProcessingParameterFeatureSink(
                 self.OUTPUT_ADA,
                 'Ada Bazlı Fiili Nüfus ve İstihdam Katmanı (Vektör)',
-                QgsProcessing.TypeVectorPolygon
+                QgsProcessing.SourceType.TypeVectorPolygon
             )
         )
         self.addParameter(
             QgsProcessingParameterFeatureSink(
                 self.OUTPUT_OZET,
                 'Mevcut Kent Fiili Nüfus Özet Tablosu',
-                QgsProcessing.TypeVector
+                QgsProcessing.SourceType.TypeVector
             )
         )
 
@@ -138,7 +138,7 @@ class SahaBinaAnalysisAlgorithm(QgsProcessingAlgorithm):
             self.OUTPUT_ADA,
             context,
             out_fields,
-            QgsWkbTypes.MultiPolygon,
+            QgsWkbTypes.Type.MultiPolygon,
             ada_layer.sourceCrs()
         )
 
@@ -167,7 +167,7 @@ class SahaBinaAnalysisAlgorithm(QgsProcessingAlgorithm):
                 item["gunluk_yaya"]
             ])
             nf.setAttributes(attrs)
-            sink_ada.addFeature(nf, QgsFeatureSink.FastInsert)
+            sink_ada.addFeature(nf, QgsFeatureSink.Flag.FastInsert)
 
         # 2. Özet Tablo
         ozet_fields = QgsFields()
@@ -179,7 +179,7 @@ class SahaBinaAnalysisAlgorithm(QgsProcessingAlgorithm):
             self.OUTPUT_OZET,
             context,
             ozet_fields,
-            QgsWkbTypes.NoGeometry,
+            QgsWkbTypes.Type.NoGeometry,
             ada_layer.sourceCrs()
         )
 
@@ -202,7 +202,7 @@ class SahaBinaAnalysisAlgorithm(QgsProcessingAlgorithm):
         for p, d in ozet_satirlari:
             of = QgsFeature(ozet_fields)
             of.setAttributes([p, d])
-            sink_ozet.addFeature(of, QgsFeatureSink.FastInsert)
+            sink_ozet.addFeature(of, QgsFeatureSink.Flag.FastInsert)
 
         return {
             self.OUTPUT_ADA: dest_ada_id,

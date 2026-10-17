@@ -67,8 +67,10 @@ class FieldEstimatorEngine:
             
             alan_m2 = 0.0
             if idx_alan != -1 and f[idx_alan]:
-                try: alan_m2 = float(f[idx_alan])
-                except: alan_m2 = geom.area()
+                try:
+                    alan_m2 = float(f[idx_alan])
+                except (ValueError, TypeError):
+                    alan_m2 = geom.area()
             else:
                 alan_m2 = geom.area()
 
@@ -139,8 +141,10 @@ class FieldEstimatorEngine:
             # Bina parametreleri
             taban_m2 = 0.0
             if idx_bina_alan != -1 and b_feat[idx_bina_alan]:
-                try: taban_m2 = float(b_feat[idx_bina_alan])
-                except: taban_m2 = b_geom.area()
+                try:
+                    taban_m2 = float(b_feat[idx_bina_alan])
+                except (ValueError, TypeError):
+                    taban_m2 = b_geom.area()
             else:
                 taban_m2 = b_geom.area()
 
@@ -148,13 +152,17 @@ class FieldEstimatorEngine:
 
             kat = 1
             if idx_kat != -1 and b_feat[idx_kat]:
-                try: kat = max(1, int(b_feat[idx_kat]))
-                except: kat = 1
+                try:
+                    kat = max(1, int(b_feat[idx_kat]))
+                except (ValueError, TypeError):
+                    kat = 1
 
             bagimsiz = 0
             if idx_bagimsiz != -1 and b_feat[idx_bagimsiz]:
-                try: bagimsiz = int(b_feat[idx_bagimsiz])
-                except: bagimsiz = 0
+                try:
+                    bagimsiz = int(b_feat[idx_bagimsiz])
+                except (ValueError, TypeError):
+                    bagimsiz = 0
 
             # 1. Küçük yapı filtresi: 35 m2 altındaki bağımsız bölümsüz yapılar sundurma/müştemilattır
             if taban_m2 < 35.0 and bagimsiz == 0:

@@ -28,14 +28,14 @@ class GeometryCleanAlgorithm(QgsProcessingAlgorithm):
             QgsProcessingParameterVectorLayer(
                 self.INPUT,
                 'Girdi Poligon Katmanı (NİP veya Kadastro)',
-                [QgsProcessing.TypeVectorPolygon]
+                [QgsProcessing.SourceType.TypeVectorPolygon]
             )
         )
         self.addParameter(
             QgsProcessingParameterFeatureSink(
                 self.OUTPUT,
                 'Temizlenmiş ve Tekilleştirilmiş Katman',
-                QgsProcessing.TypeVectorPolygon
+                QgsProcessing.SourceType.TypeVectorPolygon
             )
         )
 
@@ -58,12 +58,12 @@ class GeometryCleanAlgorithm(QgsProcessingAlgorithm):
             self.OUTPUT,
             context,
             layer.fields(),
-            QgsWkbTypes.MultiPolygon,
+            QgsWkbTypes.Type.MultiPolygon,
             layer.sourceCrs()
         )
 
         for feat in cleaned_features:
-            sink.addFeature(feat, QgsFeatureSink.FastInsert)
+            sink.addFeature(feat, QgsFeatureSink.Flag.FastInsert)
 
         return {self.OUTPUT: dest_id}
 

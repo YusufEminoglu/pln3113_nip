@@ -7,6 +7,7 @@ PLN3113 - Tire NİP Analiz Stüdyosu
 from __future__ import annotations
 
 from qgis.core import (
+    NULL,
     QgsDistanceArea,
     QgsFeature,
     QgsFeatureSink,
@@ -47,7 +48,7 @@ class NipPopulationAlgorithm(QgsProcessingAlgorithm):
             QgsProcessingParameterVectorLayer(
                 self.INPUT,
                 'Nazım İmar Planı veya Fiziki Mevcut Durum Katmanı',
-                [QgsProcessing.TypeVectorPolygon]
+                [QgsProcessing.SourceType.TypeVectorPolygon]
             )
         )
         self.addParameter(
@@ -63,7 +64,7 @@ class NipPopulationAlgorithm(QgsProcessingAlgorithm):
                 self.FONKSIYON_FIELD,
                 'Birincil Fonksiyon / TUCBS Sütunu (Örn: Ort__Detay, Ort_Detay veya tucbs_sinifi)',
                 parentLayerParameterName=self.INPUT,
-                type=QgsProcessingParameterField.String
+                type=QgsProcessingParameterField.DataType.String
             )
         )
         self.addParameter(
@@ -71,7 +72,7 @@ class NipPopulationAlgorithm(QgsProcessingAlgorithm):
                 self.SECONDARY_FONKSIYON_FIELD,
                 'Tamamlayıcı / İkincil Fonksiyon Sütunu (Opsiyonel - örn: arazi_kullanim_tanimi)',
                 parentLayerParameterName=self.INPUT,
-                type=QgsProcessingParameterField.String,
+                type=QgsProcessingParameterField.DataType.String,
                 optional=True
             )
         )
@@ -79,7 +80,7 @@ class NipPopulationAlgorithm(QgsProcessingAlgorithm):
             QgsProcessingParameterVectorLayer(
                 self.SINIR_LAYER,
                 'Plan Onama Sınırı Katmanı (Opsiyonel - Geometrik Yol ve Kesin DOP Hesabı)',
-                [QgsProcessing.TypeVectorPolygon],
+                [QgsProcessing.SourceType.TypeVectorPolygon],
                 optional=True
             )
         )
@@ -87,7 +88,7 @@ class NipPopulationAlgorithm(QgsProcessingAlgorithm):
             QgsProcessingParameterVectorLayer(
                 self.YOL_LAYER,
                 'Ulaşım / Yol Aksları Katmanı (Opsiyonel - Ortalama Yol Genişliği Analizi)',
-                [QgsProcessing.TypeVectorLine],
+                [QgsProcessing.SourceType.TypeVectorLine],
                 optional=True
             )
         )
@@ -95,7 +96,7 @@ class NipPopulationAlgorithm(QgsProcessingAlgorithm):
             QgsProcessingParameterNumber(
                 self.PROJ_NUFUS,
                 'Hedef Yılı Projeksiyon Nüfusu (Kişi)',
-                QgsProcessingParameterNumber.Integer,
+                QgsProcessingParameterNumber.Type.Integer,
                 defaultValue=65000,
                 minValue=1000
             )
@@ -104,42 +105,42 @@ class NipPopulationAlgorithm(QgsProcessingAlgorithm):
             QgsProcessingParameterFeatureSink(
                 self.OUTPUT_LAYER,
                 'NİP Nüfus, Donatı ve Ulaşım Analiz Katmanı (Vektör)',
-                QgsProcessing.TypeVectorPolygon
+                QgsProcessing.SourceType.TypeVectorPolygon
             )
         )
         self.addParameter(
             QgsProcessingParameterFeatureSink(
                 self.OUTPUT_DOP,
                 'KÖ - DOP ve Kamu-Özel Dengesi Hesap Özeti',
-                QgsProcessing.TypeVector
+                QgsProcessing.SourceType.TypeVector
             )
         )
         self.addParameter(
             QgsProcessingParameterFeatureSink(
                 self.OUTPUT_KENT_KARAKTER,
                 'Kent Karakter Tablosu (Kişi Başı m² Metrikleri)',
-                QgsProcessing.TypeVector
+                QgsProcessing.SourceType.TypeVector
             )
         )
         self.addParameter(
             QgsProcessingParameterFeatureSink(
                 self.OUTPUT_FONKSIYON_DAGILIM,
                 'KÖ - Detaylı Fonksiyon ve Alan Dağılım Tablosu',
-                QgsProcessing.TypeVector
+                QgsProcessing.SourceType.TypeVector
             )
         )
         self.addParameter(
             QgsProcessingParameterFeatureSink(
                 self.OUTPUT_EK2,
                 'MPYY Ek-2 Donatı Yeterlilik Tablosu',
-                QgsProcessing.TypeVector
+                QgsProcessing.SourceType.TypeVector
             )
         )
         self.addParameter(
             QgsProcessingParameterFeatureSink(
                 self.OUTPUT_KIYAS,
                 'Tire Tarihsel Nüfus Kıyaslama Tablosu',
-                QgsProcessing.TypeVector
+                QgsProcessing.SourceType.TypeVector
             )
         )
 
@@ -216,7 +217,7 @@ class NipPopulationAlgorithm(QgsProcessingAlgorithm):
             self.OUTPUT_LAYER,
             context,
             out_fields,
-            QgsWkbTypes.MultiPolygon,
+            QgsWkbTypes.Type.MultiPolygon,
             layer.sourceCrs()
         )
 
@@ -231,8 +232,8 @@ class NipPopulationAlgorithm(QgsProcessingAlgorithm):
                 it["ust_snr"] if it["ust_snr"] is not None else 0.0,
                 it["alt_nufus"],
                 it["ust_nufus"],
-                it["km2_alt_nufus"] if it["km2_alt_nufus"] is not None else QVariant(),
-                it["km2_ust_nufus"] if it["km2_ust_nufus"] is not None else QVariant(),
+                it["km2_alt_nufus"] if it["km2_alt_nufus"] is not None else NULL,
+                it["km2_ust_nufus"] if it["km2_ust_nufus"] is not None else NULL,
                 it["istihdam"],
                 it["gunluk_arac"],
                 it["gunluk_yaya"],
@@ -241,7 +242,7 @@ class NipPopulationAlgorithm(QgsProcessingAlgorithm):
                 it["donati_kategori"] or ""
             ])
             new_f.setAttributes(attrs)
-            sink_layer.addFeature(new_f, QgsFeatureSink.FastInsert)
+            sink_layer.addFeature(new_f, QgsFeatureSink.Flag.FastInsert)
 
         # 2. DOP ve Kamu-Özel Hesap Özeti Tablosu
         dop_fields = QgsFields()
@@ -252,7 +253,7 @@ class NipPopulationAlgorithm(QgsProcessingAlgorithm):
         dop_fields.append(QgsField('aciklama', QVariant.String))
 
         (sink_dop, dest_dop_id) = self.parameterAsSink(
-            parameters, self.OUTPUT_DOP, context, dop_fields, QgsWkbTypes.NoGeometry, layer.sourceCrs()
+            parameters, self.OUTPUT_DOP, context, dop_fields, QgsWkbTypes.Type.NoGeometry, layer.sourceCrs()
         )
 
         p_m2 = dop["toplam_plan_alani_m2"]
@@ -276,7 +277,7 @@ class NipPopulationAlgorithm(QgsProcessingAlgorithm):
         for p, m2, ha, pct, desc in rows_dop:
             df = QgsFeature(dop_fields)
             df.setAttributes([p, m2, ha, pct, desc])
-            sink_dop.addFeature(df, QgsFeatureSink.FastInsert)
+            sink_dop.addFeature(df, QgsFeatureSink.Flag.FastInsert)
 
         # 3. Kent Karakter Tablosu
         kk_fields = QgsFields()
@@ -287,12 +288,12 @@ class NipPopulationAlgorithm(QgsProcessingAlgorithm):
         kk_fields.append(QgsField('proj_nufus_m2_kisi', QVariant.Double))
 
         (sink_kk, dest_kk_id) = self.parameterAsSink(
-            parameters, self.OUTPUT_KENT_KARAKTER, context, kk_fields, QgsWkbTypes.NoGeometry, layer.sourceCrs()
+            parameters, self.OUTPUT_KENT_KARAKTER, context, kk_fields, QgsWkbTypes.Type.NoGeometry, layer.sourceCrs()
         )
         for kk in summary["kent_karakter"]:
             kf = QgsFeature(kk_fields)
             kf.setAttributes([kk["fonksiyon"], kk["toplam_m2"], kk["alt_nufus_m2_kisi"], kk["ust_nufus_m2_kisi"], kk["proj_nufus_m2_kisi"]])
-            sink_kk.addFeature(kf, QgsFeatureSink.FastInsert)
+            sink_kk.addFeature(kf, QgsFeatureSink.Flag.FastInsert)
 
         # 4. Detaylı Fonksiyon Dağılım Tablosu
         fd_fields = QgsFields()
@@ -307,7 +308,7 @@ class NipPopulationAlgorithm(QgsProcessingAlgorithm):
         fd_fields.append(QgsField('dop_ici_yuzde', QVariant.Double))
 
         (sink_fd, dest_fd_id) = self.parameterAsSink(
-            parameters, self.OUTPUT_FONKSIYON_DAGILIM, context, fd_fields, QgsWkbTypes.NoGeometry, layer.sourceCrs()
+            parameters, self.OUTPUT_FONKSIYON_DAGILIM, context, fd_fields, QgsWkbTypes.Type.NoGeometry, layer.sourceCrs()
         )
         for fd in summary["fonksiyon_dagilim"]:
             ff = QgsFeature(fd_fields)
@@ -315,7 +316,7 @@ class NipPopulationAlgorithm(QgsProcessingAlgorithm):
                 fd["fonksiyon"], fd["dop_durumu"], fd["dop_turu"], fd["adet"],
                 fd["alan_m2"], fd["alan_ha"], fd["kisi_basi_m2"], fd["tum_plan_yuzdesi"], fd["dop_ici_yuzde"]
             ])
-            sink_fd.addFeature(ff, QgsFeatureSink.FastInsert)
+            sink_fd.addFeature(ff, QgsFeatureSink.Flag.FastInsert)
 
         # 5. MPYY Ek-2 Tablosu
         ek2_fields = QgsFields()
@@ -330,7 +331,7 @@ class NipPopulationAlgorithm(QgsProcessingAlgorithm):
         ek2_fields.append(QgsField('durum_projeksiyon', QVariant.String))
 
         (sink_ek2, dest_ek2_id) = self.parameterAsSink(
-            parameters, self.OUTPUT_EK2, context, ek2_fields, QgsWkbTypes.NoGeometry, layer.sourceCrs()
+            parameters, self.OUTPUT_EK2, context, ek2_fields, QgsWkbTypes.Type.NoGeometry, layer.sourceCrs()
         )
         for ek in summary["ek2_rapor"]:
             ef = QgsFeature(ek2_fields)
@@ -339,7 +340,7 @@ class NipPopulationAlgorithm(QgsProcessingAlgorithm):
                 ek["kb_alt"], ek["kb_ust"], ek["kb_proj"],
                 ek["durum_alt"], ek["durum_ust"], ek["durum_proj"]
             ])
-            sink_ek2.addFeature(ef, QgsFeatureSink.FastInsert)
+            sink_ek2.addFeature(ef, QgsFeatureSink.Flag.FastInsert)
 
         # 6. Kıyaslama Tablosu
         kiyas_fields = QgsFields()
@@ -349,12 +350,12 @@ class NipPopulationAlgorithm(QgsProcessingAlgorithm):
         kiyas_fields.append(QgsField('kaynak', QVariant.String))
 
         (sink_kiyas, dest_kiyas_id) = self.parameterAsSink(
-            parameters, self.OUTPUT_KIYAS, context, kiyas_fields, QgsWkbTypes.NoGeometry, layer.sourceCrs()
+            parameters, self.OUTPUT_KIYAS, context, kiyas_fields, QgsWkbTypes.Type.NoGeometry, layer.sourceCrs()
         )
         for row in summary["kiyaslama"]:
             kf = QgsFeature(kiyas_fields)
             kf.setAttributes([str(row["kapsam"]), str(row["merkez"]), str(row["ilce"]), str(row["kaynak"])])
-            sink_kiyas.addFeature(kf, QgsFeatureSink.FastInsert)
+            sink_kiyas.addFeature(kf, QgsFeatureSink.Flag.FastInsert)
 
         return {
             self.OUTPUT_LAYER: dest_layer_id,

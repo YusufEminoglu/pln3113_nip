@@ -12,6 +12,7 @@ import os
 from qgis.PyQt.QtCore import QSize, Qt, QUrl, QVariant
 from qgis.PyQt.QtGui import QColor, QDesktopServices, QFont, QIcon
 from qgis.PyQt.QtWidgets import (
+    QAbstractItemView,
     QComboBox,
     QDockWidget,
     QDoubleSpinBox,
@@ -42,6 +43,7 @@ from qgis.PyQt.QtWidgets import (
     QWidget
 )
 from qgis.core import (
+    NULL,
     QgsCategorizedSymbolRenderer,
     QgsDistanceArea,
     QgsFeature,
@@ -374,7 +376,7 @@ class TireNipDockWidget(QDockWidget):
         box_layout.addWidget(lbl)
 
         self.cmb_clean_layer = QgsMapLayerComboBox()
-        self.cmb_clean_layer.setFilters(QgsMapLayerProxyModel.PolygonLayer)
+        self.cmb_clean_layer.setFilters(QgsMapLayerProxyModel.Filter.PolygonLayer)
         box_layout.addWidget(self.cmb_clean_layer)
         layout.addWidget(box_input)
 
@@ -734,7 +736,7 @@ class TireNipDockWidget(QDockWidget):
         f_layout.addRow("Analiz Modu / Kapsam:", self.cmb_analysis_mode)
 
         self.cmb_nip_layer = QgsMapLayerComboBox()
-        self.cmb_nip_layer.setFilters(QgsMapLayerProxyModel.PolygonLayer)
+        self.cmb_nip_layer.setFilters(QgsMapLayerProxyModel.Filter.PolygonLayer)
         self.cmb_nip_layer.layerChanged.connect(self._on_nip_layer_changed)
         f_layout.addRow("Analiz Katmanı (Poligon):", self.cmb_nip_layer)
 
@@ -747,12 +749,12 @@ class TireNipDockWidget(QDockWidget):
         f_layout.addRow("Tamamlayıcı / İkincil Sütun (Opsiyonel):", self.cmb_secondary_fonk_field)
 
         self.cmb_sinir_layer = QgsMapLayerComboBox()
-        self.cmb_sinir_layer.setFilters(QgsMapLayerProxyModel.PolygonLayer)
+        self.cmb_sinir_layer.setFilters(QgsMapLayerProxyModel.Filter.PolygonLayer)
         self.cmb_sinir_layer.setAllowEmptyLayer(True)
         f_layout.addRow("Plan Onama Sınırı (Opsiyonel):", self.cmb_sinir_layer)
 
         self.cmb_yol_layer = QgsMapLayerComboBox()
-        self.cmb_yol_layer.setFilters(QgsMapLayerProxyModel.LineLayer)
+        self.cmb_yol_layer.setFilters(QgsMapLayerProxyModel.Filter.LineLayer)
         self.cmb_yol_layer.setAllowEmptyLayer(True)
         f_layout.addRow("Yol Aksları Katmanı (Opsiyonel):", self.cmb_yol_layer)
 
@@ -796,7 +798,7 @@ class TireNipDockWidget(QDockWidget):
             "İstihdam Dahil?", "m²/Çalışan", "Verim (0-1)",
             "Araç Dahil?", "Yaya Dahil?", "Araç (100m²)"
         ])
-        self.tbl_rules.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
+        self.tbl_rules.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
         self.tbl_rules.horizontalHeader().setStretchLastSection(True)
         self.tbl_rules.verticalHeader().setVisible(False)
         self.tbl_rules.setMinimumHeight(150)
@@ -814,9 +816,9 @@ class TireNipDockWidget(QDockWidget):
         self.tbl_benchmark.setHorizontalHeaderLabels([
             "Nüfus Niteliği / Kapsam", "Kentsel Merkez", "Kırsal Nüfus", "İlçe Toplamı"
         ])
-        self.tbl_benchmark.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.tbl_benchmark.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.tbl_benchmark.verticalHeader().setVisible(False)
-        self.tbl_benchmark.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.tbl_benchmark.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.tbl_benchmark.setMaximumHeight(140)
 
         bench_rows = [
@@ -880,25 +882,25 @@ class TireNipDockWidget(QDockWidget):
 
         # 1. Alt Sekme: ⚖️ Kamu-Özel & DOP Dengesi
         self.tbl_dop = QTableWidget()
-        self.tbl_dop.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.tbl_dop.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.tbl_dop.verticalHeader().setVisible(False)
         self.tabs_nip_results.addTab(self.tbl_dop, "⚖️ Kamu-Özel & DOP")
 
         # 2. Alt Sekme: 🏛️ Kent Karakteri Tablosu
         self.tbl_kent_karakter = QTableWidget()
-        self.tbl_kent_karakter.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.tbl_kent_karakter.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.tbl_kent_karakter.verticalHeader().setVisible(False)
         self.tabs_nip_results.addTab(self.tbl_kent_karakter, "🏛️ Kent Karakteri")
 
         # 3. Alt Sekme: 📋 MPYY Ek-2 Donatı Dengesi
         self.tbl_ek2 = QTableWidget()
-        self.tbl_ek2.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.tbl_ek2.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.tbl_ek2.verticalHeader().setVisible(False)
         self.tabs_nip_results.addTab(self.tbl_ek2, "📋 Ek-2 Donatı")
 
         # 4. Alt Sekme: 📊 Fonksiyon Dağılım Tablosu
         self.tbl_fonk_dagilim = QTableWidget()
-        self.tbl_fonk_dagilim.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.tbl_fonk_dagilim.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.tbl_fonk_dagilim.verticalHeader().setVisible(False)
         self.tabs_nip_results.addTab(self.tbl_fonk_dagilim, "📊 Fonksiyon Dağılımı")
 
@@ -1252,7 +1254,7 @@ class TireNipDockWidget(QDockWidget):
             for c_idx, val in enumerate(row):
                 item = QTableWidgetItem(str(val))
                 tbl.setItem(r_idx, c_idx, item)
-        tbl.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
+        tbl.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
         tbl.horizontalHeader().setStretchLastSection(True)
 
     def _populate_dop_table(self, dop: dict):
@@ -1442,8 +1444,8 @@ class TireNipDockWidget(QDockWidget):
                     it["ust_snr"] if it["ust_snr"] is not None else 0.0,
                     it["alt_nufus"],
                     it["ust_nufus"],
-                    it["km2_alt_nufus"] if it["km2_alt_nufus"] is not None else QVariant(),
-                    it["km2_ust_nufus"] if it["km2_ust_nufus"] is not None else QVariant(),
+                    it["km2_alt_nufus"] if it["km2_alt_nufus"] is not None else NULL,
+                    it["km2_ust_nufus"] if it["km2_ust_nufus"] is not None else NULL,
                     it["istihdam"],
                     it["gunluk_arac"],
                     it["gunluk_yaya"],
@@ -1858,11 +1860,11 @@ tr:hover {{ background: #f1f5f9; }}
         f_layout = QFormLayout(box_field)
 
         self.cmb_ada_layer = QgsMapLayerComboBox()
-        self.cmb_ada_layer.setFilters(QgsMapLayerProxyModel.PolygonLayer)
+        self.cmb_ada_layer.setFilters(QgsMapLayerProxyModel.Filter.PolygonLayer)
         f_layout.addRow("Kadastro / Saha Adaları:", self.cmb_ada_layer)
 
         self.cmb_bina_layer = QgsMapLayerComboBox()
-        self.cmb_bina_layer.setFilters(QgsMapLayerProxyModel.PolygonLayer)
+        self.cmb_bina_layer.setFilters(QgsMapLayerProxyModel.Filter.PolygonLayer)
         f_layout.addRow("Bina Katmanı (tire_bina):", self.cmb_bina_layer)
 
         self.spn_hh = QDoubleSpinBox()
@@ -2211,16 +2213,5 @@ tr:hover {{ background: #f1f5f9; }}
         self.last_field_out_layer.triggerRepaint()
         if self.iface and hasattr(self.iface, "layerTreeView") and self.iface.layerTreeView():
             self.iface.layerTreeView().refreshLayerSymbology(self.last_field_out_layer.id())
-
-    def _open_theoretical_guide(self):
-        """Metodoloji ve stüdyo el kitabını (HTML) varsayılan tarayıcıda açar."""
-        guide_path = os.path.join(PLUGIN_DIR, "docs", "teorik_rehber.html")
-        if os.path.exists(guide_path):
-            QDesktopServices.openUrl(QUrl.fromLocalFile(guide_path))
-        else:
-            QMessageBox.warning(
-                self, "Rehber Bulunamadı",
-                f"Metodoloji rehberi dosyası bulunamadı:\n{guide_path}"
-            )
 
 
