@@ -2947,6 +2947,18 @@ class TireNipDockWidget(QDockWidget):
         self.txt_erisme_distances = QLineEdit("250, 500, 1000")
         form_erisme.addRow("Erişim Mesafeleri (m, virgülle):", self.txt_erisme_distances)
 
+        self.cmb_erisme_method = QComboBox()
+        self.cmb_erisme_method.addItems([
+            "Dışbükey Gövde / Convex Hull (Model Standartı)",
+            "İçbükey Gövde / Concave Hull (Alfa Şekli)",
+            "Yol Koridoru Tamponu (Ribbon Buffer)"
+        ])
+        form_erisme.addRow("Havza Geometri Tipi:", self.cmb_erisme_method)
+
+        self.chk_erisme_dissolve = QCheckBox("Havzaları Tek Poligonda Birleştir (Dissolve)")
+        self.chk_erisme_dissolve.setChecked(True)
+        form_erisme.addRow("", self.chk_erisme_dissolve)
+
         lay_erisme.addLayout(form_erisme)
 
         self.btn_run_erisme = QPushButton("  🚶 Erişim Havzası Yol Ağını ve MPYY Tamponlarını Üret")
@@ -3088,6 +3100,8 @@ class TireNipDockWidget(QDockWidget):
                     'INPUT_FACILITIES': fac_layer,
                     'INPUT_ROADS': road_layer,
                     'DISTANCE': d,
+                    'HULL_METHOD': self.cmb_erisme_method.currentIndex(),
+                    'DISSOLVE_POLYGONS': self.chk_erisme_dissolve.isChecked(),
                     'CALCULATE_NETWORK': True,
                     'CALCULATE_BUFFER': True,
                     'OUTPUT_SERVICE_ROADS': 'TEMPORARY_OUTPUT',
