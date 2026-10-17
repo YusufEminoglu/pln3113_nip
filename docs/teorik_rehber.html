@@ -389,6 +389,22 @@
             margin-top: 40px;
         }
 
+        .link-btn {
+            display: inline-block;
+            background: var(--primary);
+            color: white;
+            padding: 6px 14px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 600;
+            text-decoration: none;
+            transition: background 0.15s ease;
+        }
+        .link-btn:hover {
+            background: var(--primary-dark);
+            color: white;
+        }
+
         @media (max-width: 960px) {
             .container {
                 flex-direction: column;
@@ -445,6 +461,7 @@
                 <li><a href="#bolum6">📐 6. Morfoloji: TAKS, KAKS, Spacematrix</a></li>
                 <li><a href="#bolum7">🏠 7. Mevcut Saha & Fiili Nüfus</a></li>
                 <li><a href="#bolum8">🎓 8. Stüdyo & Jüri Teslim İpuçları</a></li>
+                <li class="highlight"><a href="#bolum9">📜 9. Resmî Mevzuat & Standartlar</a></li>
             </ul>
         </div>
     </aside>
@@ -1241,6 +1258,65 @@
                     ödev raporunuzun ekler kısmına ve sunum paftanızın analiz tabloları bölümüne doğrudan yapıştırın.
                 </li>
             </ol>
+        </section>
+
+        <!-- BÖLÜM 9: RESMÎ MEVZUAT VE BAKANLIK STANDARTLARI -->
+        <section class="card" id="bolum9">
+            <h2>📜 9. Resmî Mevzuat, Yönetmelik ve Bakanlık Standartları Bağlantıları</h2>
+
+            <div class="callout callout-info">
+                <div class="callout-title">🏛️ Yasal Dayanak ve Resmî Kılavuz Belgeler</div>
+                PLN3113 Şehir Planlama Projesi kapsamında hazırlanan Nazım İmar Planı (NİP) kararları, nüfus kestirimleri,
+                donatı hesabı ve kentsel dönüşüm parametrelerinin dayandığı yürürlükteki temel ulusal mevzuat metinlerine
+                ve resmî standart kılavuzlarına aşağıdaki resmî bağlantılardan doğrudan erişebilirsiniz:
+            </div>
+
+            <div class="table-container" style="margin-top: 20px;">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 25%;">Mevzuat / Standart Adı</th>
+                            <th style="width: 20%;">Resmî Kaynak</th>
+                            <th style="width: 40%;">Planlama Açısından Önemi ve İlgili Hükümler</th>
+                            <th style="width: 15%; text-align: center;">Resmî Bağlantı</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>Mekânsal Planlar Yapım Yönetmeliği (MPYY)</strong></td>
+                            <td>T.C. Cumhurbaşkanlığı Mevzuat Bilgi Sistemi</td>
+                            <td>Plan kademelenmesi, Nazım İmar Planı ilkeleri ve <strong>Ek-2 Kentsel Sosyal ve Teknik Altyapı Asgari Standartları Tablosu</strong> (Kişi başı m² donatı normları).</td>
+                            <td style="text-align: center;">
+                                <a href="https://www.mevzuat.gov.tr/mevzuat?MevzuatNo=19788&MevzuatTur=7&MevzuatTertip=5" target="_blank" rel="noopener noreferrer" class="link-btn">Mevzuata Git &rarr;</a>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><strong>Planlı Alanlar İmar Yönetmeliği (PAİY)</strong></td>
+                            <td>T.C. Cumhurbaşkanlığı Mevzuat Bilgi Sistemi</td>
+                            <td>Yapılaşma koşulları, <strong>TAKS, KAKS (Emsal), taban alanı, yapı yaklaşma (çekme) mesafeleri, kat yükseklikleri</strong> ve parsel içi açık alan oranları.</td>
+                            <td style="text-align: center;">
+                                <a href="https://www.mevzuat.gov.tr/mevzuat?MevzuatNo=23722&MevzuatTur=7&MevzuatTertip=5" target="_blank" rel="noopener noreferrer" class="link-btn">Mevzuata Git &rarr;</a>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><strong>3194 Sayılı İmar Kanunu</strong></td>
+                            <td>T.C. Cumhurbaşkanlığı Mevzuat Bilgi Sistemi</td>
+                            <td>Özellikle <strong>Madde 18: Düzenleme Ortaklık Payı (DOP)</strong> uygulaması, azami %45 yasal tavan kesinti sınırı, kamu ortak alanlarına terkler ve parselasyon esasları.</td>
+                            <td style="text-align: center;">
+                                <a href="https://www.mevzuat.gov.tr/mevzuat?MevzuatNo=3194&MevzuatTur=1&MevzuatTertip=5" target="_blank" rel="noopener noreferrer" class="link-btn">Mevzuata Git &rarr;</a>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><strong>MPGM Resmî Plan Gösterimleri</strong></td>
+                            <td>T.C. Çevre, Şehircilik ve İklim Değişikliği Bakanlığı (MPGM)</td>
+                            <td>Mekânsal Planlar resmî <strong>çizim ve gösterim (lejant) standartları</strong>, Ek-1e semboloji kılavuzları, renk kodları ve vektörel plan çizim kuralları.</td>
+                            <td style="text-align: center;">
+                                <a href="https://mpgm.csb.gov.tr/plan-gosterimleri-4926" target="_blank" rel="noopener noreferrer" class="link-btn">Rehbere Git &rarr;</a>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
         </section>
 
     </main>

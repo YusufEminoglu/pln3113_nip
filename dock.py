@@ -6,6 +6,7 @@ PLN3113 - tire_nip
 """
 from __future__ import annotations
 
+import contextlib
 import csv
 import os
 from qgis.PyQt.QtCore import QSize, Qt, QUrl, QVariant
@@ -17,6 +18,7 @@ from qgis.PyQt.QtWidgets import (
     QFileDialog,
     QFormLayout,
     QFrame,
+    QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QHeaderView,
@@ -49,9 +51,12 @@ from qgis.core import (
     QgsGeometry,
     QgsGraduatedSymbolRenderer,
     QgsMapLayerProxyModel,
+    QgsMarkerSymbol,
+    QgsPointXY,
     QgsProject,
     QgsRendererCategory,
     QgsRendererRange,
+    QgsSingleSymbolRenderer,
     QgsVectorLayer,
     QgsWkbTypes
 )
@@ -170,14 +175,6 @@ class TireNipDockWidget(QDockWidget):
         header_layout.addLayout(title_box)
         header_layout.addStretch()
 
-        self.btn_open_guide = QToolButton()
-        self.btn_open_guide.setObjectName("nipHeaderGuideBtn")
-        self.btn_open_guide.setText("📚 Metodoloji")
-        self.btn_open_guide.setCursor(_POINTING_HAND)
-        self.btn_open_guide.setToolTip("A'dan Z'ye NİP nüfus, donatı, DOP ve ulaşım teorik metodoloji el kitabını tarayıcıda açar.")
-        self.btn_open_guide.clicked.connect(self._open_theoretical_guide)
-        header_layout.addWidget(self.btn_open_guide)
-
         main_layout.addWidget(header_frame)
 
         # 2. BODY SPLIT: VERTICAL NAV RAIL + CONTENT STACK
@@ -246,7 +243,7 @@ class TireNipDockWidget(QDockWidget):
             QMessageBox.warning(self, "Uyarı", f"Metodoloji rehberi dosyası bulunamadı:\n{guide_path}")
 
     def _create_tab_guide(self) -> QWidget:
-        """Metodoloji ve Mevzuat El Kitabı sayfası."""
+        """Metodoloji, Resmî Mevzuat ve El Kitabı sayfası."""
         page = QWidget()
         layout = QVBoxLayout(page)
         layout.setContentsMargins(4, 4, 4, 4)
@@ -276,6 +273,43 @@ class TireNipDockWidget(QDockWidget):
         btn_launch.clicked.connect(self._open_theoretical_guide)
         intro_lay.addWidget(btn_launch)
         layout.addWidget(card_intro)
+
+        # Resmî Mevzuat ve Bakanlık Standartları Bağlantıları Kartı
+        box_links = QGroupBox("Resmî Mevzuat, Yönetmelik ve Bakanlık Standartları")
+        links_lay = QVBoxLayout(box_links)
+        links_lay.setSpacing(6)
+
+        links_data = [
+            (
+                "📜 Mekânsal Planlar Yapım Yönetmeliği (MPYY)",
+                "https://www.mevzuat.gov.tr/mevzuat?MevzuatNo=19788&MevzuatTur=7&MevzuatTertip=5",
+                "Asgari kişi başı kentsel donatı standartları (Ek-2 tablosu) ve plan yapım ilkeleri."
+            ),
+            (
+                "🏢 Planlı Alanlar İmar Yönetmeliği (PAİY)",
+                "https://www.mevzuat.gov.tr/mevzuat?MevzuatNo=23722&MevzuatTur=7&MevzuatTertip=5",
+                "Yapılaşma şartları, TAKS, KAKS, emsal hesabı, kat yükseklikleri ve bina çekme mesafesi kuralları."
+            ),
+            (
+                "⚖️ 3194 Sayılı İmar Kanunu (Madde 18 - DOP)",
+                "https://www.mevzuat.gov.tr/mevzuat?MevzuatNo=3194&MevzuatTur=1&MevzuatTertip=5",
+                "Arazi ve arsa düzenlemesi, Düzenleme Ortaklık Payı (%45 yasal tavan) ve kamuya terk edilecek donatılar."
+            ),
+            (
+                "🎨 Bakanlık Resmî Plan Gösterimleri (MPGM)",
+                "https://mpgm.csb.gov.tr/plan-gosterimleri-4926",
+                "Çevre, Şehircilik ve İklim Değişikliği Bakanlığı resmî gösterim (lejant) standartları ve renk kodları."
+            )
+        ]
+
+        for title, url, desc in links_data:
+            btn_link = QPushButton(f"  {title}")
+            btn_link.setCursor(_POINTING_HAND)
+            btn_link.setToolTip(f"{desc}\n\nResmî bağlantıyı tarayıcıda aç: {url}")
+            btn_link.clicked.connect(lambda checked=False, target_url=url: QDesktopServices.openUrl(QUrl(target_url)))
+            links_lay.addWidget(btn_link)
+
+        layout.addWidget(box_links)
 
         # Quick reference cards
         box_ek2 = QGroupBox("1. MPYY Ek-2 Kentsel Donatı Standartları (Kişi Başı m²)")
@@ -324,54 +358,271 @@ class TireNipDockWidget(QDockWidget):
         return page
 
     # -----------------------------------------------------------------
-    # SEKME 1: GEOMETRİ & DUPLİKE TEMİZLEME
+    # SEKME 1: GEOMETRİ & DUPLİKE TEMİZLEME (HİYERARŞİK KURGU)
     # -----------------------------------------------------------------
     def _create_tab_cleaner(self) -> QWidget:
         tab = QWidget()
         layout = QVBoxLayout(tab)
+        layout.setContentsMargins(4, 4, 4, 4)
+        layout.setSpacing(8)
 
-        box_input = QGroupBox("Girdi Katmanı Seçimi")
+        # Girdi Katmanı Seçimi
+        box_input = QGroupBox("Girdi Poligon Katmanı Seçimi")
         box_layout = QVBoxLayout(box_input)
 
-        lbl = QLabel("Temizlenecek Poligon Katmanı (Örn: nipt_test.gpkg):")
+        lbl = QLabel("Temizlenecek ve Denetlenecek Poligon Katmanı (Örn: nipt_test.gpkg):")
         box_layout.addWidget(lbl)
 
         self.cmb_clean_layer = QgsMapLayerComboBox()
         self.cmb_clean_layer.setFilters(QgsMapLayerProxyModel.PolygonLayer)
         box_layout.addWidget(self.cmb_clean_layer)
-
-        info_lbl = QLabel(
-            "<b>İşlem Kapsamı:</b><br>"
-            "• Kendini kesen veya hatalı halkaları (Self-intersection / Ring-crossing) <code>makeValid</code> ile onarır.<br>"
-            "• Üst üste binen aynı geometriye sahip mükerrer (duplike) poligonları tespit edip tekilleştirir.<br>"
-            "• Orijinal katmanınıza dokunmaz, temiz ve analiz hazır yeni bir katman üretir."
-        )
-        info_lbl.setWordWrap(True)
-        info_lbl.setStyleSheet("color: #475569; font-size: 11px; background: #f1f5f9; padding: 8px; border-radius: 4px;")
-        box_layout.addWidget(info_lbl)
-
         layout.addWidget(box_input)
 
-        self.btn_run_clean = QPushButton("  Geometriyi Onar ve Duplikeleri Ayıkla")
-        self.btn_run_clean.setObjectName("CleanButton")
+        # 1. Aşama: Topoloji ve Hata Denetimi (Check Validity)
+        box_check = QGroupBox("1. Aşama: Topoloji ve Hata Denetimi (Check Validity)")
+        check_layout = QVBoxLayout(box_check)
+
+        info_check = QLabel(
+            "Orijinal katmana müdahale etmeden QGIS Core geometri geçerlilik algoritmasını çalıştırır; "
+            "kendini kesen halkaları (self-intersection), hatalı düğüm noktalarını ve mükerrer poligonları tespit eder."
+        )
+        info_check.setWordWrap(True)
+        info_check.setStyleSheet("color: #475569; font-size: 8pt;")
+        check_layout.addWidget(info_check)
+
+        self.btn_run_check_validity = QPushButton("  🔍 Geometri Geçerliliğini ve Hataları Denetle")
+        self.btn_run_check_validity.setObjectName("CleanButton")
+        self.btn_run_check_validity.setCursor(_POINTING_HAND)
+        self.btn_run_check_validity.clicked.connect(self._run_geometry_check_validity)
+        check_layout.addWidget(self.btn_run_check_validity)
+
+        # 4 Mini Dashboard Kartı (Grid)
+        grid_metrics = QGridLayout()
+        grid_metrics.setSpacing(6)
+
+        self.lbl_metric_total = QLabel("Toplam: -")
+        self.lbl_metric_total.setStyleSheet("background: #f1f5f9; padding: 6px; border-radius: 6px; font-weight: 600;")
+        self.lbl_metric_total.setAlignment(_ALIGN_CENTER)
+
+        self.lbl_metric_invalid = QLabel("Geçersiz: -")
+        self.lbl_metric_invalid.setStyleSheet("background: #fee2e2; color: #b91c1c; padding: 6px; border-radius: 6px; font-weight: 700;")
+        self.lbl_metric_invalid.setAlignment(_ALIGN_CENTER)
+
+        self.lbl_metric_duplicate = QLabel("Mükerrer: -")
+        self.lbl_metric_duplicate.setStyleSheet("background: #fef3c7; color: #b45309; padding: 6px; border-radius: 6px; font-weight: 700;")
+        self.lbl_metric_duplicate.setAlignment(_ALIGN_CENTER)
+
+        self.lbl_metric_valid = QLabel("Geçerli: -")
+        self.lbl_metric_valid.setStyleSheet("background: #dcfce7; color: #15803d; padding: 6px; border-radius: 6px; font-weight: 700;")
+        self.lbl_metric_valid.setAlignment(_ALIGN_CENTER)
+
+        grid_metrics.addWidget(self.lbl_metric_total, 0, 0)
+        grid_metrics.addWidget(self.lbl_metric_invalid, 0, 1)
+        grid_metrics.addWidget(self.lbl_metric_duplicate, 0, 2)
+        grid_metrics.addWidget(self.lbl_metric_valid, 0, 3)
+        check_layout.addLayout(grid_metrics)
+
+        # Hata Listesi Tablosu
+        self.tbl_clean_errors = QTableWidget()
+        self.tbl_clean_errors.setColumnCount(4)
+        self.tbl_clean_errors.setHorizontalHeaderLabels(["FID", "Hata Türü", "Detay / Açıklama", "Konum (X, Y)"])
+        self.tbl_clean_errors.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        self.tbl_clean_errors.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        self.tbl_clean_errors.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        self.tbl_clean_errors.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        self.tbl_clean_errors.setMinimumHeight(130)
+        self.tbl_clean_errors.setMaximumHeight(180)
+        self.tbl_clean_errors.cellClicked.connect(self._on_clean_error_row_clicked)
+        check_layout.addWidget(self.tbl_clean_errors)
+
+        lbl_zoom_hint = QLabel("💡 <i>Tablodaki herhangi bir hata satırına tıklayarak harita tuvalinde doğrudan o geometriye odaklanabilirsiniz.</i>")
+        lbl_zoom_hint.setStyleSheet("color: #64748b; font-size: 7.5pt;")
+        check_layout.addWidget(lbl_zoom_hint)
+
+        self.btn_add_error_points = QPushButton("  📍 Hata Noktalarını Haritaya Ekle (Point Layer)")
+        self.btn_add_error_points.setCursor(_POINTING_HAND)
+        self.btn_add_error_points.setEnabled(False)
+        self.btn_add_error_points.clicked.connect(self._add_error_points_to_map)
+        check_layout.addWidget(self.btn_add_error_points)
+
+        layout.addWidget(box_check)
+
+        # 2. Aşama: Akıllı Onarım ve Tekilleştirme (Fix & Deduplicate)
+        box_fix = QGroupBox("2. Aşama: Akıllı Onarım ve Tekilleştirme (Fix & Deduplicate)")
+        fix_layout = QVBoxLayout(box_fix)
+
+        info_fix = QLabel(
+            "Bozuk geometrileri <code>makeValid()</code> ve sıfır-tampon motoruyla onarır, "
+            "aynı alanı kaplayan mükerrer poligonları tekilleştirir. Temiz katman üretilerek "
+            "2. Sekme (NİP Analizi) için otomatik atanır."
+        )
+        info_fix.setWordWrap(True)
+        info_fix.setStyleSheet("color: #475569; font-size: 8pt;")
+        fix_layout.addWidget(info_fix)
+
+        self.btn_run_clean = QPushButton("  ⚡ Geometriyi Otomatik Onar ve Duplikeleri Ayıkla")
+        self.btn_run_clean.setObjectName("PrimaryButton")
+        self.btn_run_clean.setCursor(_POINTING_HAND)
         clean_icon_path = os.path.join(PLUGIN_DIR, "icons", "clean.png")
         if os.path.exists(clean_icon_path):
             self.btn_run_clean.setIcon(QIcon(clean_icon_path))
         self.btn_run_clean.clicked.connect(self._run_geometry_clean)
-        layout.addWidget(self.btn_run_clean)
+        fix_layout.addWidget(self.btn_run_clean)
 
         self.clean_progress = QProgressBar()
         self.clean_progress.setVisible(False)
-        layout.addWidget(self.clean_progress)
+        fix_layout.addWidget(self.clean_progress)
 
         self.txt_clean_log = QTextEdit()
         self.txt_clean_log.setReadOnly(True)
-        self.txt_clean_log.setMaximumHeight(160)
-        self.txt_clean_log.setPlaceholderText("Temizleme işlem sonuçları burada listelenecektir...")
-        layout.addWidget(self.txt_clean_log)
+        self.txt_clean_log.setMaximumHeight(130)
+        self.txt_clean_log.setPlaceholderText("Onarım ve temizleme işlem sonuçları burada özetlenecektir...")
+        fix_layout.addWidget(self.txt_clean_log)
 
+        layout.addWidget(box_fix)
         layout.addStretch()
         return tab
+
+    def _run_geometry_check_validity(self):
+        """1. Aşama: Katmanda geometri geçerlilik denetimi ve duplike taraması yapar."""
+        layer = self.cmb_clean_layer.currentLayer()
+        if not layer or not isinstance(layer, QgsVectorLayer):
+            QMessageBox.warning(self, "Uyarı", "Lütfen denetlenecek geçerli bir poligon katmanı seçin!")
+            return
+
+        self.btn_run_check_validity.setEnabled(False)
+        self.tbl_clean_errors.setRowCount(0)
+        try:
+            stats = GeometryCleanerEngine.check_validity(layer)
+            self._last_validity_errors = stats.get("hatalar", [])
+
+            self.lbl_metric_total.setText(f"Toplam: {stats['toplam_girdi']:,}")
+            self.lbl_metric_invalid.setText(f"Geçersiz: {stats['gecersiz_adet']:,}")
+            self.lbl_metric_duplicate.setText(f"Mükerrer: {stats['duplike_adet']:,}")
+            self.lbl_metric_valid.setText(f"Geçerli: {stats['gecerli_adet']:,}")
+
+            hatalar = stats.get("hatalar", [])
+            self.tbl_clean_errors.setRowCount(len(hatalar))
+
+            for r_idx, h in enumerate(hatalar):
+                item_fid = QTableWidgetItem(str(h["fid"]))
+                item_fid.setFlags(item_fid.flags() & ~_ITEM_EDITABLE)
+
+                item_tur = QTableWidgetItem(h["hata_turu"])
+                item_tur.setFlags(item_tur.flags() & ~_ITEM_EDITABLE)
+                if "Geçersiz" in h["hata_turu"]:
+                    item_tur.setForeground(QColor("#dc2626"))
+                elif "Mükerrer" in h["hata_turu"]:
+                    item_tur.setForeground(QColor("#d97706"))
+
+                item_detay = QTableWidgetItem(h["detay"])
+                item_detay.setFlags(item_detay.flags() & ~_ITEM_EDITABLE)
+
+                coord_txt = f"{h['x']:.2f}, {h['y']:.2f}" if (h.get("x") is not None and h.get("y") is not None) else "-"
+                item_coord = QTableWidgetItem(coord_txt)
+                item_coord.setFlags(item_coord.flags() & ~_ITEM_EDITABLE)
+
+                self.tbl_clean_errors.setItem(r_idx, 0, item_fid)
+                self.tbl_clean_errors.setItem(r_idx, 1, item_tur)
+                self.tbl_clean_errors.setItem(r_idx, 2, item_detay)
+                self.tbl_clean_errors.setItem(r_idx, 3, item_coord)
+
+            has_errors = len(hatalar) > 0
+            self.btn_add_error_points.setEnabled(has_errors)
+
+            if has_errors:
+                QMessageBox.warning(
+                    self, "Geometri Denetim Raporu",
+                    f"'{layer.name()}' katmanında ({stats['toplam_girdi']:,} obje):\n\n"
+                    f"• {stats['gecersiz_adet']:,} adet geçersiz geometri tespit edildi.\n"
+                    f"• {stats['duplike_adet']:,} adet mükerrer (duplike) poligon tespit edildi.\n\n"
+                    f"Hatalar aşağıdaki tabloda listelendi. Detayları harita üzerinde incelemek için "
+                    f"tablodaki satırlara tıklayabilir veya 'Hata Noktalarını Haritaya Ekle' butonunu kullanabilirsiniz."
+                )
+            else:
+                QMessageBox.information(
+                    self, "Geometri Kusursuz",
+                    f"Tebrikler! '{layer.name()}' katmanındaki tüm poligonlar ({stats['toplam_girdi']:,} obje) "
+                    f"topolojik olarak geçerlidir ve hiçbir mükerrer geometri bulunmamaktadır."
+                )
+        except Exception as e:
+            QMessageBox.critical(self, "Hata", f"Geometri denetimi sırasında hata oluştu:\n{str(e)}")
+        finally:
+            self.btn_run_check_validity.setEnabled(True)
+
+    def _on_clean_error_row_clicked(self, row: int, col: int):
+        """Hata satırına tıklandığında harita tuvalinde ilgili geometriye/noktaya zoom yapar."""
+        fid_item = self.tbl_clean_errors.item(row, 0)
+        layer = self.cmb_clean_layer.currentLayer()
+        if not fid_item or not layer or not isinstance(layer, QgsVectorLayer):
+            return
+        with contextlib.suppress(Exception):
+            fid = int(fid_item.text())
+            feat = layer.getFeature(fid)
+            if feat and feat.geometry() and not feat.geometry().isEmpty():
+                box = feat.geometry().boundingBox()
+                box.grow(box.width() * 0.35 if box.width() > 0 else 25.0)
+                if self.iface:
+                    self.iface.mapCanvas().setExtent(box)
+                    self.iface.mapCanvas().refresh()
+
+
+    def _add_error_points_to_map(self):
+        """Tespit edilen hata noktalarını haritaya kırmızı ikaz sembolojisiyle bellek katmanı olarak ekler."""
+        if not hasattr(self, "_last_validity_errors") or not self._last_validity_errors:
+            QMessageBox.information(self, "Bilgi", "Haritaya eklenecek bir geometri hatası bulunamadı.")
+            return
+
+        layer = self.cmb_clean_layer.currentLayer()
+        crs_auth = layer.crs().authid() if layer else "EPSG:5637"
+        err_layer = QgsVectorLayer(f"Point?crs={crs_auth}", f"{layer.name() if layer else 'Plan'}_GEOMETRI_HATALARI", "memory")
+        prov = err_layer.dataProvider()
+        prov.addAttributes([
+            QgsField("hata_no", QVariant.Int),
+            QgsField("poligon_fid", QVariant.Int),
+            QgsField("hata_turu", QVariant.String),
+            QgsField("detay", QVariant.String),
+        ])
+        err_layer.updateFields()
+
+        feats = []
+        for idx, h in enumerate(self._last_validity_errors):
+            x = h.get("x")
+            y = h.get("y")
+            if x is not None and y is not None:
+                pt_feat = QgsFeature(err_layer.fields())
+                pt_feat.setGeometry(QgsGeometry.fromPointXY(QgsPointXY(x, y)))
+                pt_feat.setAttribute("hata_no", idx + 1)
+                pt_feat.setAttribute("poligon_fid", h["fid"])
+                pt_feat.setAttribute("hata_turu", h["hata_turu"])
+                pt_feat.setAttribute("detay", h["detay"])
+                feats.append(pt_feat)
+
+        if not feats:
+            QMessageBox.warning(self, "Uyarı", "Hatalar arasında koordinatı belirlenebilen nokta bulunamadı.")
+            return
+
+        prov.addFeatures(feats)
+        err_layer.updateExtents()
+
+        symbol = QgsMarkerSymbol.createSimple({
+            "name": "circle",
+            "color": "#dc2626",
+            "outline_color": "#ffffff",
+            "outline_width": "0.8",
+            "size": "4.5"
+        })
+        err_layer.setRenderer(QgsSingleSymbolRenderer(symbol))
+        QgsProject.instance().addMapLayer(err_layer)
+
+        if self.iface:
+            self.iface.mapCanvas().setExtent(err_layer.extent())
+            self.iface.mapCanvas().refresh()
+
+        QMessageBox.information(
+            self, "Hata Noktaları Eklendi",
+            f"Toplam {len(feats)} adet geometri hata noktası haritaya '<b>{err_layer.name()}</b>' katmanı olarak eklendi."
+        )
 
     def _run_geometry_clean(self):
         layer = self.cmb_clean_layer.currentLayer()
@@ -445,6 +696,7 @@ class TireNipDockWidget(QDockWidget):
         finally:
             self.btn_run_clean.setEnabled(True)
             self.clean_progress.setVisible(False)
+
 
     # -----------------------------------------------------------------
     # SEKME 2: NİP PLAN NÜFUSU, DONATI, KAMU-ÖZEL & DOP ANALİZİ
