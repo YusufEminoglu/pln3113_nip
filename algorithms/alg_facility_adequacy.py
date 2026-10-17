@@ -41,6 +41,7 @@ class FacilityAdequacyAlgorithm(PlanXBaseAlgorithm):
     FACILITIES = "FACILITIES"
     FACILITY_ID = "FACILITY_ID"
     CAPACITY_FIELD = "CAPACITY_FIELD"
+    DEFAULT_CAPACITY = "DEFAULT_CAPACITY"
     MAX_COST = "MAX_COST"
     FCA_DECAY = "FCA_DECAY"
     OUT_FACILITIES = "OUT_FACILITIES"
@@ -74,16 +75,20 @@ class FacilityAdequacyAlgorithm(PlanXBaseAlgorithm):
         self.addParameter(QgsProcessingParameterField(
             self.POP_FIELD, self.tr("Nüfus Alanı (Boşsa her nokta 1 kişi)"),
             parentLayerParameterName=self.DEMAND, optional=True,
-            type=QgsProcessingParameterField.DataType.Numeric))
+            type=QgsProcessingParameterField.DataType.Any))
         self.addParameter(QgsProcessingParameterFeatureSource(
             self.FACILITIES, self.tr("Donatı / Tesis Noktaları"), [QgsProcessing.SourceType.TypeVectorAnyGeometry]))
         self.addParameter(QgsProcessingParameterField(
             self.FACILITY_ID, self.tr("Donatı Ad / Kimlik Alanı"),
-            parentLayerParameterName=self.FACILITIES, optional=True))
+            parentLayerParameterName=self.FACILITIES, optional=True,
+            type=QgsProcessingParameterField.DataType.Any))
         self.addParameter(QgsProcessingParameterField(
             self.CAPACITY_FIELD, self.tr("Donatı Kapasite Alanı (Kişi, Yatak, m² vb.)"),
             parentLayerParameterName=self.FACILITIES, optional=True,
-            type=QgsProcessingParameterField.DataType.Numeric))
+            type=QgsProcessingParameterField.DataType.Any))
+        self.addParameter(QgsProcessingParameterNumber(
+            self.DEFAULT_CAPACITY, self.tr("Varsayılan Donatı Kapasitesi (Kapasite alanı seçilmediğinde)"),
+            QgsProcessingParameterNumber.Type.Double, 100.0, minValue=1.0, optional=True))
         self.addParameter(QgsProcessingParameterNumber(
             self.MAX_COST, self.tr("Maksimum Yürüme / Servis Havzası Mesafesi (metre)"),
             QgsProcessingParameterNumber.Type.Double, 800.0, minValue=10.0))
@@ -104,6 +109,9 @@ class FacilityAdequacyAlgorithm(PlanXBaseAlgorithm):
         pop_field = self.parameterAsString(parameters, self.POP_FIELD, context)
         fac_id = self.parameterAsString(parameters, self.FACILITY_ID, context)
         cap_field = self.parameterAsString(parameters, self.CAPACITY_FIELD, context)
+        default_cap = self.parameterAsDouble(parameters, self.DEFAULT_CAPACITY, context) if self.DEFAULT_CAPACITY in parameters else 100.0
+        if default_cap <= 0:
+            default_cap = 100.0
         max_cost = self.parameterAsDouble(parameters, self.MAX_COST, context)
         fca_decay = self.parameterAsDouble(parameters, self.FCA_DECAY, context)
 
@@ -136,22 +144,34 @@ class FacilityAdequacyAlgorithm(PlanXBaseAlgorithm):
                 return 1.0
             try:
                 v = feat.attributes()[pop_idx]
-                return max(0.0, float(v)) if v is not None else 0.0
+                if v is None or str(v).strip() == "":
+                    return 1.0
+                return max(0.0, float(v))
             except (TypeError, ValueError):
-                return 0.0
+                return 1.0
 
-        f_ids = [str(f.attributes()[fid_idx]) if fid_idx >= 0 else str(i + 1) for i, f in enumerate(f_feats)]
+        f_ids = []
+        for i, f in enumerate(f_feats):
+            val = f.attributes()[fid_idx] if fid_idx >= 0 else None
+            if val is not None and str(val).strip() != "":
+                f_ids.append(str(val))
+            else:
+                f_ids.append(f"Donati_{i + 1}")
+
         populations = np.asarray([pop_of(feature) for feature in d_feats], dtype=float)
         capacity_values = []
         for i, feature in enumerate(f_feats):
             if cap_idx >= 0:
                 try:
                     v = feature.attributes()[cap_idx]
-                    capacity_values.append(max(0.0, float(v)) if v is not None else 100.0)
+                    if v is None or str(v).strip() == "":
+                        capacity_values.append(default_cap)
+                    else:
+                        capacity_values.append(max(1.0, float(v)))
                 except (TypeError, ValueError):
-                    capacity_values.append(100.0)
+                    capacity_values.append(default_cap)
             else:
-                capacity_values.append(100.0)
+                capacity_values.append(default_cap)
 
         # Facility to demand distance matrix (f x d)
         facility_dist = paths.many_to_many(

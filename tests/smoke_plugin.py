@@ -550,7 +550,7 @@ def test_planx_network_suite():
     })
     ok_iso = res_iso["AREAS"].isValid() and res_iso["SUMMARY"].isValid()
 
-    # 5. 2SFCA Yeterlilik
+    # 5. 2SFCA Yeterlilik (hem açık alanlar hem de varsayılan değerlerle)
     res_fca = processing.run("pln3113:nip_2sfca_yeterlilik", {
         "NETWORK": road_lyr,
         "FACILITIES": fac_lyr,
@@ -562,7 +562,20 @@ def test_planx_network_suite():
         "OUT_FACILITIES": "memory:fca_fac",
         "OUT_DEMAND": "memory:fca_dem"
     })
-    ok_fca = res_fca["OUT_FACILITIES"].isValid() and res_fca["OUT_DEMAND"].isValid()
+    res_fca_def = processing.run("pln3113:nip_2sfca_yeterlilik", {
+        "NETWORK": road_lyr,
+        "FACILITIES": fac_lyr,
+        "DEMAND": dem_lyr,
+        "MAX_COST": 800.0,
+        "OUT_FACILITIES": "memory:fca_fac_def",
+        "OUT_DEMAND": "memory:fca_dem_def"
+    })
+    ok_fca = (
+        res_fca["OUT_FACILITIES"].isValid()
+        and res_fca["OUT_DEMAND"].isValid()
+        and res_fca_def["OUT_FACILITIES"].isValid()
+        and res_fca_def["OUT_DEMAND"].isValid()
+    )
 
     # 6. Scenario Compare
     res_scen = processing.run("pln3113:nip_scenario_compare", {

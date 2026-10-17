@@ -67,7 +67,7 @@ from qgis.core import (
     QgsSingleSymbolRenderer,
     QgsVectorLayer
 )
-from qgis.gui import QgsMapLayerComboBox, QgsProjectionSelectionWidget
+from qgis.gui import QgsFieldComboBox, QgsMapLayerComboBox, QgsProjectionSelectionWidget
 
 from .core.cleaner import GeometryCleanerEngine
 from .core.field_estimator import FieldEstimatorEngine
@@ -85,6 +85,7 @@ from .core.symbology_manager import (
     apply_mpyy_qml_style,
     style_detour_barrier,
     style_facility_adequacy_points,
+    style_fca_demand_points,
     style_front_facade,
     style_isochrone_bands,
     style_od_and_centrality,
@@ -3108,25 +3109,45 @@ class TireNipDockWidget(QDockWidget):
         self.cmb_fca_facilities.setFilters(QgsMapLayerProxyModel.Filter.PointLayer | QgsMapLayerProxyModel.Filter.PolygonLayer)
         f_fca.addRow("Donatı Katmanı (Okul, Sağlık):", self.cmb_fca_facilities)
 
-        self.txt_fca_cap_field = QLineEdit("kapasite")
-        f_fca.addRow("Kapasite Alan Adı:", self.txt_fca_cap_field)
+        self.cmb_fca_id_field = QgsFieldComboBox()
+        self.cmb_fca_id_field.setAllowEmptyFieldName(True)
+        f_fca.addRow("Donatı Ad / Kimlik Sütunu:", self.cmb_fca_id_field)
+
+        self.cmb_fca_cap_field = QgsFieldComboBox()
+        self.cmb_fca_cap_field.setAllowEmptyFieldName(True)
+        f_fca.addRow("Kapasite Sütunu (Boşsa Sabit):", self.cmb_fca_cap_field)
+
+        self.spn_fca_default_cap = QDoubleSpinBox()
+        self.spn_fca_default_cap.setRange(1.0, 1000000.0)
+        self.spn_fca_default_cap.setValue(100.0)
+        self.spn_fca_default_cap.setSuffix(" birim/öğrenci")
+        f_fca.addRow("Varsayılan Kapasite (Sütun Boşsa):", self.spn_fca_default_cap)
 
         self.cmb_fca_demand = QgsMapLayerComboBox()
         self.cmb_fca_demand.setFilters(QgsMapLayerProxyModel.Filter.PointLayer | QgsMapLayerProxyModel.Filter.PolygonLayer)
         f_fca.addRow("Talep / Ada Nüfus Katmanı:", self.cmb_fca_demand)
 
-        self.txt_fca_pop_field = QLineEdit("nufus")
-        f_fca.addRow("Nüfus Alan Adı (Boşsa 1):", self.txt_fca_pop_field)
+        self.cmb_fca_pop_field = QgsFieldComboBox()
+        self.cmb_fca_pop_field.setAllowEmptyFieldName(True)
+        f_fca.addRow("Nüfus Sütunu (Boşsa 1 Kişi):", self.cmb_fca_pop_field)
 
         self.cmb_fca_roads = QgsMapLayerComboBox()
         self.cmb_fca_roads.setFilters(QgsMapLayerProxyModel.Filter.LineLayer)
         f_fca.addRow("Yol Ağı Katmanı:", self.cmb_fca_roads)
 
         self.spn_fca_cost = QDoubleSpinBox()
-        self.spn_fca_cost.setRange(100.0, 5000.0)
+        self.spn_fca_cost.setRange(50.0, 10000.0)
         self.spn_fca_cost.setValue(800.0)
         self.spn_fca_cost.setSuffix(" metre")
         f_fca.addRow("Maksimum Servis Mesafesi:", self.spn_fca_cost)
+
+        self.cmb_fca_facilities.layerChanged.connect(self._on_fca_fac_layer_changed)
+        self.cmb_fca_demand.layerChanged.connect(self._on_fca_dem_layer_changed)
+
+        if self.cmb_fca_facilities.currentLayer():
+            self._on_fca_fac_layer_changed(self.cmb_fca_facilities.currentLayer())
+        if self.cmb_fca_demand.currentLayer():
+            self._on_fca_dem_layer_changed(self.cmb_fca_demand.currentLayer())
 
         l_fca.addLayout(f_fca)
         lbl_fca_hint = QLabel("💡 E2SFCA yöntemiyle aşırı yüklü (Overloaded) ve hizmet alamayan (Uncovered) nüfus tespit edilir.")
@@ -3228,19 +3249,18 @@ class TireNipDockWidget(QDockWidget):
             self.btn_run_syntax.setEnabled(False)
             res = processing.run("pln3113:nip_space_syntax", params)
             out_id = res.get('OUTPUT')
-            if out_id:
-                layer = QgsProject.instance().mapLayer(out_id) if isinstance(out_id, str) and not os.path.exists(out_id) else QgsVectorLayer(str(out_id), f"Space Syntax ({road_layer.name()})", "ogr")
-                if layer and layer.isValid():
-                    layer.setName(f"Space Syntax - NAIN & NACH ({road_layer.name()})")
-                    style_space_syntax(layer, "NACH_R800")
-                    QgsProject.instance().addMapLayer(layer)
-                    QMessageBox.information(
-                        self, "Başarılı",
-                        f"Space Syntax (Açısal Segment Analizi) tamamlandı!\n"
-                        f"Aks Sayısı: {layer.featureCount()}\n"
-                        f"Hesaplanan Yarıçaplar: {radii}\n"
-                        f"Katman haritaya eklendi ve spektral NACH/NAIN renk skalasıyla stillendirildi."
-                    )
+            layer = self._to_vector_layer(out_id, f"Space Syntax ({road_layer.name()})")
+            if layer and layer.isValid():
+                layer.setName(f"Space Syntax - NAIN & NACH ({road_layer.name()})")
+                style_space_syntax(layer, "NACH_R800")
+                QgsProject.instance().addMapLayer(layer)
+                QMessageBox.information(
+                    self, "Başarılı",
+                    f"Space Syntax (Açısal Segment Analizi) tamamlandı!\n"
+                    f"Aks Sayısı: {layer.featureCount()}\n"
+                    f"Hesaplanan Yarıçaplar: {radii}\n"
+                    f"Katman haritaya eklendi ve spektral NACH/NAIN renk skalasıyla stillendirildi."
+                )
         except Exception as e:
             QMessageBox.critical(self, "Hata", f"Space Syntax analizi sırasında hata:\n{str(e)}")
         finally:
@@ -3265,18 +3285,16 @@ class TireNipDockWidget(QDockWidget):
             edges_out = res.get('EDGES')
             nodes_out = res.get('NODES')
 
-            if edges_out:
-                lyr = QgsProject.instance().mapLayer(edges_out) if isinstance(edges_out, str) and not os.path.exists(edges_out) else QgsVectorLayer(str(edges_out), f"Ağ Merkezilikleri - Akslar ({road_layer.name()})", "ogr")
-                if lyr and lyr.isValid():
-                    lyr.setName(f"Ağ Merkezilikleri - Akslar ({road_layer.name()})")
-                    style_od_and_centrality(centrality_layer=lyr)
-                    QgsProject.instance().addMapLayer(lyr)
+            lyr = self._to_vector_layer(edges_out, f"Ağ Merkezilikleri - Akslar ({road_layer.name()})")
+            if lyr and lyr.isValid():
+                lyr.setName(f"Ağ Merkezilikleri - Akslar ({road_layer.name()})")
+                style_od_and_centrality(centrality_layer=lyr)
+                QgsProject.instance().addMapLayer(lyr)
 
-            if nodes_out:
-                lyr = QgsProject.instance().mapLayer(nodes_out) if isinstance(nodes_out, str) and not os.path.exists(nodes_out) else QgsVectorLayer(str(nodes_out), f"Kavşak Merkezilikleri - Düğümler ({road_layer.name()})", "ogr")
-                if lyr and lyr.isValid():
-                    lyr.setName(f"Kavşak Merkezilikleri - Düğümler ({road_layer.name()})")
-                    QgsProject.instance().addMapLayer(lyr)
+            lyr_n = self._to_vector_layer(nodes_out, f"Kavşak Merkezilikleri - Düğümler ({road_layer.name()})")
+            if lyr_n and lyr_n.isValid():
+                lyr_n.setName(f"Kavşak Merkezilikleri - Düğümler ({road_layer.name()})")
+                QgsProject.instance().addMapLayer(lyr_n)
 
             QMessageBox.information(
                 self, "Başarılı",
@@ -3314,29 +3332,26 @@ class TireNipDockWidget(QDockWidget):
         try:
             self.btn_run_od.setEnabled(False)
             res = processing.run("pln3113:nip_od_rotalama", params)
-            desire_out = res.get('OUTPUT_DESIRE')
             routes_out = res.get('OUTPUT_ROUTES')
+            desire_out = res.get('OUTPUT_DESIRE')
             matrix_out = res.get('OUTPUT_MATRIX')
 
-            if routes_out:
-                lyr = QgsProject.instance().mapLayer(routes_out) if isinstance(routes_out, str) and not os.path.exists(routes_out) else QgsVectorLayer(str(routes_out), "En Kısa Yol Ağ Rotaları", "ogr")
-                if lyr and lyr.isValid():
-                    lyr.setName(f"En Kısa Yol Ağ Rotaları ({orig_layer.name()} -> {dest_layer.name()})")
-                    style_od_and_centrality(routes_layer=lyr)
-                    QgsProject.instance().addMapLayer(lyr)
+            lyr_r = self._to_vector_layer(routes_out, "En Kısa Yol Ağ Rotaları")
+            if lyr_r and lyr_r.isValid():
+                lyr_r.setName(f"En Kısa Yol Ağ Rotaları ({orig_layer.name()} -> {dest_layer.name()})")
+                style_od_and_centrality(routes_layer=lyr_r)
+                QgsProject.instance().addMapLayer(lyr_r)
 
-            if desire_out:
-                lyr = QgsProject.instance().mapLayer(desire_out) if isinstance(desire_out, str) and not os.path.exists(desire_out) else QgsVectorLayer(str(desire_out), "Kuş Uçuşu Arzu Hatları ve Detour", "ogr")
-                if lyr and lyr.isValid():
-                    lyr.setName(f"Arzu Hatları ve Bariyerler (Detour > 1.35)")
-                    style_detour_barrier(lyr)
-                    QgsProject.instance().addMapLayer(lyr)
+            lyr_d = self._to_vector_layer(desire_out, "Kuş Uçuşu Arzu Hatları ve Detour")
+            if lyr_d and lyr_d.isValid():
+                lyr_d.setName(f"Arzu Hatları ve Bariyerler (Detour > 1.35)")
+                style_detour_barrier(lyr_d)
+                QgsProject.instance().addMapLayer(lyr_d)
 
-            if matrix_out:
-                lyr = QgsProject.instance().mapLayer(matrix_out) if isinstance(matrix_out, str) and not os.path.exists(matrix_out) else QgsVectorLayer(str(matrix_out), "OD Mesafe Matrisi Tablosu", "ogr")
-                if lyr and lyr.isValid():
-                    lyr.setName("OD Mesafe Matrisi Tablosu")
-                    QgsProject.instance().addMapLayer(lyr)
+            lyr_m = self._to_vector_layer(matrix_out, "OD Mesafe Matrisi Tablosu")
+            if lyr_m and lyr_m.isValid():
+                lyr_m.setName("OD Mesafe Matrisi Tablosu")
+                QgsProject.instance().addMapLayer(lyr_m)
 
             QMessageBox.information(
                 self, "Başarılı",
@@ -3378,32 +3393,28 @@ class TireNipDockWidget(QDockWidget):
             edges_out = res.get('EDGES')
             summary_out = res.get('SUMMARY')
 
-            if circles_out:
-                lyr = QgsProject.instance().mapLayer(circles_out) if isinstance(circles_out, str) and not os.path.exists(circles_out) else QgsVectorLayer(str(circles_out), "Mevzuat Kuş Uçuşu Dairesel Tamponlar", "ogr")
-                if lyr and lyr.isValid():
-                    lyr.setName(f"Mevzuat Etki Daireleri ({fac_layer.name()})")
-                    style_service_area(buffer_layer=lyr)
-                    QgsProject.instance().addMapLayer(lyr)
+            lyr_c = self._to_vector_layer(circles_out, "Mevzuat Kuş Uçuşu Dairesel Tamponlar")
+            if lyr_c and lyr_c.isValid():
+                lyr_c.setName(f"Mevzuat Etki Daireleri ({fac_layer.name()})")
+                style_service_area(buffer_layer=lyr_c)
+                QgsProject.instance().addMapLayer(lyr_c)
 
-            if areas_out:
-                lyr = QgsProject.instance().mapLayer(areas_out) if isinstance(areas_out, str) and not os.path.exists(areas_out) else QgsVectorLayer(str(areas_out), "Yürüme İzokron Poligonları (Pedshed)", "ogr")
-                if lyr and lyr.isValid():
-                    lyr.setName(f"Yürüme İzokronları ({fac_layer.name()})")
-                    style_isochrone_bands(lyr)
-                    QgsProject.instance().addMapLayer(lyr)
+            lyr_a = self._to_vector_layer(areas_out, "Yürüme İzokron Poligonları (Pedshed)")
+            if lyr_a and lyr_a.isValid():
+                lyr_a.setName(f"Yürüme İzokronları ({fac_layer.name()})")
+                style_isochrone_bands(lyr_a)
+                QgsProject.instance().addMapLayer(lyr_a)
 
-            if edges_out:
-                lyr = QgsProject.instance().mapLayer(edges_out) if isinstance(edges_out, str) and not os.path.exists(edges_out) else QgsVectorLayer(str(edges_out), "Erişilen Kırpılmış Yol Parçaları", "ogr")
-                if lyr and lyr.isValid():
-                    lyr.setName(f"Erişilen Yol Parçaları ({fac_layer.name()})")
-                    style_service_area(roads_layer=lyr)
-                    QgsProject.instance().addMapLayer(lyr)
+            lyr_e = self._to_vector_layer(edges_out, "Erişilen Kırpılmış Yol Parçaları")
+            if lyr_e and lyr_e.isValid():
+                lyr_e.setName(f"Erişilen Yol Parçaları ({fac_layer.name()})")
+                style_service_area(roads_layer=lyr_e)
+                QgsProject.instance().addMapLayer(lyr_e)
 
-            if summary_out:
-                lyr = QgsProject.instance().mapLayer(summary_out) if isinstance(summary_out, str) and not os.path.exists(summary_out) else QgsVectorLayer(str(summary_out), "Pedshed Erişilebilirlik Karnesi", "ogr")
-                if lyr and lyr.isValid():
-                    lyr.setName("Pedshed Erişilebilirlik Karnesi (Tablo)")
-                    QgsProject.instance().addMapLayer(lyr)
+            lyr_s = self._to_vector_layer(summary_out, "Pedshed Erişilebilirlik Karnesi")
+            if lyr_s and lyr_s.isValid():
+                lyr_s.setName("Pedshed Erişilebilirlik Karnesi (Tablo)")
+                QgsProject.instance().addMapLayer(lyr_s)
 
             QMessageBox.information(
                 self, "Başarılı",
@@ -3416,40 +3427,77 @@ class TireNipDockWidget(QDockWidget):
         finally:
             self.btn_run_iso.setEnabled(True)
 
+    @staticmethod
+    def _to_vector_layer(out_val, default_name="Sonuc Katmani"):
+        """processing.run çıktısını (QgsVectorLayer nesnesi, katman ID'si veya dosya yolu) güvenli bir QgsVectorLayer'a çevirir."""
+        if isinstance(out_val, QgsVectorLayer):
+            return out_val
+        if isinstance(out_val, str):
+            lyr = QgsProject.instance().mapLayer(out_val)
+            if lyr and lyr.isValid():
+                return lyr
+            if os.path.exists(out_val) or "|" in out_val:
+                lyr = QgsVectorLayer(out_val, default_name, "ogr")
+                if lyr and lyr.isValid():
+                    return lyr
+        return None
+
+    def _on_fca_fac_layer_changed(self, layer):
+        if not layer or not isinstance(layer, QgsVectorLayer) or not layer.isValid():
+            self.cmb_fca_id_field.setLayer(None)
+            self.cmb_fca_cap_field.setLayer(None)
+            return
+        self.cmb_fca_id_field.setLayer(layer)
+        self.cmb_fca_cap_field.setLayer(layer)
+
+        field_names = [f.name() for f in layer.fields()]
+        id_match = next((f for f in field_names if f.lower() in ("ad", "adi", "name", "id", "tesis_adi", "donati_adi")), None)
+        if id_match:
+            self.cmb_fca_id_field.setField(id_match)
+
+        cap_match = next((f for f in field_names if any(k in f.lower() for k in ("kapasite", "capacity", "ogrenci", "yatak", "kontenjan", "alan"))), None)
+        if cap_match:
+            self.cmb_fca_cap_field.setField(cap_match)
+
+    def _on_fca_dem_layer_changed(self, layer):
+        if not layer or not isinstance(layer, QgsVectorLayer) or not layer.isValid():
+            self.cmb_fca_pop_field.setLayer(None)
+            return
+        self.cmb_fca_pop_field.setLayer(layer)
+
+        field_names = [f.name() for f in layer.fields()]
+        pop_match = next((f for f in field_names if any(k in f.lower() for k in ("nufus", "pop", "population", "brut_nufus", "bagimsizbolumsayi", "hane"))), None)
+        if pop_match:
+            self.cmb_fca_pop_field.setField(pop_match)
+
     def _on_run_2sfca(self):
         fac_layer = self.cmb_fca_facilities.currentLayer()
         dem_layer = self.cmb_fca_demand.currentLayer()
         road_layer = self.cmb_fca_roads.currentLayer()
 
-        if not fac_layer or not isinstance(fac_layer, QgsVectorLayer):
+        if not fac_layer or not isinstance(fac_layer, QgsVectorLayer) or not fac_layer.isValid():
             QMessageBox.warning(self, "Uyarı", "Lütfen geçerli bir donatı katmanı seçin!")
             return
-        if not dem_layer or not isinstance(dem_layer, QgsVectorLayer):
+        if not dem_layer or not isinstance(dem_layer, QgsVectorLayer) or not dem_layer.isValid():
             QMessageBox.warning(self, "Uyarı", "Lütfen geçerli bir talep/nüfus katmanı seçin!")
             return
-        if not road_layer or not isinstance(road_layer, QgsVectorLayer):
+        if not road_layer or not isinstance(road_layer, QgsVectorLayer) or not road_layer.isValid():
             QMessageBox.warning(self, "Uyarı", "Lütfen geçerli bir yol ağı katmanı seçin!")
             return
 
-        cap_field = self.txt_fca_cap_field.text().strip()
-        fac_fields = [f.name() for f in fac_layer.fields()]
-        if cap_field not in fac_fields:
-            cap_field = next((f for f in fac_fields if "kapasite" in f.lower() or "ogrenci" in f.lower() or "yatak" in f.lower() or "alan" in f.lower()), fac_fields[0])
-
-        fac_id = next((f for f in fac_fields if "ad" in f.lower() or "id" in f.lower() or "name" in f.lower()), fac_fields[0])
-
-        pop_field = self.txt_fca_pop_field.text().strip()
-        dem_fields = [f.name() for f in dem_layer.fields()]
-        if pop_field not in dem_fields:
-            pop_field = next((f for f in dem_fields if "nufus" in f.lower() or "pop" in f.lower()), "")
+        fac_id = self.cmb_fca_id_field.currentField().strip() or None
+        cap_field = self.cmb_fca_cap_field.currentField().strip() or None
+        pop_field = self.cmb_fca_pop_field.currentField().strip() or None
+        default_cap = self.spn_fca_default_cap.value()
 
         params = {
             'NETWORK': road_layer,
             'FACILITIES': fac_layer,
             'FACILITY_ID': fac_id,
             'CAPACITY_FIELD': cap_field,
+            'DEFAULT_CAPACITY': default_cap,
             'DEMAND': dem_layer,
-            'POP_FIELD': pop_field if pop_field else None,
+            'POP_FIELD': pop_field,
             'MAX_COST': self.spn_fca_cost.value(),
             'FCA_DECAY': 1.0,
             'OUT_FACILITIES': 'TEMPORARY_OUTPUT',
@@ -3461,23 +3509,23 @@ class TireNipDockWidget(QDockWidget):
             out_f = res.get('OUT_FACILITIES')
             out_d = res.get('OUT_DEMAND')
 
-            if out_f:
-                lyr = QgsProject.instance().mapLayer(out_f) if isinstance(out_f, str) and not os.path.exists(out_f) else QgsVectorLayer(str(out_f), "Donatı Yeterlilik ve Yük Durumu", "ogr")
-                if lyr and lyr.isValid():
-                    lyr.setName(f"2SFCA Donatı Yeterlilik ({fac_layer.name()})")
-                    style_facility_adequacy_points(lyr)
-                    QgsProject.instance().addMapLayer(lyr)
+            lyr_f = self._to_vector_layer(out_f, "2SFCA Donatı Yeterlilik")
+            if lyr_f and lyr_f.isValid():
+                lyr_f.setName(f"2SFCA Donatı Yeterlilik ({fac_layer.name()})")
+                style_facility_adequacy_points(lyr_f)
+                QgsProject.instance().addMapLayer(lyr_f)
 
-            if out_d:
-                lyr = QgsProject.instance().mapLayer(out_d) if isinstance(out_d, str) and not os.path.exists(out_d) else QgsVectorLayer(str(out_d), "Talep Kapsama ve 2SFCA Skoru", "ogr")
-                if lyr and lyr.isValid():
-                    lyr.setName(f"2SFCA Talep Kapsama ({dem_layer.name()})")
-                    QgsProject.instance().addMapLayer(lyr)
+            lyr_d = self._to_vector_layer(out_d, "2SFCA Talep Kapsama")
+            if lyr_d and lyr_d.isValid():
+                lyr_d.setName(f"2SFCA Talep Kapsama ({dem_layer.name()})")
+                style_fca_demand_points(lyr_d)
+                QgsProject.instance().addMapLayer(lyr_d)
 
             QMessageBox.information(
                 self, "Başarılı",
-                f"2SFCA Donatı Yeterliliği analizi tamamlandı!\n"
-                f"Donatılar: Yeterli (Yeşil), Aşırı Yüklü (Kırmızı), Kullanılmayan (Gri) olarak sınıflandırıldı."
+                f"2SFCA Donatı Yeterliliği ve Kapasite Analizi tamamlandı!\n\n"
+                f"✅ 1. Donatılar: Yeterli (Yeşil), Aşırı Yüklü (Kırmızı), Kullanılmayan (Gri).\n"
+                f"✅ 2. Talep Noktaları: Kapsanan (Yeşil) ve Kapsanamayan (Kırmızı) nüfus noktaları haritaya eklendi."
             )
         except Exception as e:
             QMessageBox.critical(self, "Hata", f"2SFCA analizi sırasında hata:\n{str(e)}")
@@ -3508,18 +3556,16 @@ class TireNipDockWidget(QDockWidget):
             diff_out = res.get('DIFF_NETWORK')
             sum_out = res.get('SUMMARY_TABLE')
 
-            if diff_out:
-                lyr = QgsProject.instance().mapLayer(diff_out) if isinstance(diff_out, str) and not os.path.exists(diff_out) else QgsVectorLayer(str(diff_out), "A/B Fark Haritası", "ogr")
-                if lyr and lyr.isValid():
-                    lyr.setName(f"A/B Senaryo Fark Haritası (Mevcut vs Meri)")
-                    style_scenario_diff_network(lyr)
-                    QgsProject.instance().addMapLayer(lyr)
+            lyr_diff = self._to_vector_layer(diff_out, "A/B Fark Haritası")
+            if lyr_diff and lyr_diff.isValid():
+                lyr_diff.setName(f"A/B Senaryo Fark Haritası (Mevcut vs Meri)")
+                style_scenario_diff_network(lyr_diff)
+                QgsProject.instance().addMapLayer(lyr_diff)
 
-            if sum_out:
-                lyr = QgsProject.instance().mapLayer(sum_out) if isinstance(sum_out, str) and not os.path.exists(sum_out) else QgsVectorLayer(str(sum_out), "A/B Senaryo Karşılaştırma Karnesi", "ogr")
-                if lyr and lyr.isValid():
-                    lyr.setName("A/B Senaryo Karşılaştırma Karnesi (Tablo)")
-                    QgsProject.instance().addMapLayer(lyr)
+            lyr_sum = self._to_vector_layer(sum_out, "A/B Senaryo Karşılaştırma Karnesi")
+            if lyr_sum and lyr_sum.isValid():
+                lyr_sum.setName("A/B Senaryo Karşılaştırma Karnesi (Tablo)")
+                QgsProject.instance().addMapLayer(lyr_sum)
 
             QMessageBox.information(
                 self, "Başarılı",

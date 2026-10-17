@@ -352,6 +352,27 @@ def style_facility_adequacy_points(layer: QgsVectorLayer) -> None:
     layer.triggerRepaint()
 
 
+def style_fca_demand_points(layer: QgsVectorLayer) -> None:
+    """2SFCA talep noktalarının hizmet alma durumunu (Kapsandı / Kapsanmadı) renklendirir."""
+    if not layer or not layer.isValid():
+        return
+    categories = [
+        QgsRendererCategory(
+            "1",
+            QgsMarkerSymbol.createSimple({"color": "#10b981", "outline_color": "#ffffff", "size": "2.8"}),
+            "Hizmet Alan Nüfus (Kapsandı)"
+        ),
+        QgsRendererCategory(
+            "0",
+            QgsMarkerSymbol.createSimple({"color": "#ef4444", "outline_color": "#ffffff", "size": "3.2"}),
+            "Hizmet Alamayan Nüfus (Kapsanamadı)"
+        ),
+    ]
+    layer.setRenderer(QgsCategorizedSymbolRenderer("kapsandi", categories))
+    layer.triggerRepaint()
+
+
+
 def style_scenario_diff_network(layer: QgsVectorLayer) -> None:
     """A/B senaryo fark hatlarını 4 plan karar başlığına göre stillendirir."""
     if not layer or not layer.isValid():
