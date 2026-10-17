@@ -44,7 +44,7 @@ class NipEklentiProvider(QgsProcessingProvider):
         self.addAlgorithm(OdMerkezilikAlgorithm())
 
     def id(self):
-        return 'pln3113_nip'
+        return 'pln3113'
 
     def name(self):
         return 'PLN3113 NİP Stüdyosu'

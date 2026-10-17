@@ -74,6 +74,16 @@ from .core.field_estimator import FieldEstimatorEngine
 from .core.nip_calculator import NipCalculatorEngine
 from .core.nip_dashboard_builder import open_nip_dashboard, build_nip_dashboard_html
 from .core.nip_workspace import create_nip_drawing_workspace, load_nip_drawing_layers
+from .core.symbology_manager import (
+    apply_mpyy_qml_style,
+    style_front_facade,
+    style_od_and_centrality,
+    style_road_junctions,
+    style_road_platform,
+    style_road_polygons,
+    style_service_area,
+    style_validity_error_points,
+)
 from .core.tire_constants import (
     get_default_dop_rule,
     get_default_employment_rule,
@@ -1047,6 +1057,7 @@ class TireNipDockWidget(QDockWidget):
                     out_layer = QgsVectorLayer(out_layer, f"Yol Platformu ({layer.name()})", "ogr")
                 else:
                     out_layer.setName(f"Yol Platformu ({layer.name()})")
+                style_road_platform(out_layer)
                 QgsProject.instance().addMapLayer(out_layer)
                 self.cmb_kavsak_layer.setLayer(out_layer)
                 QMessageBox.information(
@@ -1086,6 +1097,7 @@ class TireNipDockWidget(QDockWidget):
                     out_layer = QgsVectorLayer(out_layer, f"Kavşak Trim ({layer.name()})", "ogr")
                 else:
                     out_layer.setName(f"Kavşak Trim ({layer.name()})")
+                style_road_junctions(out_layer)
                 QgsProject.instance().addMapLayer(out_layer)
                 self.cmb_poly_road_layer.setLayer(out_layer)
                 QMessageBox.information(
@@ -1126,6 +1138,7 @@ class TireNipDockWidget(QDockWidget):
                     out_layer = QgsVectorLayer(out_layer, f"Poligonlaşan Yollar/Adalar ({road_layer.name()})", "ogr")
                 else:
                     out_layer.setName(f"Poligonlaşan Yollar/Adalar ({road_layer.name()})")
+                style_road_polygons(out_layer)
                 QgsProject.instance().addMapLayer(out_layer)
                 QMessageBox.information(
                     self, "Başarılı",
@@ -1386,6 +1399,23 @@ class TireNipDockWidget(QDockWidget):
         self.btn_open_dashboard.setEnabled(False)
         self.btn_open_dashboard.clicked.connect(self._open_nip_dashboard)
         layout.addWidget(self.btn_open_dashboard)
+
+        # Katman Lejantı ve Stil Değiştirme Çubuğu
+        style_nip_bar = QHBoxLayout()
+        self.btn_style_density = QPushButton("  📊 Yoğunluk (UST_SNR)")
+        self.btn_style_density.setCursor(_POINTING_HAND)
+        self.btn_style_density.setEnabled(False)
+        self.btn_style_density.clicked.connect(self._apply_density_style_nip)
+
+        self.btn_style_mpyy = QPushButton("  🎨 Resmî MPYY Lejantı")
+        self.btn_style_mpyy.setCursor(_POINTING_HAND)
+        self.btn_style_mpyy.setEnabled(False)
+        self.btn_style_mpyy.clicked.connect(self._apply_mpyy_style_nip)
+
+        style_nip_bar.addWidget(self.btn_style_density)
+        style_nip_bar.addWidget(self.btn_style_mpyy)
+        layout.addLayout(style_nip_bar)
+
 
         # 6. Sonuç Sekmeleri (Tab Widget)
         self.tabs_nip_results = QTabWidget()
@@ -2257,9 +2287,12 @@ class TireNipDockWidget(QDockWidget):
             self._last_nip_sinir_geom = sinir_geom
             self._last_nip_crs = layer.crs()
             self._last_nip_html = report_html
+            self._last_nip_out_layer = out_layer
             self.btn_export_csv.setEnabled(True)
             self.btn_export_html.setEnabled(True)
             self.btn_open_dashboard.setEnabled(True)
+            self.btn_style_density.setEnabled(True)
+            self.btn_style_mpyy.setEnabled(True)
 
             # Canlı Görsel Göstergeleri Güncelle
             dop_val = dop.get('dop_orani', 0.0)
@@ -2439,6 +2472,21 @@ class TireNipDockWidget(QDockWidget):
         renderer = QgsGraduatedSymbolRenderer("UST_SNR", ranges)
         layer.setRenderer(renderer)
         layer.triggerRepaint()
+
+    def _apply_density_style_nip(self):
+        """Hesaplanan son NİP katmanına nüfus yoğunluğu (UST_SNR) kademeli stilini uygular."""
+        if hasattr(self, "_last_nip_out_layer") and self._last_nip_out_layer:
+            self._apply_nip_styling(self._last_nip_out_layer)
+            if self.iface and hasattr(self.iface, "layerTreeView") and self.iface.layerTreeView():
+                self.iface.layerTreeView().refreshLayerSymbology(self._last_nip_out_layer.id())
+
+    def _apply_mpyy_style_nip(self):
+        """Hesaplanan son NİP katmanına resmî MPYY alanlar-5000 QML lejant stilini uygular."""
+        if hasattr(self, "_last_nip_out_layer") and self._last_nip_out_layer:
+            apply_mpyy_qml_style(self._last_nip_out_layer, "alanlar-5000.qml")
+            if self.iface and hasattr(self.iface, "layerTreeView") and self.iface.layerTreeView():
+                self.iface.layerTreeView().refreshLayerSymbology(self._last_nip_out_layer.id())
+
 
     # -----------------------------------------------------------------
     # SEKME 3: SAHA & BİNA BAZLI FİİLİ NÜFUS
@@ -2985,6 +3033,7 @@ class TireNipDockWidget(QDockWidget):
                     lines_layer = QgsVectorLayer(lines_layer, f"Servis Bağlantı Çizgileri ({poly_layer.name()})", "ogr")
                 else:
                     lines_layer.setName(f"Servis Bağlantı Çizgileri ({poly_layer.name()})")
+                style_front_facade(lines_layer=lines_layer)
                 QgsProject.instance().addMapLayer(lines_layer)
 
             if pts_layer:
@@ -2992,6 +3041,7 @@ class TireNipDockWidget(QDockWidget):
                     pts_layer = QgsVectorLayer(pts_layer, f"Ön Cephe Servis Noktaları - Origin ({poly_layer.name()})", "ogr")
                 else:
                     pts_layer.setName(f"Ön Cephe Servis Noktaları - Origin ({poly_layer.name()})")
+                style_front_facade(points_layer=pts_layer)
                 QgsProject.instance().addMapLayer(pts_layer)
                 self.cmb_od_origins.setLayer(pts_layer)
 
@@ -3055,6 +3105,7 @@ class TireNipDockWidget(QDockWidget):
                         buf_out = QgsVectorLayer(buf_out, f"MPYY Tamponu ({int(d)}m)", "ogr")
                     else:
                         buf_out.setName(f"MPYY Tamponu ({int(d)}m)")
+                    style_service_area(buffer_layer=buf_out)
                     QgsProject.instance().addMapLayer(buf_out)
 
                 if poly_out:
@@ -3062,6 +3113,7 @@ class TireNipDockWidget(QDockWidget):
                         poly_out = QgsVectorLayer(poly_out, f"Erişim Havza Poligonu ({int(d)}m)", "ogr")
                     else:
                         poly_out.setName(f"Erişim Havza Poligonu ({int(d)}m)")
+                    style_service_area(polygons_layer=poly_out)
                     QgsProject.instance().addMapLayer(poly_out)
 
                 if roads_out:
@@ -3069,6 +3121,7 @@ class TireNipDockWidget(QDockWidget):
                         roads_out = QgsVectorLayer(roads_out, f"Servis Yol Ağı ({int(d)}m)", "ogr")
                     else:
                         roads_out.setName(f"Servis Yol Ağı ({int(d)}m)")
+                    style_service_area(roads_layer=roads_out)
                     QgsProject.instance().addMapLayer(roads_out)
 
             QMessageBox.information(
@@ -3123,6 +3176,7 @@ class TireNipDockWidget(QDockWidget):
                     routes_out = QgsVectorLayer(routes_out, f"Ağ Rotaları ({orig_layer.name()} -> {dest_layer.name()})", "ogr")
                 else:
                     routes_out.setName(f"Ağ Rotaları ({orig_layer.name()} -> {dest_layer.name()})")
+                style_od_and_centrality(routes_layer=routes_out)
                 QgsProject.instance().addMapLayer(routes_out)
 
             if desire_out:
@@ -3130,6 +3184,7 @@ class TireNipDockWidget(QDockWidget):
                     desire_out = QgsVectorLayer(desire_out, f"Kuşuçuşu İstek Hatları ({orig_layer.name()})", "ogr")
                 else:
                     desire_out.setName(f"Kuşuçuşu İstek Hatları ({orig_layer.name()})")
+                style_od_and_centrality(desire_layer=desire_out)
                 QgsProject.instance().addMapLayer(desire_out)
 
             if cent_out:
@@ -3137,6 +3192,7 @@ class TireNipDockWidget(QDockWidget):
                     cent_out = QgsVectorLayer(cent_out, "Ağ Merkezilikleri (Betweenness/Closeness)", "ogr")
                 else:
                     cent_out.setName("Ağ Merkezilikleri (Betweenness/Closeness)")
+                style_od_and_centrality(centrality_layer=cent_out)
                 QgsProject.instance().addMapLayer(cent_out)
 
             if slope_out:
@@ -3144,6 +3200,7 @@ class TireNipDockWidget(QDockWidget):
                     slope_out = QgsVectorLayer(slope_out, "Yol Eğim ve Kot Analizi", "ogr")
                 else:
                     slope_out.setName("Yol Eğim ve Kot Analizi")
+                style_od_and_centrality(slope_layer=slope_out)
                 QgsProject.instance().addMapLayer(slope_out)
 
             cnt_routes = routes_out.featureCount() if routes_out else 0
