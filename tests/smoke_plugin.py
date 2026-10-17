@@ -548,7 +548,26 @@ def test_planx_network_suite():
         "EDGES": "memory:iso_edges",
         "SUMMARY": "memory:iso_summary"
     })
-    ok_iso = res_iso["AREAS"].isValid() and res_iso["SUMMARY"].isValid()
+    ok_iso_basic = res_iso["AREAS"].isValid() and res_iso["SUMMARY"].isValid()
+
+    # 4b. Hizmet Izokron - Icbukey Govde (Concave Hull) + Ozel Esikler (200, 400, 600)
+    res_iso_concave = processing.run("pln3113:nip_hizmet_izokron", {
+        "NETWORK": road_lyr,
+        "FACILITIES": fac_lyr,
+        "BREAKS": "200, 400, 600",
+        "METHOD": 1,
+        "AREAS": "memory:iso_areas_concave",
+        "CIRCLES": "memory:iso_circles_concave",
+        "EDGES": "memory:iso_edges_concave",
+        "SUMMARY": "memory:iso_summary_concave"
+    })
+    lyr_concave = res_iso_concave["AREAS"]
+    from pln3113_nip.core.symbology_manager import style_isochrone_bands
+    style_isochrone_bands(lyr_concave)
+    r_concave = lyr_concave.renderer()
+    cats_concave = [c.value() for c in r_concave.categories()] if hasattr(r_concave, "categories") else []
+    ok_concave = (lyr_concave.isValid() and lyr_concave.featureCount() > 0 and 200.0 in cats_concave and 600.0 in cats_concave)
+    ok_iso = ok_iso_basic and ok_concave
 
     # 5. 2SFCA Yeterlilik (hem açık alanlar hem de varsayılan değerlerle)
     res_fca = processing.run("pln3113:nip_2sfca_yeterlilik", {

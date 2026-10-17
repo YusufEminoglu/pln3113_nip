@@ -10,10 +10,12 @@ yüklendiği anda resmî kartografik standartlarda otomatik stillendirilmesini s
 """
 from __future__ import annotations
 
+import contextlib
 import os
 from pathlib import Path
 from qgis.core import (
     QgsCategorizedSymbolRenderer,
+    QgsFeatureRequest,
     QgsFillSymbol,
     QgsGraduatedSymbolRenderer,
     QgsLineSymbol,
@@ -320,23 +322,105 @@ def style_detour_barrier(layer: QgsVectorLayer) -> None:
     layer.triggerRepaint()
 
 
-def style_isochrone_bands(layer: QgsVectorLayer) -> None:
-    """5 dk (400m), 10 dk (800m), 15 dk (1200m) yürüme izokron poligonlarını kademelendirir."""
+def style_isochrone_bands(layer: QgsVectorLayer, custom_breaks: list = None) -> None:
+    """Yürüme izokron poligonlarını girilen mesafe ve süre eşiklerine göre dinamik olarak kademelendirir ve lejant oluşturur."""
     if not layer or not layer.isValid():
         return
-    sym_400 = QgsFillSymbol.createSimple({"color": "#10b981", "outline_color": "#047857", "outline_width": "0.4"})
-    sym_400.setOpacity(0.40)
-    sym_800 = QgsFillSymbol.createSimple({"color": "#f59e0b", "outline_color": "#b45309", "outline_width": "0.4"})
-    sym_800.setOpacity(0.35)
-    sym_1200 = QgsFillSymbol.createSimple({"color": "#f97316", "outline_color": "#c2410c", "outline_width": "0.4"})
-    sym_1200.setOpacity(0.30)
 
-    categories = [
-        QgsRendererCategory("400", sym_400, "5 dk (400 m) - Yürüme Çekirdeği"),
-        QgsRendererCategory("800", sym_800, "10 dk (800 m) - Standart Yürüme"),
-        QgsRendererCategory("1200", sym_1200, "15 dk (1200 m) - Kentsel Çeper"),
+    # 1. Mesafe değerlerini dinamik olarak tespit et
+    dists = []
+    if custom_breaks:
+        for b in custom_breaks:
+            with contextlib.suppress(ValueError, TypeError):
+                if b is not None:
+                    dists.append(float(b))
+
+    idx_dist = layer.fields().lookupField("mesafe_m")
+    idx_sure = layer.fields().lookupField("sure_dk")
+
+    if not dists and idx_dist >= 0:
+        for v in layer.uniqueValues(idx_dist):
+            if v is not None:
+                with contextlib.suppress(ValueError, TypeError):
+                    dists.append(float(v))
+
+    dists = sorted(list(set(dists)))
+    if not dists:
+        dists = [400.0, 800.0, 1200.0]
+
+    # Süre eşleştirmesi (sure_dk özniteliğinden oku veya 4.8 km/s yürüme hızından hesapla)
+    time_map = {}
+    if idx_dist >= 0 and idx_sure >= 0:
+        for f in layer.getFeatures():
+            d_val = f.attributes()[idx_dist]
+            s_val = f.attributes()[idx_sure]
+            if d_val is not None and s_val is not None:
+                with contextlib.suppress(ValueError, TypeError):
+                    fd = float(d_val)
+                    if fd not in time_map:
+                        time_map[fd] = float(s_val)
+
+    # Renk rampası (Zümrüt yeşilinden kehribar, turuncu ve kırmızıya doğru)
+    palette_ramp = [
+        ("#10b981", "#047857"),  # Zümrüt / Emerald
+        ("#06b6d4", "#0e7490"),  # Camgöbeği / Cyan
+        ("#eab308", "#a16207"),  # Sarı / Yellow
+        ("#f59e0b", "#b45309"),  # Amber / Kehribar
+        ("#f97316", "#c2410c"),  # Turuncu / Orange
+        ("#ef4444", "#b91c1c"),  # Kırmızı / Red
+        ("#b91c1c", "#7f1d1d"),  # Koyu Kırmızı / Crimson
+        ("#7c3aed", "#5b21b6"),  # Mor / Violet
     ]
-    layer.setRenderer(QgsCategorizedSymbolRenderer("mesafe_m", categories))
+
+    n = len(dists)
+    categories = []
+
+    for i, d in enumerate(dists):
+        # Renk ve saydamlık seçimi
+        if n == 1:
+            color_hex, outline_hex = "#10b981", "#047857"
+            opacity = 0.40
+        elif n <= len(palette_ramp):
+            c_idx = int(round(i * (len(palette_ramp) - 1) / (n - 1))) if n > 1 else 0
+            color_hex, outline_hex = palette_ramp[c_idx]
+            opacity = max(0.20, 0.45 - (i * (0.20 / (n - 1)))) if n > 1 else 0.40
+        else:
+            color_hex, outline_hex = palette_ramp[i % len(palette_ramp)]
+            opacity = 0.35
+
+        sym = QgsFillSymbol.createSimple({
+            "color": color_hex,
+            "outline_color": outline_hex,
+            "outline_width": "0.45"
+        })
+        sym.setOpacity(opacity)
+
+        # Süre ve etiket formatlama
+        sure = time_map.get(d, round(d / (4800.0 / 60.0), 1))
+        dist_str = f"{int(d)} m" if d.is_integer() else f"{d:.1f} m"
+        sure_str = f"{int(sure)} dk" if float(sure).is_integer() else f"{sure:.1f} dk"
+
+        if d <= 400.0:
+            role = "Yürüme Çekirdeği"
+        elif d <= 800.0:
+            role = "Standart Yürüme"
+        elif d <= 1200.0:
+            role = "Kentsel Çeper"
+        else:
+            role = "Genişletilmiş Havza"
+
+        legend_label = f"{sure_str} ({dist_str}) - {role}"
+        categories.append(QgsRendererCategory(d, sym, legend_label))
+
+    renderer = QgsCategorizedSymbolRenderer("mesafe_m", categories)
+
+    # Poligon çizim sırası: Büyük poligonlar altta, küçük poligonlar üstte çizilsin
+    with contextlib.suppress(Exception):
+        ob = QgsFeatureRequest.OrderBy([QgsFeatureRequest.OrderByClause("mesafe_m", False)])
+        renderer.setOrderBy(ob)
+        renderer.setOrderByEnabled(True)
+
+    layer.setRenderer(renderer)
     layer.triggerRepaint()
 
 

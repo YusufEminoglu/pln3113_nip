@@ -3,7 +3,7 @@ name=PLN3113 NİP ve Kentsel Analiz Stüdyosu
 qgisMinimumVersion=3.22
 qgisMaximumVersion=4.99
 description=PLN3113 1/5000 NİP Nüfus, Donatı, Ulaşım ve Mevcut Durum Kentsel Analiz Eklentisi (SADECE TR / DEÜ ŞBP PLN3113 Stüdyosu Öğrencileri İçin)
-version=1.1.1
+version=1.1.2
 author=Yusuf Eminoğlu
 email=yusuf.eminoglu@deu.edu.tr
 about=BU EKLENTİ SADECE TÜRKÇE (ONLY TR) OLARAK GELİŞTİRİLMİŞTİR VE DOKUZ EYLÜL ÜNİVERSİTESİ MİMARLIK FAKÜLTESİ ŞEHİR VE BÖLGE PLANLAMA BÖLÜMÜ (DEÜ ŞBP) LİSANS ÖĞRENCİLERİNE (PLN3113 ŞEHİR PLANLAMA PROJESİ III STÜDYOSU) ÖZEL OLARAK TASARLANMIŞTIR. Türkiye Mekânsal Planlar Yapım Yönetmeliği (MPYY) standartları ve yerel saha/NİP verileri doğrultusunda; 1/5000 Nazım İmar Planı (NİP) katmanlarında geometri onarımı, mükerrer poligon ayıklama, alt ve üst yoğunluk eşleştirmesi, brüt plan nüfusu, MPYY Ek-2 donatı yeterliliği (kişi başına düşen asgari m2 analizleri), araç ve yaya yolculuk çekim modeli, dinamik DOP içi/nDOP yönetimi ile kadastro/bina bazlı TAKS, KAKS, Spacematrix ve Yapı Nizamı analizlerini yürüten stüdyo aracıdır.
@@ -17,6 +17,7 @@ deprecated=False
 hasProcessingProvider=yes
 license=GPL-2.0-or-later
 icon=icons/icon.png
-changelog=1.1.1 - Kararlilik: Disaridan halihazir/CAD katman yuklemelerinde GUI kilitlenmesini onleme (GDI siniri korumasi), NoGeometry tablolarinda bos CRS standardi, dinamik surum etiketi ve cift katman ekleme korumasi.
+changelog=1.1.2 - Dinamik Izokron ve Icbukey Govde: Kullanici tanimli mesafe araliklariyla (orn: 200, 400, 600m) tam eslesen dinamik lejant ve renk skalasi, icbukey govde (Concave Hull) tek aks/dogrusal nokta dejenere geometri korumasi ve buyuk poligonlarin kucukleri ortmesini engelleyen siralama motoru.
+ 1.1.1 - Kararlilik: Disaridan halihazir/CAD katman yuklemelerinde GUI kilitlenmesini onleme (GDI siniri korumasi), NoGeometry tablolarinda bos CRS standardi, dinamik surum etiketi ve cift katman ekleme korumasi.
  1.1.0 - Kentsel Ag ve Erisim Analizleri Suiti (Space Syntax, Primal Merkezilik, OD Rotasi, Hizmet Izokronlari, 2SFCA Tesis Yeterliligi, A/B Senaryo Farki ve On Cephe Servis Noktasi).
  1.0.0 - Ilk resmi surum: MPYY standartlarinda 1/5000 NIP nufus, Ek-2 donati yeterliligi, DOP/nDOP kurallar tablosu, ada/bina bazli TAKS, KAKS, Spacematrix OSR, Yapi Nizami metrikleri, 1-tikla tematik harita motoru ve kapsamli metodoloji rehberi.

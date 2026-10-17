@@ -129,8 +129,8 @@ def _get_plugin_version() -> str:
         cp = configparser.ConfigParser()
         with contextlib.suppress(Exception):
             cp.read(meta_path, encoding="utf-8")
-            return cp.get("general", "version", fallback="1.1.1")
-    return "1.1.1"
+            return cp.get("general", "version", fallback="1.1.2")
+    return "1.1.2"
 
 
 class _TabsAdapter:
@@ -3126,7 +3126,7 @@ class TireNipDockWidget(QDockWidget):
         f_iso.addRow("İzokron Geometri Yöntemi:", self.cmb_iso_method)
 
         l_iso.addLayout(f_iso)
-        lbl_iso_hint = QLabel("💡 400m (5 dk), 800m (10 dk), 1200m (15 dk). Pedshed < 0.40 olan donatılar izole sayılır.")
+        lbl_iso_hint = QLabel("💡 Virgülle ayrılmış mesafeler girilebilir (örn: 200, 400, 600 veya 400, 800, 1200). Pedshed < 0.40 izoledir.")
         lbl_iso_hint.setStyleSheet("color: #64748b; font-size: 8pt; font-style: italic;")
         l_iso.addWidget(lbl_iso_hint)
 
@@ -3442,7 +3442,12 @@ class TireNipDockWidget(QDockWidget):
             lyr_a = self._to_vector_layer(areas_out, "Yürüme İzokron Poligonları (Pedshed)")
             if lyr_a and lyr_a.isValid():
                 lyr_a.setName(f"Yürüme İzokronları ({fac_layer.name()})")
-                style_isochrone_bands(lyr_a)
+                custom_brk_nums = []
+                for b_tok in breaks.replace(";", ",").split(","):
+                    with contextlib.suppress(ValueError, TypeError):
+                        if b_tok.strip():
+                            custom_brk_nums.append(float(b_tok.strip()))
+                style_isochrone_bands(lyr_a, custom_breaks=custom_brk_nums)
                 self._safe_add_map_layer(lyr_a)
 
             lyr_e = self._to_vector_layer(edges_out, "Erişilen Kırpılmış Yol Parçaları")
@@ -3456,10 +3461,21 @@ class TireNipDockWidget(QDockWidget):
                 lyr_s.setName("Pedshed Erişilebilirlik Karnesi (Tablo)")
                 self._safe_add_map_layer(lyr_s)
 
+            # Eşik sürelerini dinamik hesapla
+            min_labels = []
+            for b_tok in breaks.replace(";", ",").split(","):
+                with contextlib.suppress(ValueError, TypeError):
+                    if b_tok.strip():
+                        b_val = float(b_tok.strip())
+                        s_min = round(b_val / (4800.0 / 60.0), 1)
+                        s_str = f"{int(s_min)}" if s_min.is_integer() else f"{s_min:.1f}"
+                        min_labels.append(f"{s_str} dk")
+            min_suffix = f" ({', '.join(min_labels)} @ 4.8 km/s)" if min_labels else ""
+
             QMessageBox.information(
                 self, "Başarılı",
                 f"Yürüme izokronları ve pedshed analizi tamamlandı!\n"
-                f"Eşikler: {breaks} metre (5, 10, 15 dk @ 4.8 km/s)\n"
+                f"Eşikler: {breaks} metre{min_suffix}\n"
                 f"Pedshed Oranı < 0.40 çıkan donatılar 'İzole' olarak etiketlendi."
             )
         except Exception as e:

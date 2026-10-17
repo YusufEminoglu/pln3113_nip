@@ -6,6 +6,7 @@ PlanX yüksek performanslı kısmi kenar kırpma ve pedshed motoru.
 """
 from __future__ import annotations
 
+import contextlib
 import numpy as np
 
 from qgis.core import (
@@ -150,18 +151,42 @@ class ServiceAreasAlgorithm(PlanXBaseAlgorithm):
         return best[0], best[1], float(np.sqrt(best[2]))
 
     @staticmethod
-    def _hull(points_xy, method, detail):
-        if len(points_xy) < 3:
+    def _hull(points_xy, method, detail, buffer_w=25.0):
+        if not points_xy:
             return None
+        if len(points_xy) < 3:
+            mp = QgsGeometry.fromMultiPointXY(points_xy)
+            return mp.buffer(buffer_w, 8)
         mp = QgsGeometry.fromMultiPointXY(points_xy)
+        hull = None
         if method == 1:
-            try:
-                hull = mp.concaveHull(float(detail), False)
-                if hull is not None and not hull.isNull() and not hull.isEmpty():
-                    return hull
-            except (AttributeError, TypeError):
-                pass
-        hull = mp.convexHull()
+            with contextlib.suppress(Exception):
+                h = mp.concaveHull(float(detail), False)
+                if h is not None and not h.isNull() and not h.isEmpty():
+                    hull = h
+        if hull is None or hull.isNull() or hull.isEmpty():
+            with contextlib.suppress(Exception):
+                hull = mp.convexHull()
+
+        if hull is None or hull.isNull() or hull.isEmpty():
+            return mp.buffer(buffer_w, 8)
+
+        # Geometri geçerliliğini onar
+        if not hull.isGeosValid():
+            with contextlib.suppress(Exception):
+                hull = hull.makeValid()
+
+        # Çizgiye veya noktaya dejenere olmuşsa (örneğin tek aks üzerindeki noktalar)
+        # MultiPolygon katmanına yazılabilmesi için tamponla alana çevir
+        if hull.type() != QgsWkbTypes.GeometryType.PolygonGeometry:
+            if hull.isMultipart():
+                with contextlib.suppress(Exception):
+                    parts = [p for p in hull.asGeometryCollection() if p.type() == QgsWkbTypes.GeometryType.PolygonGeometry]
+                    if parts:
+                        hull = QgsGeometry.unaryUnion(parts)
+            if hull.type() != QgsWkbTypes.GeometryType.PolygonGeometry:
+                hull = hull.buffer(buffer_w, 8)
+
         return None if hull is None or hull.isNull() or hull.isEmpty() else hull
 
     def processAlgorithm(self, parameters, context, feedback):
@@ -367,12 +392,21 @@ class ServiceAreasAlgorithm(PlanXBaseAlgorithm):
                             dense = g.densifyByDistance(step)
                             pts.extend(QgsPointXY(v.x(), v.y())
                                        for v in dense.vertices())
-                        geom = self._hull(pts, method, hull_detail)
+                        geom = self._hull(pts, method, hull_detail, buffer_w)
+                        # Concave / Convex hull poligon üretemezse yol tamponuna geri dön
+                        if geom is None or geom.isEmpty() or geom.type() != QgsWkbTypes.GeometryType.PolygonGeometry:
+                            geom = QgsGeometry.unaryUnion(
+                                [g.buffer(buffer_w, 8) for g in pieces])
 
                 if geom is None or geom.isEmpty():
                     cum_area[(lab, brk)] = 0.0
                     prev_geom = None
                     continue
+
+                # Geometri geçerliliğini sağla
+                if not geom.isGeosValid():
+                    with contextlib.suppress(Exception):
+                        geom = geom.makeValid()
 
                 c_a = circle_area.get((lab, brk), 1.0)
                 n_a = float(geom.area())
@@ -383,9 +417,13 @@ class ServiceAreasAlgorithm(PlanXBaseAlgorithm):
 
                 out_geom = geom
                 if rings and prev_geom is not None:
-                    diff = geom.difference(prev_geom)
-                    if diff is not None and not diff.isEmpty():
-                        out_geom = diff
+                    with contextlib.suppress(Exception):
+                        diff = geom.difference(prev_geom)
+                        if diff is not None and not diff.isEmpty():
+                            if not diff.isGeosValid():
+                                diff = diff.makeValid()
+                            if diff.type() == QgsWkbTypes.GeometryType.PolygonGeometry:
+                                out_geom = diff
 
                 if not out_geom.isMultipart():
                     out_geom.convertToMultiType()
