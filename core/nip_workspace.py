@@ -26,11 +26,13 @@ from qgis.core import (
     QgsEditorWidgetSetup,
     QgsFieldConstraints,
     QgsProject,
+    QgsRelation,
     QgsRuleBasedRenderer,
     QgsVectorLayer,
 )
 from qgis.PyQt.QtCore import QBuffer, QByteArray, QIODevice
 from qgis.PyQt.QtGui import QImage
+from qgis.PyQt.QtXml import QDomDocument
 
 gdal.UseExceptions()
 
@@ -40,9 +42,17 @@ HIERARCHY_PATH = RESOURCE_DIR / "mpyy_detail_hierarchy.json"
 SLD_DIR = RESOURCE_DIR / "sld"
 TARAMA_DIR = RESOURCE_DIR / "tarama"
 
+YEREL_RESOURCE_DIR = Path(__file__).resolve().parents[1] / "resources" / "yerel_nip"
+YEREL_TEMPLATE_PATH = YEREL_RESOURCE_DIR / "template.json"
+YEREL_LOOKUPS_PATH = YEREL_RESOURCE_DIR / "lookups.json"
+
+SCHEMA_MPYY_117 = "mpyy_117"
+SCHEMA_YEREL_NIP = "yerel_nip"
+
 KIND = "MPYY_XSD"
 SCHEMA_VERSION = 5
 GROUP_NAME = "MPYY 1.1.7 Nazım İmar Planı (NİP)"
+YEREL_GROUP_NAME = "PLN3113 1/5000 NİP (Yerel Şablon)"
 
 _OGR_GEOMETRY = {
     "MultiPolygon": ogr.wkbMultiPolygon,
@@ -211,7 +221,7 @@ def apply_sld_to_layer(layer: QgsVectorLayer, tname: str) -> bool:
         return ok
 
 
-def create_nip_workspace(output_path: str, crs="EPSG:5253") -> str:
+def create_mpyy_117_workspace(output_path: str, crs="EPSG:5253") -> str:
     """Bakanlığın MPYY 1.1.7 (nip.V.1.1.7.xsd) şemasına %100 uygun boş NİP GeoPackage üretir."""
     output = Path(output_path).resolve()
     if output.exists():
@@ -336,7 +346,261 @@ def create_nip_workspace(output_path: str, crs="EPSG:5253") -> str:
     return str(output)
 
 
-def load_nip_layers(path: str, project: QgsProject | None = None, **kwargs) -> dict[str, QgsVectorLayer]:
+def get_yerel_template() -> dict:
+    """PLN3113 Stüdyo yerel NİP (MpyyNipDB 1/5000) şablon tanımını döndürür."""
+    with open(YEREL_TEMPLATE_PATH, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def get_yerel_lookups() -> dict:
+    """PLN3113 Stüdyo yerel NİP lookup fonksiyon verilerini döndürür."""
+    with open(YEREL_LOOKUPS_PATH, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+_YEREL_GEOMETRY = {
+    "MULTIPOLYGON": ogr.wkbMultiPolygon,
+    "Polygon": ogr.wkbPolygon,
+    "MULTILINESTRING": ogr.wkbMultiLineString,
+    "LINESTRING": ogr.wkbLineString,
+    "POINT": ogr.wkbPoint,
+    None: ogr.wkbNone,
+}
+
+
+def _field_defn_yerel(name: str, type_str: str) -> ogr.FieldDefn:
+    name = str(name).strip()
+    upper = str(type_str).upper()
+    if upper.startswith("TEXT") or upper.startswith("VARCHAR"):
+        width = 254
+        m = re.search(r"\((\d+)\)", upper)
+        if m:
+            width = int(m.group(1))
+        defn = ogr.FieldDefn(name, ogr.OFTString)
+        defn.SetWidth(width)
+        return defn
+    if upper in ("INTEGER", "INT", "MEDIUMINT"):
+        return ogr.FieldDefn(name, ogr.OFTInteger)
+    if upper in ("REAL", "DOUBLE", "FLOAT", "NUMERIC"):
+        return ogr.FieldDefn(name, ogr.OFTReal)
+    if upper in ("DATETIME", "TIMESTAMP"):
+        return ogr.FieldDefn(name, ogr.OFTDateTime)
+    if upper == "DATE":
+        return ogr.FieldDefn(name, ogr.OFTDate)
+    return ogr.FieldDefn(name, ogr.OFTString)
+
+
+def create_yerel_nip_workspace(output_path: str, crs="EPSG:5253") -> str:
+    """PLN3113 Stüdyo Yerel / Klasik NİP GeoPackage (MpyyNipDB 1/5000) şablonunu oluşturur."""
+    output = Path(output_path).resolve()
+    if output.exists():
+        raise FileExistsError(f"Hedef dosya zaten mevcut: {output}")
+    if output.suffix.lower() != ".gpkg":
+        raise ValueError("Çıktı uzantısı .gpkg olmalıdır.")
+
+    spec = get_yerel_template()
+    srs = _crs_srs(crs)
+    staging = output.parent / (".nip-" + uuid.uuid4().hex)
+    staging.mkdir(parents=True, exist_ok=True)
+    staged = staging / "dataset.gpkg"
+
+    try:
+        source = ogr.GetDriverByName("GPKG").CreateDataSource(str(staged))
+        if source is None:
+            raise RuntimeError("GeoPackage oluşturulamadı.")
+
+        for table in spec["tables"]:
+            geometry = table["geometry"]
+            options = ["GEOMETRY_NAME=geom", "SPATIAL_INDEX=YES", "FID=fid"] if geometry else ["FID=fid"]
+            layer = source.CreateLayer(table["table"], srs if geometry else None, _YEREL_GEOMETRY.get(geometry, ogr.wkbNone), options=options)
+            if layer is None:
+                raise RuntimeError(f"Katman oluşturulamadı: {table['table']}")
+            for field in table["fields"]:
+                if layer.CreateField(_field_defn_yerel(field["name"], field["type"])) != 0:
+                    raise RuntimeError(f"Alan oluşturulamadı: {table['table']}.{field['name']}")
+
+        for table, data in get_yerel_lookups().items():
+            layer = source.GetLayerByName(table)
+            if layer is None:
+                continue
+            for row in data["rows"]:
+                feature = ogr.Feature(layer.GetLayerDefn())
+                for column, value in zip(data["columns"], row):
+                    if value is None:
+                        feature.SetFieldNull(column)
+                    else:
+                        feature.SetField(column, value)
+                with contextlib.suppress(Exception):
+                    layer.CreateFeature(feature)
+        source = None
+
+        con = sqlite3.connect(staged)
+        try:
+            con.execute(
+                "CREATE TABLE mpyy_metadata (dataset_id TEXT PRIMARY KEY, schema_version INTEGER NOT NULL, "
+                "workspace_kind TEXT NOT NULL, plan_levels TEXT NOT NULL)"
+            )
+            con.execute(
+                "INSERT INTO mpyy_metadata VALUES (?,?,?,?)",
+                (str(uuid.uuid4()), SCHEMA_VERSION, "YEREL_NIP", "NIP"),
+            )
+            con.execute(
+                """CREATE TABLE layer_styles (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT, f_table_catalog TEXT(256), f_table_schema TEXT(256),
+                    f_table_name TEXT(256), f_geometry_column TEXT(256), styleName TEXT(30), styleQML TEXT,
+                    styleSLD TEXT, useAsDefault BOOLEAN, description TEXT, owner TEXT(30), ui TEXT(30),
+                    update_time DATETIME DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')))"""
+            )
+            con.execute(
+                "INSERT INTO gpkg_contents(table_name, data_type, identifier) VALUES ('layer_styles','attributes','layer_styles')"
+            )
+            for table in spec["tables"]:
+                name = table["table"]
+                style_info = spec.get("styles", {}).get(name)
+                if not style_info:
+                    continue
+                qml_file = YEREL_RESOURCE_DIR / style_info["qml"]
+                qml_content = qml_file.read_text(encoding="utf-8") if qml_file.exists() else ""
+                con.execute(
+                    "INSERT INTO layer_styles(f_table_catalog, f_table_schema, f_table_name, f_geometry_column, "
+                    "styleName, styleQML, useAsDefault, description) VALUES ('', '', ?, ?, ?, ?, 1, ?)",
+                    (
+                        name,
+                        "geom" if table["geometry"] else "",
+                        name,
+                        qml_content,
+                        "MpyyNipDB",
+                    ),
+                )
+            con.commit()
+        finally:
+            con.close()
+
+        os.replace(staged, output)
+    finally:
+        if staging.exists():
+            for item in staging.glob("*"):
+                with contextlib.suppress(OSError):
+                    item.unlink()
+            with contextlib.suppress(OSError):
+                staging.rmdir()
+
+    return str(output)
+
+
+def import_yerel_template_style(layer: QgsVectorLayer, template_table: str):
+    """MpyyNipDB şablon katman stil ve formunu katmana uygular."""
+    spec = get_yerel_template().get("styles", {}).get(template_table)
+    if not spec:
+        return
+    qml_path = YEREL_RESOURCE_DIR / spec["qml"]
+    if not qml_path.exists():
+        return
+    document = QDomDocument("qgis")
+    document.setContent(qml_path.read_text(encoding="utf-8"))
+    with contextlib.suppress(Exception):
+        ok, _ = layer.importNamedStyle(document)
+        if ok:
+            layer.setCustomProperty("nip/form", f"MpyyNipDB: {template_table}")
+            layer.setCustomProperty("nip/template", template_table)
+            layer.triggerRepaint()
+
+
+def bind_yerel_function_relation(project: QgsProject, referencing: QgsVectorLayer, referenced: QgsVectorLayer, field_pairs: dict, relation_id: str | None = None):
+    """NİP fonksiyon açılır menüsü için QGIS proje ilişkisini (RelationReference) kurar."""
+    relation_id = relation_id or get_yerel_template()["relations"][0]["id"]
+    manager = project.relationManager()
+    if manager.relation(relation_id).isValid():
+        manager.removeRelation(relation_id)
+
+    relation = QgsRelation()
+    relation.setId(relation_id)
+    relation.setName("1/5000 NİP Fonksiyon Kataloğu")
+    relation.setReferencingLayer(referencing.id())
+    relation.setReferencedLayer(referenced.id())
+    for child, parent in field_pairs.items():
+        relation.addFieldPair(child, parent)
+    if relation.isValid():
+        manager.addRelation(relation)
+
+        for child in field_pairs:
+            index = referencing.fields().indexFromName(child)
+            if index < 0:
+                continue
+            setup = referencing.editorWidgetSetup(index)
+            if setup.type() != "RelationReference":
+                continue
+            config = dict(setup.config())
+            config.update(
+                {
+                    "Relation": relation_id,
+                    "ReferencedLayerId": referenced.id(),
+                    "ReferencedLayerName": referenced.name(),
+                    "ReferencedLayerDataSource": referenced.source(),
+                    "ReferencedLayerProviderKey": referenced.providerType(),
+                }
+            )
+            referencing.setEditorWidgetSetup(index, QgsEditorWidgetSetup("RelationReference", config))
+    return relation
+
+
+def load_yerel_nip_layers(
+    path: str,
+    project: QgsProject | None = None,
+    apply_styles: bool = True,
+    setup_forms: bool = True,
+    setup_relations: bool = True,
+    **kwargs
+) -> dict[str, QgsVectorLayer]:
+    """1/5000 NİP yerel şablonundaki tüm katmanları QGIS projesine yükler ve stilleri bağlar."""
+    project = project or QgsProject.instance()
+    spec = get_yerel_template()
+    gpkg = str(Path(path).resolve())
+    root = project.layerTreeRoot()
+    group = root.findGroup(YEREL_GROUP_NAME) or root.insertGroup(0, YEREL_GROUP_NAME)
+    loaded = {}
+
+    for name in spec["layer_order"]:
+        layer = QgsVectorLayer(f"{gpkg}|layername={name}", name, "ogr")
+        if not layer.isValid():
+            continue
+        if apply_styles:
+            import_yerel_template_style(layer, name)
+        project.addMapLayer(layer, False)
+        group.addLayer(layer)
+        loaded[name] = layer
+
+    if setup_relations:
+        for relation in spec.get("relations", []):
+            referencing = loaded.get(relation["referencing"])
+            referenced = loaded.get(relation["referenced"])
+            if referencing is not None and referenced is not None:
+                bind_yerel_function_relation(project, referencing, referenced, relation["pairs"], relation["id"])
+
+    return loaded
+
+
+def create_nip_workspace(output_path: str, crs="EPSG:5253", schema_type=SCHEMA_MPYY_117) -> str:
+    """1/5000 NİP çizim veritabanını oluşturur (MPYY 1.1.7 veya Yerel Şablon)."""
+    if str(schema_type).lower() in ("yerel_nip", "yerel", "mpyynipdb", "1", "klasik"):
+        return create_yerel_nip_workspace(output_path, crs=crs)
+    return create_mpyy_117_workspace(output_path, crs=crs)
+
+
+def detect_nip_schema(path: str) -> str:
+    """GeoPackage içindeki tablolardan şema türünü otomatik tespit eder."""
+    with contextlib.suppress(Exception):
+        con = sqlite3.connect(path)
+        tables = [r[0] for r in con.execute("SELECT table_name FROM gpkg_contents").fetchall()]
+        con.close()
+        if "mpyy_detay_katalogu" in tables or "GelismeKonut" in tables:
+            return SCHEMA_MPYY_117
+        if "alanlar-5000" in tables:
+            return SCHEMA_YEREL_NIP
+    return SCHEMA_MPYY_117
+
+
+def load_mpyy_117_layers(path: str, project: QgsProject | None = None, **kwargs) -> dict[str, QgsVectorLayer]:
     """MPYY 1.1.7 NİP GeoPackage katmanlarını gruplu ve stillendirilmiş olarak projeye yükler."""
     project = project or QgsProject.instance()
     gpkg = str(Path(path).resolve())
@@ -384,6 +648,15 @@ def load_nip_layers(path: str, project: QgsProject | None = None, **kwargs) -> d
         loaded.append(cat_layer)
 
     return {lyr.name(): lyr for lyr in loaded}
+
+
+def load_nip_layers(path: str, project: QgsProject | None = None, schema_type: str | None = None, **kwargs) -> dict[str, QgsVectorLayer]:
+    """Seçilen veya otomatik algılanan şemaya göre katmanları projeye yükler."""
+    if not schema_type:
+        schema_type = detect_nip_schema(path)
+    if str(schema_type).lower() in ("yerel_nip", "yerel", "mpyynipdb", "1", "klasik"):
+        return load_yerel_nip_layers(path, project=project, **kwargs)
+    return load_mpyy_117_layers(path, project=project, **kwargs)
 
 
 # Geriye dönük uyumluluk takma adları

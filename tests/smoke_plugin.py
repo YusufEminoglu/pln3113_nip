@@ -318,26 +318,31 @@ def test_boundary_filter_and_clipping():
 
 
 def test_nip_workspace_generation():
-    from pln3113_nip.core.nip_workspace import create_nip_drawing_workspace
+    from pln3113_nip.core.nip_workspace import (
+        create_nip_workspace,
+        SCHEMA_MPYY_117,
+        SCHEMA_YEREL_NIP,
+        detect_nip_schema,
+    )
     import sqlite3
 
     with tempfile.TemporaryDirectory(prefix="nip_gpkg_test_") as tmpdir:
-        gpkg_path = os.path.join(tmpdir, "test_nip_mpyy117.gpkg")
-        create_nip_drawing_workspace(gpkg_path, "EPSG:5253")
+        # 1. MPYY 1.1.7 Şeması
+        gpkg_mpyy = os.path.join(tmpdir, "test_nip_mpyy117.gpkg")
+        create_nip_workspace(gpkg_mpyy, "EPSG:5253", schema_type=SCHEMA_MPYY_117)
 
-        if not os.path.exists(gpkg_path):
+        if not os.path.exists(gpkg_mpyy):
             return _ok("nip workspace GeoPackage creation", False, "file does not exist")
 
-        conn = sqlite3.connect(gpkg_path)
+        conn = sqlite3.connect(gpkg_mpyy)
         cursor = conn.cursor()
         cursor.execute("SELECT table_name FROM gpkg_contents")
-        tables = {row[0] for row in cursor.fetchall()}
-
+        tables_mpyy = {row[0] for row in cursor.fetchall()}
         cursor.execute("SELECT plan_kademesi, xsd_dosyasi FROM mpyy_sema")
         sema_row = cursor.fetchone()
         conn.close()
 
-        expected = {
+        expected_mpyy = {
             "GelismeKonut",
             "MevcutKonut",
             "KentselCalisma",
@@ -349,12 +354,46 @@ def test_nip_workspace_generation():
             "mpyy_detay_katalogu",
             "layer_styles"
         }
-        missing = expected - tables
-        ok = (len(missing) == 0 and sema_row == ("NIP", "nip.V.1.1.7.xsd") and len(tables) >= 87)
+        ok_mpyy = (
+            len(expected_mpyy - tables_mpyy) == 0
+            and sema_row == ("NIP", "nip.V.1.1.7.xsd")
+            and len(tables_mpyy) >= 87
+            and detect_nip_schema(gpkg_mpyy) == SCHEMA_MPYY_117
+        )
+
+        # 2. Yerel NİP (MpyyNipDB 1/5000) Şeması
+        gpkg_yerel = os.path.join(tmpdir, "test_nip_yerel.gpkg")
+        create_nip_workspace(gpkg_yerel, "EPSG:5253", schema_type=SCHEMA_YEREL_NIP)
+
+        conn = sqlite3.connect(gpkg_yerel)
+        cursor = conn.cursor()
+        cursor.execute("SELECT table_name FROM gpkg_contents")
+        tables_yerel = {row[0] for row in cursor.fetchall()}
+        cursor.execute("SELECT count(*) FROM layer_styles")
+        style_count = cursor.fetchone()[0]
+        cursor.execute("SELECT count(*) FROM 'fonksiyonlar-5000_tablo'")
+        lookup_count = cursor.fetchone()[0]
+        conn.close()
+
+        expected_yerel = {
+            "alanlar-5000",
+            "cizgiler_5000_v2",
+            "fonksiyonlar-5000_tablo",
+            "5000_revizyon_planonama_snr",
+            "layer_styles"
+        }
+        ok_yerel = (
+            len(expected_yerel - tables_yerel) == 0
+            and style_count >= 5
+            and lookup_count >= 30
+            and detect_nip_schema(gpkg_yerel) == SCHEMA_YEREL_NIP
+        )
+
+        ok = ok_mpyy and ok_yerel
         return _ok(
-            "nip workspace GeoPackage has official MPYY 1.1.7 XSD schema (87 types + styles + hierarchy)",
+            "nip dual workspace generation (MPYY 1.1.7 87-type & Yerel NİP MpyyNipDB)",
             ok,
-            f"tables_count={len(tables)} sema={sema_row} missing={missing}"
+            f"mpyy_ok={ok_mpyy} ({len(tables_mpyy)} tables), yerel_ok={ok_yerel} ({len(tables_yerel)} tables, {style_count} styles, {lookup_count} lookups)"
         )
 
 

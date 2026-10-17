@@ -73,7 +73,14 @@ from .core.cleaner import GeometryCleanerEngine
 from .core.field_estimator import FieldEstimatorEngine
 from .core.nip_calculator import NipCalculatorEngine
 from .core.nip_dashboard_builder import open_nip_dashboard, build_nip_dashboard_html
-from .core.nip_workspace import create_nip_drawing_workspace, load_nip_drawing_layers
+from .core.nip_workspace import (
+    create_nip_workspace,
+    load_nip_layers,
+    SCHEMA_MPYY_117,
+    SCHEMA_YEREL_NIP,
+    create_nip_drawing_workspace,
+    load_nip_drawing_layers,
+)
 from .core.symbology_manager import (
     apply_mpyy_qml_style,
     style_detour_barrier,
@@ -757,9 +764,16 @@ class TireNipDockWidget(QDockWidget):
         layout.addWidget(card_info)
 
         # Hedef Veritabanı Konumu ve CRS
-        box_db = QGroupBox("Veritabanı Ayarları ve Dosya Konumu")
+        box_db = QGroupBox("Veritabanı Şeması ve Dosya Konumu")
         form_db = QFormLayout(box_db)
         form_db.setSpacing(8)
+
+        # Şema Seçici (MPYY 1.1.7 vs Yerel NİP)
+        self.cmb_db_schema = QComboBox()
+        self.cmb_db_schema.addItem("🏛️ Resmî MPYY 1.1.7 XSD Şeması (Bakanlık e-Plan & Ek-1e - 87 Katman)", SCHEMA_MPYY_117)
+        self.cmb_db_schema.addItem("📐 PLN3113 Yerel NİP Şablonu (MpyyNipDB 1/5000 - 5 Katman + Tablo + QML)", SCHEMA_YEREL_NIP)
+        self.cmb_db_schema.currentIndexChanged.connect(self._on_db_schema_changed)
+        form_db.addRow("Plan Şeması / Standart:", self.cmb_db_schema)
 
         # GPKG Dosya Yolu Seçici
         path_box = QHBoxLayout()
@@ -792,7 +806,7 @@ class TireNipDockWidget(QDockWidget):
         self.chk_db_load_layers.setChecked(True)
         opts_lay.addWidget(self.chk_db_load_layers)
 
-        self.chk_db_apply_styles = QCheckBox("MPYY resmî lejant stillerini (.qml) otomatik bağla")
+        self.chk_db_apply_styles = QCheckBox("MPYY resmî lejant stillerini (.qml / SLD) otomatik bağla")
         self.chk_db_apply_styles.setChecked(True)
         opts_lay.addWidget(self.chk_db_apply_styles)
 
@@ -814,9 +828,9 @@ class TireNipDockWidget(QDockWidget):
         layout.addWidget(self.btn_create_db)
 
         # Bilgilendirme Kartı: Üretilecek Katman Şeması
-        box_schema = QGroupBox("Oluşturulacak Resmî MPYY 1.1.7 NİP Katmanları ve Hiyerarşisi")
-        schema_lay = QVBoxLayout(box_schema)
-        schema_html = QLabel(
+        self.box_schema = QGroupBox("Oluşturulacak Resmî MPYY 1.1.7 NİP Katmanları ve Hiyerarşisi")
+        schema_lay = QVBoxLayout(self.box_schema)
+        self.schema_html = QLabel(
             "<div style='font-size:8.5pt; color:#334155; line-height:1.45;'>"
             "• <b>Alanlar (58 Poligon Katmanı)</b>: GelismeKonut, MevcutKonut, DonusumKonutAlanlari, KentselCalisma, "
             "AcikYesilAlan, EgitimTesisAlani, SaglikTesisAlani, PlanSiniri, YolDuzenlemeAlanlari, AfetHizmetAlani, AraziKoruma vb.<br/>"
@@ -826,12 +840,42 @@ class TireNipDockWidget(QDockWidget):
             "• <b>Resmî e-Plan SLD Stilleri & Formlar</b>: Her katman için Bakanlık e-Plan renkleri, taramaları ve ValueMap açılır menüleri hazır."
             "</div>"
         )
-        schema_html.setWordWrap(True)
-        schema_lay.addWidget(schema_html)
-        layout.addWidget(box_schema)
+        self.schema_html.setWordWrap(True)
+        schema_lay.addWidget(self.schema_html)
+        layout.addWidget(self.box_schema)
 
         layout.addStretch()
         return tab
+
+    def _on_db_schema_changed(self, index=0):
+        schema_type = self.cmb_db_schema.currentData()
+        if schema_type == SCHEMA_YEREL_NIP:
+            self.btn_create_db.setText("  🚀 PLN3113 Yerel NİP Veritabanını Oluştur ve Katmanları Yükle")
+            self.box_schema.setTitle("Oluşturulacak PLN3113 Yerel NİP (MpyyNipDB) Katmanları")
+            self.schema_html.setText(
+                "<div style='font-size:8.5pt; color:#334155; line-height:1.45;'>"
+                "• <b>alanlar-5000 (Poligon)</b>: 1/5000 NİP arazi kullanım fonksiyon lekeleri ve alan kullanım kararları.<br/>"
+                "• <b>cizgiler_5000_v2 (Çizgi)</b>: 1/5000 NİP yol aksları, plan onama sınırı, koruma kuşakları ve hatlar.<br/>"
+                "• <b>fonksiyonlar-5000_tablo (Öznitelik Tablosu)</b>: 1-N ilişkili çoklu fonksiyon, lejant kodu ve alt detay tanımları.<br/>"
+                "• <b>5000_revizyon_planonama_snr & yollar_ve_Adalar_icin_cizgiler</b>: Yardımcı sınır ve yol/ada aks katmanları.<br/>"
+                "• <b>layer_styles & Hazır QML Lejantı</b>: GeoPackage içinde gömülü resmî renk paleti ve QML form/ilişki tanımları."
+                "</div>"
+            )
+            self.chk_db_setup_relations.setEnabled(True)
+            self.chk_db_setup_relations.setChecked(True)
+        else:
+            self.btn_create_db.setText("  🚀 MPYY 1.1.7 NİP Çizim Veritabanını Oluştur ve Katmanları Yükle")
+            self.box_schema.setTitle("Oluşturulacak Resmî MPYY 1.1.7 NİP Katmanları ve Hiyerarşisi")
+            self.schema_html.setText(
+                "<div style='font-size:8.5pt; color:#334155; line-height:1.45;'>"
+                "• <b>Alanlar (58 Poligon Katmanı)</b>: GelismeKonut, MevcutKonut, DonusumKonutAlanlari, KentselCalisma, "
+                "AcikYesilAlan, EgitimTesisAlani, SaglikTesisAlani, PlanSiniri, YolDuzenlemeAlanlari, AfetHizmetAlani, AraziKoruma vb.<br/>"
+                "• <b>Çizgiler (23 Çizgi Katmanı)</b>: KarayoluGuzergahi, Demiryolu, AdaKenari, ManiaSiniri, SuUlasimBaglantisi vb.<br/>"
+                "• <b>Noktalar (6 Nokta Katmanı)</b>: Heliport, OzelKanunlarlaBelirlenenAlan, Merkez vb.<br/>"
+                "• <b>Ek-1e Sembol Kataloğu (mpyy_detay_katalogu)</b>: 199 adet mevzuat sembolü ve detay sınıflandırması.<br/>"
+                "• <b>Resmî e-Plan SLD Stilleri & Formlar</b>: Her katman için Bakanlık e-Plan renkleri, taramaları ve ValueMap açılır menüleri hazır."
+                "</div>"
+            )
 
     def _browse_db_path(self):
         filename, _ = QFileDialog.getSaveFileName(
@@ -853,6 +897,7 @@ class TireNipDockWidget(QDockWidget):
 
         crs = self.crs_db_selector.crs()
         crs_authid = crs.authid() if crs.isValid() else "EPSG:5253"
+        schema_type = self.cmb_db_schema.currentData() or SCHEMA_MPYY_117
 
         load_layers = self.chk_db_load_layers.isChecked()
         apply_styles = self.chk_db_apply_styles.isChecked()
@@ -861,27 +906,30 @@ class TireNipDockWidget(QDockWidget):
 
         try:
             self.btn_create_db.setEnabled(False)
-            create_nip_drawing_workspace(gpkg_path, crs_authid)
+            create_nip_workspace(gpkg_path, crs=crs_authid, schema_type=schema_type)
 
             loaded_names = []
             if load_layers:
-                layers_dict = load_nip_drawing_layers(
+                layers_dict = load_nip_layers(
                     gpkg_path,
-                    iface=self.iface,
                     project=QgsProject.instance(),
+                    schema_type=schema_type,
                     apply_styles=apply_styles,
                     setup_forms=setup_forms,
                     setup_relations=setup_relations
                 )
                 loaded_names = list(layers_dict.keys())
 
+            schema_name = "Resmî MPYY 1.1.7 XSD" if schema_type == SCHEMA_MPYY_117 else "PLN3113 Yerel NİP (MpyyNipDB)"
             msg = (
-                f"1/5000 NİP Çizim Veritabanı başarıyla oluşturuldu!\n\n"
+                f"1/5000 NİP Çizim Veritabanı ({schema_name}) başarıyla oluşturuldu!\n\n"
                 f"📁 Dosya: {gpkg_path}\n"
                 f"🌐 Projeksiyon: {crs_authid}\n"
             )
             if loaded_names:
-                msg += f"✅ Projeye Yüklenen Katmanlar:\n- " + "\n- ".join(loaded_names)
+                msg += f"✅ Projeye Yüklenen Katmanlar ({len(loaded_names)} adet):\n- " + "\n- ".join(loaded_names[:15])
+                if len(loaded_names) > 15:
+                    msg += f"\n... ve {len(loaded_names) - 15} katman daha."
 
             QMessageBox.information(self, "Veritabanı Hazır", msg)
 
