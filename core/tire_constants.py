@@ -6,8 +6,6 @@ PLN3113 Şehir Planlama Projesi III - Tire Stüdyosu
 """
 from __future__ import annotations
 
-import re
-
 # =====================================================================
 # 1. TİRE NÜFUS VE PROJEKSİYON REFERANS VERİLERİ (GÖSTERGE PANELİ)
 # =====================================================================

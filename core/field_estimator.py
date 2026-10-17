@@ -7,18 +7,10 @@ PLN3113 - nip_eklenti_01
 from __future__ import annotations
 
 from qgis.core import (
-    QgsDistanceArea,
-    QgsFeature,
-    QgsField,
-    QgsFields,
-    QgsGeometry,
-    QgsPointXY,
     QgsSpatialIndex,
     QgsVectorLayer,
-    QgsWkbTypes,
     QgsProcessingFeedback
 )
-from qgis.PyQt.QtCore import QVariant
 
 from .tire_constants import get_employment_for_function, get_trips_for_function
 
@@ -107,7 +99,6 @@ class FieldEstimatorEngine:
         bina_fields = bina_layer.fields()
         idx_kat = bina_fields.indexOf("ZEMINUSTUKATSAYISI")
         idx_bagimsiz = bina_fields.indexOf("BAGIMSIZBOLUMSAYI")
-        idx_tip = bina_fields.indexOf("TIP")
         idx_bina_alan = bina_fields.indexOf("Shape_Area")
 
         bina_count = bina_layer.featureCount()

@@ -10,10 +10,7 @@ import contextlib
 import hashlib
 from qgis.core import (
     QgsFeature,
-    QgsFeatureSink,
-    QgsGeometry,
     QgsVectorLayer,
-    QgsWkbTypes,
     QgsProcessingFeedback
 )
 
@@ -174,10 +171,8 @@ class GeometryCleanerEngine:
                 continue
 
             # 1. Geometri Geçerlilik Kontrolü & Otomatik Onarım
-            was_invalid = False
             with contextlib.suppress(Exception):
                 if not geom.isGeosValid() or not geom.isValid():
-                    was_invalid = True
                     repaired = geom.makeValid()
                     if repaired and not repaired.isEmpty():
                         geom = repaired

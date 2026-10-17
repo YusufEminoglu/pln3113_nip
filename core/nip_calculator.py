@@ -9,15 +9,12 @@ from __future__ import annotations
 from qgis.core import (
     QgsDistanceArea,
     QgsFeature,
-    QgsField,
     QgsFields,
     QgsGeometry,
     QgsPointXY,
     QgsSpatialIndex,
-    QgsVectorLayer,
     QgsWkbTypes
 )
-from qgis.PyQt.QtCore import QVariant
 
 from .tire_constants import (
     TIRE_POPULATION_BENCHMARKS,
@@ -29,8 +26,7 @@ from .tire_constants import (
     norm_tr,
     get_tucbs_info,
     OZEL_TAHSIS_ANAHTARLAR,
-    DOP_DISI_ANAHTARLAR,
-    get_default_dop_rule
+    DOP_DISI_ANAHTARLAR
 )
 
 class NipCalculatorEngine:
@@ -50,7 +46,8 @@ class NipCalculatorEngine:
         yol_uzunlugu_m: float = 0.0,
         rules_config: dict | None = None,
         secondary_fonk_col: str = "",
-        analysis_mode: str = "nip"
+        analysis_mode: str = "nip",
+        sinir_modu: str = "clip"
     ) -> tuple[list[dict], dict]:
         """Tüm öznitelikleri, Kamu-Özel dengesini, DOP ve kent karakter tablolarını üretir."""
         rules_config = rules_config or {}
@@ -62,6 +59,23 @@ class NipCalculatorEngine:
         parsed_items = []
         residential_features = [] # (geom, alt_snr, ust_snr)
         
+        sinir_kullanildi = (sinir_geom is not None and not sinir_geom.isEmpty())
+        sinir_stats = {
+            "aktif": sinir_kullanildi,
+            "mod": sinir_modu,
+            "sinir_modu": sinir_modu,
+            "toplam_girdi": len(features),
+            "toplam_girdi_ada": len(features),
+            "tamamen_icinde": 0,
+            "kesisen_kirpilan": 0,
+            "kesisen_dahil": 0,
+            "kesisen_elenen": 0,
+            "kesisen_islenen": 0,
+            "sinir_disi_elenen": 0,
+            "isleme_alinan": 0,
+            "islenen_ada_sayisi": 0
+        }
+
         idx_fonk = source_fields.indexOf(fonksiyon_col) if fonksiyon_col else -1
         idx_sec = source_fields.indexOf(secondary_fonk_col) if secondary_fonk_col else -1
         idx_grup = source_fields.indexOf("grup_no") if "grup_no" in source_fields.names() else -1
@@ -71,6 +85,50 @@ class NipCalculatorEngine:
             if not geom or geom.isEmpty():
                 continue
 
+            # 1.0 Plan Onama Sınırı Filtreleme ve Kırpma / Kesişim Yönetimi
+            if sinir_kullanildi:
+                if sinir_geom.disjoint(geom):
+                    sinir_stats["sinir_disi_elenen"] += 1
+                    continue
+
+                if sinir_geom.contains(geom):
+                    sinir_stats["tamamen_icinde"] += 1
+                else:
+                    # Sınırla kısmen kesişiyor (dışarı taşma var)
+                    if sinir_modu == "clip":
+                        clipped = geom.intersection(sinir_geom)
+                        if (
+                            not clipped 
+                            or clipped.isEmpty() 
+                            or clipped.type() != QgsWkbTypes.GeometryType.PolygonGeometry 
+                            or clipped.area() <= 0.001
+                        ):
+                            sinir_stats["sinir_disi_elenen"] += 1
+                            continue
+                        geom = clipped
+                        sinir_stats["kesisen_kirpilan"] += 1
+                        sinir_stats["kesisen_islenen"] += 1
+                    elif sinir_modu == "intersect":
+                        sinir_stats["kesisen_dahil"] += 1
+                        sinir_stats["kesisen_islenen"] += 1
+                    elif sinir_modu == "within":
+                        sinir_stats["kesisen_elenen"] += 1
+                        sinir_stats["sinir_disi_elenen"] += 1
+                        continue
+                    elif sinir_modu == "centroid":
+                        c = geom.centroid()
+                        if c and not c.isEmpty() and sinir_geom.contains(c):
+                            sinir_stats["kesisen_dahil"] += 1
+                            sinir_stats["kesisen_islenen"] += 1
+                        else:
+                            sinir_stats["sinir_disi_elenen"] += 1
+                            continue
+
+            if not geom.isMultipart():
+                geom.convertToMultiType()
+
+            sinir_stats["isleme_alinan"] += 1
+
             # Alan hesapla
             if distance_area:
                 alan_m2 = distance_area.measureArea(geom)
@@ -78,6 +136,9 @@ class NipCalculatorEngine:
                     alan_m2 = geom.area()
             else:
                 alan_m2 = geom.area()
+
+            if alan_m2 <= 0.001:
+                continue
 
             alan_ha = alan_m2 / 10000.0
 
@@ -307,6 +368,8 @@ class NipCalculatorEngine:
 
         dop_ozet = {
             "sinir_katmani_kullanildi": sinir_kullanildi,
+            "sinir_modu": sinir_modu if sinir_kullanildi else None,
+            "sinir_filtre_ozet": sinir_stats if sinir_kullanildi else None,
             "toplam_plan_alani_m2": round(toplam_plan_alani_m2 if sinir_kullanildi else (adalar_toplam_m2 + hesaplanan_yol_m2), 2),
             "toplam_plan_alani_ha": round(toplam_plan_alani_ha if sinir_kullanildi else ((adalar_toplam_m2 + hesaplanan_yol_m2)/10000.0), 2),
             "adalar_toplam_m2": round(adalar_toplam_m2, 2),
@@ -413,6 +476,9 @@ class NipCalculatorEngine:
             "kaynak": "PLN3113 Tire NİP Analiz Modeli (Alt - Üst Sınır)"
         })
 
+        sinir_stats["islenen_ada_sayisi"] = len(parsed_items)
+        sinir_stats["isleme_alinan"] = len(parsed_items)
+
         summary = {
             "toplam_plan_alani_ha": round(toplam_plan_alani_ha, 2),
             "toplam_konut_alani_ha": round(toplam_konut_alani_ha, 2),
@@ -423,6 +489,7 @@ class NipCalculatorEngine:
             "toplam_gunluk_arac": int(sum(it["gunluk_arac"] for it in parsed_items)),
             "toplam_gunluk_yaya": int(sum(it["gunluk_yaya"] for it in parsed_items)),
             "dop_ozet": dop_ozet,
+            "sinir_filtre_ozet": sinir_stats if sinir_kullanildi else {"aktif": False},
             "fonksiyon_dagilim": fonksiyon_dagilim_list,
             "kent_karakter": kent_karakter_list,
             "ek2_rapor": ek2_rapor,

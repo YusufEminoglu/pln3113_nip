@@ -34,6 +34,7 @@ class NipPopulationAlgorithm(QgsProcessingAlgorithm):
     FONKSIYON_FIELD = 'FONKSIYON_FIELD'
     SECONDARY_FONKSIYON_FIELD = 'SECONDARY_FONKSIYON_FIELD'
     SINIR_LAYER = 'SINIR_LAYER'
+    SINIR_MODU = 'SINIR_MODU'
     YOL_LAYER = 'YOL_LAYER'
     PROJ_NUFUS = 'PROJ_NUFUS'
     OUTPUT_LAYER = 'OUTPUT_LAYER'
@@ -82,6 +83,19 @@ class NipPopulationAlgorithm(QgsProcessingAlgorithm):
                 'Plan Onama Sınırı Katmanı (Opsiyonel - Geometrik Yol ve Kesin DOP Hesabı)',
                 [QgsProcessing.SourceType.TypeVectorPolygon],
                 optional=True
+            )
+        )
+        self.addParameter(
+            QgsProcessingParameterEnum(
+                self.SINIR_MODU,
+                'Plan Sınırıyla Kesişen Poligonların İşleme Alınma Yöntemi (Sınır Dışındakiler Otomatik Elenir)',
+                options=[
+                    'Sınırla Kırp / Kes (Clip - Sınır dışında kalan parça atılır, net iç alan hesaplanır)',
+                    'Sınıra Değenleri Dahil Et (Intersect - Sınırı kesen poligonun tamamı korunur)',
+                    'Sınırı Aşanları Hariç Tut (Within - Sınırı taşan ada tamamen elenir)',
+                    'Ağırlık Merkezine Göre (Centroid - Merkez noktası sınır içindeyse dahil edilir)'
+                ],
+                defaultValue=0
             )
         )
         self.addParameter(
@@ -151,6 +165,9 @@ class NipPopulationAlgorithm(QgsProcessingAlgorithm):
         sec_col = self.parameterAsString(parameters, self.SECONDARY_FONKSIYON_FIELD, context)
         proj_nufus = self.parameterAsInt(parameters, self.PROJ_NUFUS, context)
         sinir_layer = self.parameterAsVectorLayer(parameters, self.SINIR_LAYER, context)
+        sinir_modu_idx = self.parameterAsEnum(parameters, self.SINIR_MODU, context)
+        sinir_modu_map = {0: "clip", 1: "intersect", 2: "within", 3: "centroid"}
+        sinir_modu = sinir_modu_map.get(sinir_modu_idx, "clip")
         yol_layer = self.parameterAsVectorLayer(parameters, self.YOL_LAYER, context)
 
         if not layer:
@@ -185,12 +202,20 @@ class NipPopulationAlgorithm(QgsProcessingAlgorithm):
         parsed_items, summary = NipCalculatorEngine.calculate(
             feats, layer.fields(), fonk_col, proj_nufus, da,
             sinir_geom=sinir_geom,
+            sinir_modu=sinir_modu,
             yol_uzunlugu_m=yol_uzunlugu_m,
             secondary_fonk_col=secondary_fonk_col,
             analysis_mode=analysis_mode
         )
 
         dop = summary["dop_ozet"]
+        s_stats = summary.get("sinir_filtre_ozet")
+        if s_stats and s_stats.get("aktif"):
+            feedback.pushInfo(
+                f"Plan Sınırı Filtresi ({s_stats['mod']}): Girdi={s_stats['toplam_girdi_ada']}, "
+                f"İçte={s_stats['tamamen_icinde']}, Kesişen={s_stats['kesisen_islenen']}, "
+                f"Sınır Dışı Elenen={s_stats['sinir_disi_elenen']}"
+            )
         feedback.pushInfo(f"Hesaplanan Toplam Alt Nüfus: {summary['toplam_alt_nufus']:,} Kişi")
         feedback.pushInfo(f"Hesaplanan Toplam Üst Nüfus: {summary['toplam_ust_nufus']:,} Kişi")
         feedback.pushInfo(f"Düzenleme Sahası (DOP Esas Alan): {dop['dop_esas_alan_m2']:,.2f} m²")

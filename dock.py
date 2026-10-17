@@ -32,13 +32,11 @@ from qgis.PyQt.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSpinBox,
-    QSplitter,
     QStackedWidget,
     QTabWidget,
     QTableWidget,
     QTableWidgetItem,
     QTextEdit,
-    QToolButton,
     QVBoxLayout,
     QWidget
 )
@@ -59,8 +57,7 @@ from qgis.core import (
     QgsRendererCategory,
     QgsRendererRange,
     QgsSingleSymbolRenderer,
-    QgsVectorLayer,
-    QgsWkbTypes
+    QgsVectorLayer
 )
 from qgis.gui import QgsMapLayerComboBox
 
@@ -68,13 +65,12 @@ from .core.cleaner import GeometryCleanerEngine
 from .core.field_estimator import FieldEstimatorEngine
 from .core.nip_calculator import NipCalculatorEngine
 from .core.tire_constants import (
-    TIRE_POPULATION_BENCHMARKS,
     get_default_dop_rule,
     get_default_employment_rule,
     get_default_trip_rule,
     norm_tr
 )
-from .ui_theme import NIP_STUDIO_QSS, studio_colors, studio_stylesheet
+from .ui_theme import studio_stylesheet
 
 # Scoped Qt enums (fully compatible across Qt5 and Qt6)
 _POINTING_HAND = Qt.CursorShape.PointingHandCursor
@@ -751,7 +747,33 @@ class TireNipDockWidget(QDockWidget):
         self.cmb_sinir_layer = QgsMapLayerComboBox()
         self.cmb_sinir_layer.setFilters(QgsMapLayerProxyModel.Filter.PolygonLayer)
         self.cmb_sinir_layer.setAllowEmptyLayer(True)
+        self.cmb_sinir_layer.layerChanged.connect(self._on_sinir_layer_changed)
         f_layout.addRow("Plan Onama Sınırı (Opsiyonel):", self.cmb_sinir_layer)
+
+        self.cmb_sinir_modu = QComboBox()
+        self.cmb_sinir_modu.addItem("✂️ Sınırla Kırp / Kes (Clip - Önerilen)", "clip")
+        self.cmb_sinir_modu.addItem("➕ Sınıra Değenleri Dahil Et (Intersect - Bütün Al)", "intersect")
+        self.cmb_sinir_modu.addItem("⛔ Kesişenleri Hariç Tut (Within - Sadece %100 İçeridekiler)", "within")
+        self.cmb_sinir_modu.addItem("🎯 Ağırlık Merkezine Göre (Centroid - Merkezi İçerideyse Al)", "centroid")
+        f_layout.addRow("Sınır Kırpma / Kesişim Modu:", self.cmb_sinir_modu)
+
+        self.lbl_sinir_foolproof = QLabel(
+            "<b>💡 Öğrenci Kılavuzu — Plan Onama Sınırı & Kesişim Mantığı:</b><br>"
+            "• <b>Sınır Dışındaki Adalar:</b> Belirlediğiniz Plan Onama Sınırının <u>tamamen dışında</u> kalan "
+            "tüm ada ve poligonlar analize KESİNLİKLE dahil edilmez (otomatik filtrelenip elenir).<br>"
+            "• <b>Sınırı Aşan / Kısmen Dışarı Taşan Adalar İçin Seçenekler:</b><br>"
+            "&nbsp;&nbsp;<b>1. Sınırla Kırp / Kes (Clip - Önerilen):</b> Taşan kısmı tam sınır çizgisinden keser, "
+            "sadece sınır içinde kalan net parçayı ve nüfusu hesaba katar.<br>"
+            "&nbsp;&nbsp;<b>2. Sınıra Değenleri Dahil Et (Intersect):</b> Adanın ucu dahi sınıra giriyorsa adayı bölmeden tamamını analize katar.<br>"
+            "&nbsp;&nbsp;<b>3. Kesişenleri Hariç Tut (Within):</b> Dışarıya 1 mm bile taşan adaları tamamen eler; sadece %100 içeride kalanları alır.<br>"
+            "&nbsp;&nbsp;<b>4. Ağırlık Merkezine Göre (Centroid):</b> Adanın ağırlık merkezi sınır içindeyse tamamını alır, dışındaysa eler."
+        )
+        self.lbl_sinir_foolproof.setWordWrap(True)
+        self.lbl_sinir_foolproof.setStyleSheet(
+            "background: #fffbeb; border: 1px solid #fde047; border-radius: 6px; "
+            "padding: 8px; font-size: 11px; color: #854d0e; line-height: 140%;"
+        )
+        f_layout.addRow(self.lbl_sinir_foolproof)
 
         self.cmb_yol_layer = QgsMapLayerComboBox()
         self.cmb_yol_layer.setFilters(QgsMapLayerProxyModel.Filter.LineLayer)
@@ -968,6 +990,21 @@ class TireNipDockWidget(QDockWidget):
 
     def _on_fonk_col_changed(self, col_name: str = ""):
         self._load_rules_table_from_layer(preserve_custom=False)
+
+    def _on_sinir_layer_changed(self):
+        has_sinir = (self.cmb_sinir_layer.currentLayer() is not None)
+        self.cmb_sinir_modu.setEnabled(has_sinir)
+        if hasattr(self, 'lbl_sinir_foolproof'):
+            if has_sinir:
+                self.lbl_sinir_foolproof.setStyleSheet(
+                    "background: #fffbeb; border: 1px solid #fde047; border-radius: 6px; "
+                    "padding: 8px; font-size: 11px; color: #854d0e; line-height: 140%;"
+                )
+            else:
+                self.lbl_sinir_foolproof.setStyleSheet(
+                    "background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; "
+                    "padding: 8px; font-size: 11px; color: #64748b; line-height: 140%;"
+                )
 
     def _load_rules_table_from_layer(self, preserve_custom: bool = True):
         """Seçili katmandaki fonksiyonları okuyup kurallar tablosuna doldurur.
@@ -1378,6 +1415,12 @@ class TireNipDockWidget(QDockWidget):
                 if geoms:
                     sinir_geom = QgsGeometry.unaryUnion(geoms)
 
+            sinir_modu = "clip"
+            if hasattr(self, 'cmb_sinir_modu'):
+                cur_data = self.cmb_sinir_modu.currentData()
+                if cur_data:
+                    sinir_modu = str(cur_data)
+
             # 2. Yol Aksları Uzunluğu
             yol_layer = self.cmb_yol_layer.currentLayer()
             yol_uzunlugu_m = 0.0
@@ -1403,6 +1446,7 @@ class TireNipDockWidget(QDockWidget):
             parsed_items, summary = NipCalculatorEngine.calculate(
                 feats, layer.fields(), fonk_col, proj_nufus, da,
                 sinir_geom=sinir_geom,
+                sinir_modu=sinir_modu,
                 yol_uzunlugu_m=yol_uzunlugu_m,
                 rules_config=rules_config,
                 secondary_fonk_col=secondary_fonk_col,
@@ -1606,6 +1650,33 @@ class TireNipDockWidget(QDockWidget):
             dop_durum_color = "#16a34a" if dop["dop_orani"] <= 45.0 else "#dc2626"
             yol_genislik_tr = f"<tr><td><b>Ortalama Fiili Yol Genişliği</b></td><td colspan='2'><b>{dop['ortalama_yol_genisligi_m']} m</b> ({dop['yol_agi_uzunlugu_km']} km Yol Ağı)</td></tr>" if dop.get("ortalama_yol_genisligi_m") else ""
 
+            # Plan Onama Sınırı Bilgi Özeti
+            s_stats = summary.get("sinir_filtre_ozet")
+            sinir_info_html = ""
+            sinir_msg_extra = ""
+            if s_stats and s_stats.get("aktif"):
+                mod_names = {
+                    "clip": "Sınırla Kırp / Kes (Sınır Dışını At, Net İç Alanı Al)",
+                    "intersect": "Sınıra Değenleri Dahil Et (Bütünsel Korunur)",
+                    "within": "Sınırı Aşanları Hariç Tut (Yalnızca Tamamı İçte Olanlar)",
+                    "centroid": "Ağırlık Merkezine Göre (Merkezi İçte Olanlar)"
+                }
+                mod_label = mod_names.get(s_stats.get("mod"), s_stats.get("mod"))
+                elenen_style = "color:#b91c1c; font-weight:bold;" if s_stats['sinir_disi_elenen'] > 0 else "color:#15803d; font-weight:bold;"
+                sinir_info_html = f"""
+                <h4>🌐 Plan Onama Sınırı Mekânsal Kapsam Raporu</h4>
+                <div style="font-size:11px; color:#1e3a8a; margin-bottom:12px; background:#eff6ff; padding:10px; border-left:4px solid #3b82f6; border-radius:4px;">
+                    <b>Uygulanan Sınır İşlem Modu:</b> {mod_label}<br>
+                    • <b>Toplam Girdi Ada Sayısı:</b> {s_stats['toplam_girdi_ada']} adet<br>
+                    • <b>Hesaplamaya Alınan Ada Sayısı:</b> {s_stats['islenen_ada_sayisi']} adet<br>
+                    • <b>Tamamı Sınır İçinde Kalanlar:</b> {s_stats['tamamen_icinde']} adet<br>
+                    • <b>Sınırı Kesen / İşlenen Adalar:</b> {s_stats['kesisen_islenen']} adet<br>
+                    • <b>Sınır Dışında Kaldığı İçin Elenenler:</b> <span style="{elenen_style}">{s_stats['sinir_disi_elenen']} adet ada</span> (Kesinlikle hesaba katılmadı)
+                </div>
+                """
+                if s_stats.get("sinir_disi_elenen", 0) > 0:
+                    sinir_msg_extra = f"\n\n⚠️ Plan Onama Sınırı dışında kalan {s_stats['sinir_disi_elenen']} adet ada otomatik olarak elendi ve hesaba dahil edilmedi."
+
             report_html = f"""
             <h3>🏙️ TİRE {mode_title.upper()} ANALİZ VE KAPASİTE RAPORU</h3>
             
@@ -1631,6 +1702,8 @@ class TireNipDockWidget(QDockWidget):
                 • <b>Güncel TÜİK Verisi:</b> En güncel resmi sayım 31 Aralık 2025 referanslı (Şubat 2026'da ilan edilen) ADNKS kütüğüdür (87.571 kişi).<br>
                 • <b>Planlama Uyumu:</b> Hesaplanan kentsel üst sınır nüfusu ({ust_str} kişi), 1997 planının 2015 hedefi (53.629 kişi) ile %99.6 oranında birebir örtüşmektedir.
             </div>
+
+            {sinir_info_html}
 
             <h4>1. Genel Nüfus, Alan ve Ulaşım Göstergeleri</h4>
             <table border="1" cellpadding="4" style="border-collapse:collapse; width:100%;">
@@ -1701,7 +1774,7 @@ class TireNipDockWidget(QDockWidget):
                 f"Hesaplanan DOP Oranı: %{dop['dop_orani']:.2f} ({dop['dop_uygunluk']})\n"
                 f"Net Yol Ağı Alanı: {dop['hesaplanan_yol_ha']:.2f} ha (%{dop['yol_orani_yuzde']:.2f})\n\n"
                 f"Analiz katmanı ve 4 adet detaylı tablo (DOP, Kent Karakteri, Ek-2 ve Fonksiyon Dağılımı) "
-                f"harita projenize 'PLN3113 {mode_title} Analiz Çıktıları' grubu altında eklendi."
+                f"harita projenize 'PLN3113 {mode_title} Analiz Çıktıları' grubu altında eklendi.{sinir_msg_extra}"
             )
 
         except Exception as e:

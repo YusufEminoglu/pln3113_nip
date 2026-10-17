@@ -7,7 +7,6 @@ PLN3113 - nip_eklenti_01
 from __future__ import annotations
 
 from qgis.core import (
-    QgsFeature,
     QgsFeatureSink,
     QgsProcessing,
     QgsProcessingAlgorithm,

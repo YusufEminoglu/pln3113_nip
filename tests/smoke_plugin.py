@@ -177,7 +177,6 @@ def test_lifecycle(iface):
 
 def test_dop_calculation_engine():
     from qgis.core import QgsFeature, QgsGeometry, QgsFields, QgsField, QgsRectangle
-    from qgis.PyQt.QtCore import QVariant
     from pln3113_nip.core.nip_calculator import NipCalculatorEngine
 
     fields = QgsFields()
@@ -226,6 +225,98 @@ def test_dop_calculation_engine():
     return _ok("dop calculation engine applies default and user rules correctly", ok_default and ok_custom)
 
 
+def test_boundary_filter_and_clipping():
+    from qgis.core import QgsFeature, QgsGeometry, QgsFields, QgsField, QgsRectangle
+    from pln3113_nip.core.nip_calculator import NipCalculatorEngine
+
+    fields = QgsFields()
+    fields.append(QgsField("fonk"))
+
+    # Sinir: (0, 0) - (100, 100) -> 10,000 m2
+    sinir_geom = QgsGeometry.fromRect(QgsRectangle(0.0, 0.0, 100.0, 100.0))
+
+    # 1. Tamamen icinde: (10, 10) - (40, 40) -> 900 m2
+    f_in = QgsFeature(fields)
+    f_in.setGeometry(QgsGeometry.fromRect(QgsRectangle(10.0, 10.0, 40.0, 40.0)))
+    f_in.setAttribute("fonk", "Gelişme Konut Alanı (Orta)")
+
+    # 2. Siniri kesen ada: (70, 0) - (110, 50) -> Toplam 2,000 m2, icte kalan (70..100 x 0..50) = 1,500 m2
+    f_cross = QgsFeature(fields)
+    f_cross.setGeometry(QgsGeometry.fromRect(QgsRectangle(70.0, 0.0, 110.0, 50.0)))
+    f_cross.setAttribute("fonk", "Ticaret Alanı")
+
+    # 3. Tamamen disarida kalan ada: (200, 200) - (250, 250) -> 2,500 m2
+    f_out = QgsFeature(fields)
+    f_out.setGeometry(QgsGeometry.fromRect(QgsRectangle(200.0, 200.0, 250.0, 250.0)))
+    f_out.setAttribute("fonk", "Park ve Yeşil Alan")
+
+    feats = [f_in, f_cross, f_out]
+
+    # Test 1: CLIP modu
+    items_clip, sum_clip = NipCalculatorEngine.calculate(
+        feats, fields, "fonk", projeksiyon_nufus=50000,
+        sinir_geom=sinir_geom, sinir_modu="clip"
+    )
+    s_clip = sum_clip["sinir_filtre_ozet"]
+    ok_clip = (
+        s_clip["aktif"] is True
+        and s_clip["toplam_girdi_ada"] == 3
+        and s_clip["tamamen_icinde"] == 1
+        and s_clip["kesisen_islenen"] == 1
+        and s_clip["sinir_disi_elenen"] == 1
+        and len(items_clip) == 2
+        and round(items_clip[0]["alan_m2"], 1) == 900.0
+        and round(items_clip[1]["alan_m2"], 1) == 1500.0  # Kesilen parca (2000 -> 1500)
+    )
+
+    # Test 2: WITHIN modu (siniri tasan elenir)
+    items_within, sum_within = NipCalculatorEngine.calculate(
+        feats, fields, "fonk", projeksiyon_nufus=50000,
+        sinir_geom=sinir_geom, sinir_modu="within"
+    )
+    s_within = sum_within["sinir_filtre_ozet"]
+    ok_within = (
+        s_within["tamamen_icinde"] == 1
+        and s_within["kesisen_islenen"] == 0
+        and s_within["sinir_disi_elenen"] == 2
+        and len(items_within) == 1
+        and round(items_within[0]["alan_m2"], 1) == 900.0
+    )
+
+    # Test 3: INTERSECT modu (kesisen butun olarak kalir)
+    items_inter, sum_inter = NipCalculatorEngine.calculate(
+        feats, fields, "fonk", projeksiyon_nufus=50000,
+        sinir_geom=sinir_geom, sinir_modu="intersect"
+    )
+    s_inter = sum_inter["sinir_filtre_ozet"]
+    ok_inter = (
+        s_inter["tamamen_icinde"] == 1
+        and s_inter["kesisen_islenen"] == 1
+        and s_inter["sinir_disi_elenen"] == 1
+        and len(items_inter) == 2
+        and round(items_inter[1]["alan_m2"], 1) == 2000.0  # Butunsel korundu
+    )
+
+    # Test 4: CENTROID modu
+    # f_cross (70..110 x 0..50) centroid x=90, y=25 (sinir icinde) -> dahil edilmeli
+    items_cent, sum_cent = NipCalculatorEngine.calculate(
+        feats, fields, "fonk", projeksiyon_nufus=50000,
+        sinir_geom=sinir_geom, sinir_modu="centroid"
+    )
+    s_cent = sum_cent["sinir_filtre_ozet"]
+    ok_cent = (
+        s_cent["tamamen_icinde"] == 1
+        and s_cent["kesisen_islenen"] == 1
+        and s_cent["sinir_disi_elenen"] == 1
+        and len(items_cent) == 2
+    )
+
+    return _ok(
+        "boundary filter and clipping (clip, within, intersect, centroid, disjoint exclusion)",
+        ok_clip and ok_within and ok_inter and ok_cent
+    )
+
+
 def run_all(iface):
     print("=" * 60)
     print(" pln3113_nip - lifecycle smoke")
@@ -237,6 +328,7 @@ def run_all(iface):
         test_class_factory(),
         test_lifecycle(iface),
         test_dop_calculation_engine(),
+        test_boundary_filter_and_clipping(),
     ]
     passed = sum(1 for r in results if r)
     print("-" * 60)
