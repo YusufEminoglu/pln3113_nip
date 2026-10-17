@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
-"""Tire NİP ve Kentsel Analiz DockWidget Arayüzü.
+"""PLN3113 NİP ve Kentsel Analiz DockWidget Arayüzü.
 
 DEÜ Mimarlık Fakültesi Şehir ve Bölge Planlama Bölümü
-PLN3113 - tire_nip
+PLN3113 - pln3113_nip
 """
 from __future__ import annotations
 

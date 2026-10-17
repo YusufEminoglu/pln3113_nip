@@ -7,7 +7,7 @@
 **Geliştirici:** Arş. Gör. Yusuf Eminoğlu (Dokuz Eylül Üniversitesi, Şehir ve Bölge Planlama Bölümü)  
 **Akademik Profil:** [AVESIS](https://avesis.deu.edu.tr/yusuf.eminoglu) | [GitHub](https://github.com/YusufEminoglu)  
 **Lisans:** GPL-2.0-or-later  
-**Kaynak Kod:** [https://github.com/YusufEminoglu/tire_nip](https://github.com/YusufEminoglu/tire_nip)
+**Kaynak Kod:** [https://github.com/YusufEminoglu/pln3113_nip](https://github.com/YusufEminoglu/pln3113_nip)
 
 ---
 

@@ -3,13 +3,13 @@ name=PLN3113 NİP ve Kentsel Analiz Stüdyosu
 qgisMinimumVersion=3.22
 qgisMaximumVersion=4.99
 description=[TR ONLY] 1/5000 Master Plan (NIP) population, MPYY standards, DOP/land readjustment, urban morphology, and network analytics studio designed for Turkish urban planning studios.
-version=1.1.3
+version=1.1.4
 author=Yusuf Eminoğlu
 email=yusuf.eminoglu@deu.edu.tr
 about=PLN3113 NİP ve Kentsel Analiz Stüdyosu, Türkiye Mekânsal Planlar Yapım Yönetmeliği (MPYY) normları, 3194 sayılı İmar Kanunu md. 18 parselasyon/DOP ilkeleri ve PlanX kentsel analitik motoruyla güçlendirilmiş entegre bir 1/5000 Nazım İmar Planı (NİP) analiz ve modelleme paketidir. Öncelikli olarak Dokuz Eylül Üniversitesi ŞBP PLN3113 Şehir Planlama Projesi III stüdyosu için tasarlanmış olmakla birlikte, Türkiye'deki tüm Şehir ve Bölge Planlama bölümlerinde 1/5000 NİP, analitik etüt ve kentsel tasarım stüdyoları yürüten lisans/lisansüstü öğrencileri ile kentsel araştırmacılar için evrensel uyumluluk sunar. Eklenti; (1) Topolojik geometri temizliği, poligon geçerlilik onarımı ve SHA-256 hash tabanlı mükerrer parsel ayıklama; (2) Resmi MPYY 1.1.7 şablonlu veya yerel genişletilmiş ilişkisel GeoPackage (GPKG) planlama veritabanı kurulumu ve 1-tıkla MPGM standartlarında vektörel lejant/QML semboloji eşleme; (3) Yol hiyerarşisi, bordür/kaldırım ofsetleme, otomatik fillet yaylı kavşak geometrisi ve aks kapatma/poligonlaştırma; (4) Brüt plan nüfusu, MPYY Ek-2 sosyal/teknik donatı asgari kişi başı m² yeterlilik bilançosu, dinamik DOP içi/nDOP mülkiyet dengesi ve İller Bankası/matematiksel projeksiyon modelleri; (5) Kadastro adası ve bina ayak izlerinden türetilen TAKS (GSI), KAKS/Emsal (FSI), kat adedi (L), açık alan (OSR), PlanX morfoloji grafı ile yapı nizamı (Ayrık/Bitişik/Blok - A4) ve Spacematrix doku tipolojisi; (6) Gömülü Dijkstra ve Space Syntax motoruyla NACH/NAIN eksensel entegrasyon, primal merkezilik (Closeness/Betweenness), yol eğimi, bina ön cephe servis noktası bulucu, OD arzu hatları ve rotalama, çok kriterli dinamik yürüme izokronları (Concave Hull pedshed havzaları), 2SFCA iki aşamalı yüzen donatı erişilebilirlik modeli ve A/B senaryo farkı analizi bileşenlerini tek bir sezgisel çalışma alanında bir araya getirir.
-repository=https://github.com/YusufEminoglu/tire_nip
-tracker=https://github.com/YusufEminoglu/tire_nip/issues
-homepage=https://github.com/YusufEminoglu/tire_nip
+repository=https://github.com/YusufEminoglu/pln3113_nip
+tracker=https://github.com/YusufEminoglu/pln3113_nip/issues
+homepage=https://github.com/YusufEminoglu/pln3113_nip
 category=Vector
 tags=urban-planning,master-plan,nazim-imar-plani,nip,mpyy,turkey,spatial-analytics,urban-morphology,spacematrix,taks,kaks,gsi,fsi,dop,land-readjustment,social-infrastructure,demography,population-projection,space-syntax,centrality,isochrones,concave-hull,pedshed,2sfca,facility-adequacy,accessibility,od-matrix,road-network,intersection-fillet,cad-gis,deu,sbp,pln3113,only-tr
 experimental=False
@@ -17,7 +17,8 @@ deprecated=False
 hasProcessingProvider=yes
 license=GPL-2.0-or-later
 icon=icons/icon.png
-changelog=1.1.3 - Kapsamli Metodoloji ve Cikti Sozlugu: 7 modulu ve 15 analitik araci adm adim aciklayan ayrintili kilavuz, tum cikti sutunlarini planlama ve juri baglaminda aciklayan sozluk, MPYY normlari ve evrensel Turkiye SBP calisma alani uyarlamasi.
+changelog=1.1.4 - GitHub repo adi ve tum kaynak linkleri pln3113_nip (paket/klasor adi) ile tam esitlendi.
+ 1.1.3 - Kapsamli Metodoloji ve Cikti Sozlugu: 7 modulu ve 15 analitik araci adim adim aciklayan ayrintili kilavuz, tum cikti sutunlarini planlama ve juri baglaminda aciklayan sozluk, MPYY normlari ve evrensel Turkiye SBP calisma alani uyarlamasi.
  1.1.2 - Dinamik Izokron ve Icbukey Govde: Kullanici tanimli mesafe araliklariyla (orn: 200, 400, 600m) tam eslesen dinamik lejant ve renk skalasi, icbukey govde (Concave Hull) tek aks/dogrusal nokta dejenere geometri korumasi ve buyuk poligonlarin kucukleri ortmesini engelleyen siralama motoru.
  1.1.1 - Kararlilik: Disaridan halihazir/CAD katman yuklemelerinde GUI kilitlenmesini onleme (GDI siniri korumasi), NoGeometry tablolarinda bos CRS standardi, dinamik surum etiketi ve cift katman ekleme korumasi.
  1.1.0 - Kentsel Ag ve Erisim Analizleri Suiti (Space Syntax, Primal Merkezilik, OD Rotasi, Hizmet Izokronlari, 2SFCA Tesis Yeterliligi, A/B Senaryo Farki ve On Cephe Servis Noktasi).
