@@ -396,11 +396,16 @@ def test_network_engine_topological_routing():
     )
 
 
-def test_all_10_processing_algorithms_registered():
+_GLOBAL_PROVIDER = None
+
+
+def test_all_15_processing_algorithms_registered():
+    global _GLOBAL_PROVIDER
     from pln3113_nip.provider import NipProvider
-    provider = NipProvider()
-    provider.loadAlgorithms()
-    algs = provider.algorithms()
+    if _GLOBAL_PROVIDER is None:
+        _GLOBAL_PROVIDER = NipProvider()
+        QgsApplication.processingRegistry().addProvider(_GLOBAL_PROVIDER)
+    algs = _GLOBAL_PROVIDER.algorithms()
     alg_names = {a.name() for a in algs}
 
     expected_algs = {
@@ -413,13 +418,128 @@ def test_all_10_processing_algorithms_registered():
         "tire_saha_bina_nufus",
         "on_cephe_ve_servis_noktasi_bulucu",
         "nip_erisme_ve_mpyy_etki_capi",
-        "nip_od_merkezilik_egim"
+        "nip_space_syntax",
+        "nip_network_centrality",
+        "nip_od_rotalama",
+        "nip_hizmet_izokron",
+        "nip_2sfca_yeterlilik",
+        "nip_scenario_compare",
     }
     missing = expected_algs - alg_names
     return _ok(
-        "processing provider registers all 10 algorithms across 5 hierarchical groups",
+        "processing provider registers all 15 algorithms across 6 hierarchical groups",
         len(missing) == 0,
         f"registered={len(algs)} missing={missing}"
+    )
+
+
+def test_planx_network_suite():
+    import processing
+    from qgis.core import QgsVectorLayer, QgsFeature, QgsGeometry, QgsPointXY, QgsField
+    from qgis.PyQt.QtCore import QVariant
+
+    # Road network (LineString in EPSG:5253)
+    road_lyr = QgsVectorLayer("LineString?crs=EPSG:5253", "test_roads", "memory")
+    pr = road_lyr.dataProvider()
+    g1 = QgsGeometry.fromPolylineXY([QgsPointXY(0.0, 0.0), QgsPointXY(200.0, 0.0)])
+    g2 = QgsGeometry.fromPolylineXY([QgsPointXY(200.0, 0.0), QgsPointXY(200.0, 300.0)])
+    f1, f2 = QgsFeature(), QgsFeature()
+    f1.setGeometry(g1)
+    f2.setGeometry(g2)
+    pr.addFeatures([f1, f2])
+    road_lyr.updateExtents()
+
+    # Facility points
+    fac_lyr = QgsVectorLayer("Point?crs=EPSG:5253", "test_fac", "memory")
+    pr_fac = fac_lyr.dataProvider()
+    pr_fac.addAttributes([QgsField("ad", QVariant.String), QgsField("kapasite", QVariant.Double)])
+    fac_lyr.updateFields()
+    ff = QgsFeature(fac_lyr.fields())
+    ff.setGeometry(QgsGeometry.fromPointXY(QgsPointXY(0.0, 0.0)))
+    ff.setAttributes(["Saglik Ocagi", 500.0])
+    pr_fac.addFeature(ff)
+    fac_lyr.updateExtents()
+
+    # Demand points
+    dem_lyr = QgsVectorLayer("Point?crs=EPSG:5253", "test_dem", "memory")
+    pr_dem = dem_lyr.dataProvider()
+    pr_dem.addAttributes([QgsField("origin_id", QVariant.String), QgsField("nufus", QVariant.Double)])
+    dem_lyr.updateFields()
+    fd = QgsFeature(dem_lyr.fields())
+    fd.setGeometry(QgsGeometry.fromPointXY(QgsPointXY(200.0, 300.0)))
+    fd.setAttributes(["Mahalle 1", 250.0])
+    pr_dem.addFeature(fd)
+    dem_lyr.updateExtents()
+
+    # 1. Space Syntax
+    res_syntax = processing.run("pln3113:nip_space_syntax", {
+        "NETWORK": road_lyr,
+        "RADII": "400, n",
+        "OUTPUT": "memory:syntax_out"
+    })
+    ok_syntax = res_syntax["OUTPUT"].isValid() and res_syntax["OUTPUT"].featureCount() == 2
+
+    # 2. Network Centrality
+    res_cent = processing.run("pln3113:nip_network_centrality", {
+        "NETWORK": road_lyr,
+        "RADIUS": 400.0,
+        "EDGES": "memory:cent_edges",
+        "NODES": "memory:cent_nodes"
+    })
+    ok_cent = res_cent["EDGES"].isValid() and res_cent["NODES"].isValid()
+
+    # 3. OD Rotalama
+    res_od = processing.run("pln3113:nip_od_rotalama", {
+        "NETWORK": road_lyr,
+        "ORIGINS": dem_lyr,
+        "DESTINATIONS": fac_lyr,
+        "OUTPUT_DESIRE": "memory:od_desire",
+        "OUTPUT_ROUTES": "memory:od_routes",
+        "OUTPUT_MATRIX": "memory:od_matrix"
+    })
+    ok_od = res_od["OUTPUT_ROUTES"].isValid() and res_od["OUTPUT_DESIRE"].isValid()
+
+    # 4. Hizmet Izokron
+    res_iso = processing.run("pln3113:nip_hizmet_izokron", {
+        "NETWORK": road_lyr,
+        "FACILITIES": fac_lyr,
+        "BREAKS": "400, 800",
+        "AREAS": "memory:iso_areas",
+        "CIRCLES": "memory:iso_circles",
+        "EDGES": "memory:iso_edges",
+        "SUMMARY": "memory:iso_summary"
+    })
+    ok_iso = res_iso["AREAS"].isValid() and res_iso["SUMMARY"].isValid()
+
+    # 5. 2SFCA Yeterlilik
+    res_fca = processing.run("pln3113:nip_2sfca_yeterlilik", {
+        "NETWORK": road_lyr,
+        "FACILITIES": fac_lyr,
+        "FACILITY_ID": "ad",
+        "CAPACITY_FIELD": "kapasite",
+        "DEMAND": dem_lyr,
+        "POP_FIELD": "nufus",
+        "MAX_COST": 800.0,
+        "OUT_FACILITIES": "memory:fca_fac",
+        "OUT_DEMAND": "memory:fca_dem"
+    })
+    ok_fca = res_fca["OUT_FACILITIES"].isValid() and res_fca["OUT_DEMAND"].isValid()
+
+    # 6. Scenario Compare
+    res_scen = processing.run("pln3113:nip_scenario_compare", {
+        "NETWORK_A": road_lyr,
+        "NETWORK_B": road_lyr,
+        "RADIUS": 400.0,
+        "DIFF_NETWORK": "memory:scen_diff",
+        "SUMMARY_TABLE": "memory:scen_sum"
+    })
+    ok_scen = res_scen["DIFF_NETWORK"].isValid() and res_scen["SUMMARY_TABLE"].isValid()
+
+    ok_all = ok_syntax and ok_cent and ok_od and ok_iso and ok_fca and ok_scen
+    return _ok(
+        "PlanX network analytics suite (Space Syntax, Centrality, OD, Isochrone, 2SFCA, A/B Scenario)",
+        ok_all,
+        f"syntax={ok_syntax} cent={ok_cent} od={ok_od} iso={ok_iso} fca={ok_fca} scen={ok_scen}"
     )
 
 
@@ -437,12 +557,14 @@ def run_all(iface):
         test_boundary_filter_and_clipping(),
         test_nip_workspace_generation(),
         test_network_engine_topological_routing(),
-        test_all_10_processing_algorithms_registered(),
+        test_all_15_processing_algorithms_registered(),
+        test_planx_network_suite(),
     ]
     passed = sum(1 for r in results if r)
     print("-" * 60)
     print(f"  {passed}/{len(results)} passed")
     return passed == len(results)
+
 
 
 def main():

@@ -179,5 +179,94 @@ class TestQt6EnumSafety(unittest.TestCase):
         self.assertEqual(violations, [], f"Forbidden bare Qt enums found: {violations}")
 
 
+class TestPlanXEnginePure(unittest.TestCase):
+    """pln3113_nip icindeki gomme planx_engine saf-Python modul testleri."""
+
+    def test_node_graph_and_paths(self):
+        import numpy as np
+        from pln3113_nip.core.planx_engine.graphs import build_node_graph
+        from pln3113_nip.core.planx_engine.paths import many_to_many, multi_source
+
+        # 3 cizgi segmenti: 0--(0,0)->(10,0), 1--(10,0)->(30,0)
+        lines = [
+            np.array([[0.0, 0.0], [10.0, 0.0]]),
+            np.array([[10.0, 0.0], [30.0, 0.0]]),
+        ]
+        g = build_node_graph(lines)
+
+        self.assertEqual(g.num_nodes, 3)
+        self.assertEqual(g.num_edges, 2)
+        self.assertEqual(g.degrees()[1], 2)
+
+        # En kisa yol matrisi
+        dmat = many_to_many(g.indptr, g.adj_node, g.adj_cost, g.num_nodes, sources=[0])
+        self.assertAlmostEqual(dmat[0, 0], 0.0)
+        self.assertAlmostEqual(dmat[0, 1], 10.0)
+        self.assertAlmostEqual(dmat[0, 2], 30.0)
+
+        # Coklu kaynak
+        min_cost, src_idx = multi_source(g.indptr, g.adj_node, g.adj_cost, g.num_nodes, sources=[0, 2])
+        self.assertAlmostEqual(min_cost[1], 10.0)
+        self.assertEqual(src_idx[1], 0)
+
+    def test_segment_graph_and_syntax(self):
+        import numpy as np
+        from pln3113_nip.core.planx_engine.graphs import build_segment_graph
+        from pln3113_nip.core.planx_engine.syntax import segment_angular_analysis
+
+        # T seklinde 3 yol segmenti:
+        # 0: (0,0)->(100,0)
+        # 1: (100,0)->(200,0)
+        # 2: (100,0)->(100,100)
+        lines = [
+            np.array([[0.0, 0.0], [100.0, 0.0]]),
+            np.array([[100.0, 0.0], [200.0, 0.0]]),
+            np.array([[100.0, 0.0], [100.0, 100.0]]),
+        ]
+        sg = build_segment_graph(lines)
+        self.assertEqual(sg.n, 3)
+
+        res = segment_angular_analysis(sg, radius=None)
+        self.assertIn("nain", res)
+        self.assertIn("nach", res)
+        self.assertIn("choice", res)
+        self.assertIn("md", res)
+        self.assertEqual(len(res["nach"]), 3)
+
+    def test_centrality_metrics(self):
+        import numpy as np
+        from pln3113_nip.core.planx_engine.graphs import build_node_graph
+        from pln3113_nip.core.planx_engine.centrality import closeness_straightness
+
+        lines = [
+            np.array([[0.0, 0.0], [100.0, 0.0]]),
+            np.array([[100.0, 0.0], [200.0, 0.0]]),
+            np.array([[100.0, 0.0], [100.0, 100.0]]),
+        ]
+        g = build_node_graph(lines)
+        out = closeness_straightness(g.indptr, g.adj_node, g.adj_cost, g.num_nodes,
+                                     node_xy=g.node_xy, radius=None)
+
+        self.assertIn("closeness", out)
+        self.assertIn("straightness", out)
+        self.assertIn("harmonic", out)
+        # Merkezdeki dugum (index 1) en yuksek closeness'a sahip olmali
+        self.assertGreater(out["closeness"][1], out["closeness"][0])
+
+    def test_isochrone_polyline_cut(self):
+        from pln3113_nip.core.planx_engine.isochrone import cut_polyline, reach_fractions, edge_intervals
+
+        poly = [(0.0, 0.0), (100.0, 0.0)]
+        cut = cut_polyline(poly, 0.25, 0.75)
+        self.assertEqual(len(cut), 2)
+        self.assertAlmostEqual(cut[0][0], 25.0)
+        self.assertAlmostEqual(cut[1][0], 75.0)
+
+        full, fa, fb = reach_fractions([100.0], [200.0], [100.0], 150.0)
+        iv = edge_intervals(full[0], fa[0], fb[0])
+        self.assertEqual(len(iv), 1)
+        self.assertAlmostEqual(iv[0][1], 0.5)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -15,7 +15,12 @@ from .algorithms.alg_nip_population import NipPopulationAlgorithm
 from .algorithms.alg_saha_bina_analysis import SahaBinaAnalysisAlgorithm
 from .algorithms.alg_on_cephe_bulucu import OnCepheBulucuAlgorithm
 from .algorithms.alg_erisme_havzasi import ErismeHavzasiAlgorithm
-from .algorithms.alg_od_merkezilik import OdMerkezilikAlgorithm
+from .algorithms.alg_space_syntax import SpaceSyntaxAlgorithm
+from .algorithms.alg_network_centrality import NetworkCentralityAlgorithm
+from .algorithms.alg_od_matrix import ODMatrixAlgorithm
+from .algorithms.alg_service_areas import ServiceAreasAlgorithm
+from .algorithms.alg_facility_adequacy import FacilityAdequacyAlgorithm
+from .algorithms.alg_scenario_compare import ScenarioCompareAlgorithm
 
 PLUGIN_DIR = os.path.dirname(__file__)
 
@@ -41,7 +46,14 @@ class NipEklentiProvider(QgsProcessingProvider):
         # 05. Ulaşım ve Network Analizleri
         self.addAlgorithm(OnCepheBulucuAlgorithm())
         self.addAlgorithm(ErismeHavzasiAlgorithm())
-        self.addAlgorithm(OdMerkezilikAlgorithm())
+
+        # 06. PlanX Ağ ve Erişim Analizleri (Ödev 13 · AJ1)
+        self.addAlgorithm(SpaceSyntaxAlgorithm())
+        self.addAlgorithm(NetworkCentralityAlgorithm())
+        self.addAlgorithm(ODMatrixAlgorithm())
+        self.addAlgorithm(ServiceAreasAlgorithm())
+        self.addAlgorithm(FacilityAdequacyAlgorithm())
+        self.addAlgorithm(ScenarioCompareAlgorithm())
 
     def id(self):
         return 'pln3113'

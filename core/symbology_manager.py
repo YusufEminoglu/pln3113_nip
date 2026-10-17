@@ -279,6 +279,119 @@ def style_validity_error_points(layer: QgsVectorLayer) -> None:
     layer.triggerRepaint()
 
 
+def style_space_syntax(layer: QgsVectorLayer, field_name: str = "NACH_R800") -> None:
+    """Space syntax NAIN / NACH metriklerini spektral renk skalasıyla kademelendirir."""
+    if not layer or not layer.isValid():
+        return
+    fields = [f.name() for f in layer.fields()]
+    if field_name not in fields:
+        field_name = next((f for f in fields if "NACH" in f or "NAIN" in f), None)
+    if not field_name:
+        return
+    ranges = [
+        QgsRendererRange(0.0, 0.40, QgsLineSymbol.createSimple({"line_color": "#3b82f6", "line_width": "0.30"}), "Düşük (Arka Plan Ağı)"),
+        QgsRendererRange(0.40, 0.70, QgsLineSymbol.createSimple({"line_color": "#10b981", "line_width": "0.45"}), "Orta-Düşük Akış"),
+        QgsRendererRange(0.70, 1.00, QgsLineSymbol.createSimple({"line_color": "#f59e0b", "line_width": "0.65"}), "Orta-Yüksek Akış"),
+        QgsRendererRange(1.00, 1.30, QgsLineSymbol.createSimple({"line_color": "#f97316", "line_width": "0.85"}), "Yüksek (Ön Plan Koridoru)"),
+        QgsRendererRange(1.30, 999.0, QgsLineSymbol.createSimple({"line_color": "#dc2626", "line_width": "1.10"}), "Kritik Transit Omurga"),
+    ]
+    layer.setRenderer(QgsGraduatedSymbolRenderer(field_name, ranges))
+    layer.triggerRepaint()
+
+
+def style_detour_barrier(layer: QgsVectorLayer) -> None:
+    """Detour ratio > 1.35 olan bariyerli arzu hatlarını vurgular."""
+    if not layer or not layer.isValid():
+        return
+    categories = [
+        QgsRendererCategory(
+            "1",
+            QgsLineSymbol.createSimple({"line_color": "#dc2626", "line_width": "0.75", "line_style": "dash"}),
+            "Bariyerli Hat (Detour > 1.35)"
+        ),
+        QgsRendererCategory(
+            "0",
+            QgsLineSymbol.createSimple({"line_color": "#10b981", "line_width": "0.35", "line_style": "solid"}),
+            "Doğrudan Erişim (Detour <= 1.35)"
+        ),
+    ]
+    layer.setRenderer(QgsCategorizedSymbolRenderer("is_barrier", categories))
+    layer.triggerRepaint()
+
+
+def style_isochrone_bands(layer: QgsVectorLayer) -> None:
+    """5 dk (400m), 10 dk (800m), 15 dk (1200m) yürüme izokron poligonlarını kademelendirir."""
+    if not layer or not layer.isValid():
+        return
+    sym_400 = QgsFillSymbol.createSimple({"color": "#10b981", "outline_color": "#047857", "outline_width": "0.4"})
+    sym_400.setOpacity(0.40)
+    sym_800 = QgsFillSymbol.createSimple({"color": "#f59e0b", "outline_color": "#b45309", "outline_width": "0.4"})
+    sym_800.setOpacity(0.35)
+    sym_1200 = QgsFillSymbol.createSimple({"color": "#f97316", "outline_color": "#c2410c", "outline_width": "0.4"})
+    sym_1200.setOpacity(0.30)
+
+    categories = [
+        QgsRendererCategory("400", sym_400, "5 dk (400 m) - Yürüme Çekirdeği"),
+        QgsRendererCategory("800", sym_800, "10 dk (800 m) - Standart Yürüme"),
+        QgsRendererCategory("1200", sym_1200, "15 dk (1200 m) - Kentsel Çeper"),
+    ]
+    layer.setRenderer(QgsCategorizedSymbolRenderer("mesafe_m", categories))
+    layer.triggerRepaint()
+
+
+def style_facility_adequacy_points(layer: QgsVectorLayer) -> None:
+    """2SFCA donatı durumunu (Yeterli, Aşırı Yüklü, Kullanılmayan) renklendirir."""
+    if not layer or not layer.isValid():
+        return
+    categories = [
+        QgsRendererCategory("Yeterli (Adequate)", QgsMarkerSymbol.createSimple({"color": "#16a34a", "outline_color": "#ffffff", "size": "3.5"}), "Yeterli Kapasite"),
+        QgsRendererCategory("Aşırı Yüklü (Overloaded)", QgsMarkerSymbol.createSimple({"color": "#dc2626", "outline_color": "#ffffff", "size": "4.5"}), "Aşırı Yüklü (Kapasite Yetersiz)"),
+        QgsRendererCategory("Kullanılmayan (Unused)", QgsMarkerSymbol.createSimple({"color": "#64748b", "outline_color": "#ffffff", "size": "3.0"}), "Atıl / Kullanılmayan"),
+    ]
+    layer.setRenderer(QgsCategorizedSymbolRenderer("durum", categories))
+    layer.triggerRepaint()
+
+
+def style_scenario_diff_network(layer: QgsVectorLayer) -> None:
+    """A/B senaryo fark hatlarını 4 plan karar başlığına göre stillendirir."""
+    if not layer or not layer.isValid():
+        return
+    categories = [
+        QgsRendererCategory(
+            "Ulaşım Kademelenmesi Revizyonu",
+            QgsLineSymbol.createSimple({"line_color": "#dc2626", "line_width": "0.90"}),
+            "Kademelenme Revizyonu (Yük Artışı)"
+        ),
+        QgsRendererCategory(
+            "Yayalaştırma / Trafik Sakinleştirme",
+            QgsLineSymbol.createSimple({"line_color": "#0d9488", "line_width": "0.75"}),
+            "Trafik Sakinleştirme / Yayalaştırma"
+        ),
+        QgsRendererCategory(
+            "Stratejik Yeni Bağlantı Aksı",
+            QgsLineSymbol.createSimple({"line_color": "#2563eb", "line_width": "0.80"}),
+            "Meri Plan Yeni Aksı (Stratejik)"
+        ),
+        QgsRendererCategory(
+            "İşlemeyen Öneri Yol (Kademelenme Revizyonu)",
+            QgsLineSymbol.createSimple({"line_color": "#f59e0b", "line_width": "0.60", "line_style": "dot"}),
+            "İşlemeyen Öneri Aks"
+        ),
+        QgsRendererCategory(
+            "Mevcut Karakter Korunacak",
+            QgsLineSymbol.createSimple({"line_color": "#94a3b8", "line_width": "0.40"}),
+            "Kararlı Mevcut Aks"
+        ),
+        QgsRendererCategory(
+            "Yayalaştırma / Yol Kapatma",
+            QgsLineSymbol.createSimple({"line_color": "#64748b", "line_width": "0.50", "line_style": "dash"}),
+            "Kapanan / Değişen Mevcut Aks"
+        ),
+    ]
+    layer.setRenderer(QgsCategorizedSymbolRenderer("plan_karar_grubu", categories))
+    layer.triggerRepaint()
+
+
 class SymbologyManager:
     """Kartografik stil yöneticisi sınıfı."""
     apply_mpyy_qml_style = staticmethod(apply_mpyy_qml_style)
@@ -291,4 +404,10 @@ class SymbologyManager:
     apply_centrality_symbology = staticmethod(lambda centrality: style_od_and_centrality(centrality_layer=centrality))
     apply_slope_symbology = staticmethod(lambda slope: style_od_and_centrality(slope_layer=slope))
     apply_validity_error_points = staticmethod(style_validity_error_points)
+    apply_space_syntax_symbology = staticmethod(style_space_syntax)
+    apply_detour_barrier_symbology = staticmethod(style_detour_barrier)
+    apply_isochrone_bands_symbology = staticmethod(style_isochrone_bands)
+    apply_facility_adequacy_symbology = staticmethod(style_facility_adequacy_points)
+    apply_scenario_diff_symbology = staticmethod(style_scenario_diff_network)
+
 

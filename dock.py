@@ -76,12 +76,17 @@ from .core.nip_dashboard_builder import open_nip_dashboard, build_nip_dashboard_
 from .core.nip_workspace import create_nip_drawing_workspace, load_nip_drawing_layers
 from .core.symbology_manager import (
     apply_mpyy_qml_style,
+    style_detour_barrier,
+    style_facility_adequacy_points,
     style_front_facade,
+    style_isochrone_bands,
     style_od_and_centrality,
     style_road_junctions,
     style_road_platform,
     style_road_polygons,
+    style_scenario_diff_network,
     style_service_area,
+    style_space_syntax,
     style_validity_error_points,
 )
 from .core.tire_constants import (
@@ -2875,7 +2880,7 @@ class TireNipDockWidget(QDockWidget):
         tab = QWidget()
         layout = QVBoxLayout(tab)
         layout.setContentsMargins(4, 4, 4, 4)
-        layout.setSpacing(8)
+        layout.setSpacing(6)
 
         card_info = QFrame()
         card_info.setObjectName("nipAccentCard")
@@ -2883,138 +2888,600 @@ class TireNipDockWidget(QDockWidget):
         info_lay.setContentsMargins(10, 8, 10, 8)
         info_lay.setSpacing(4)
 
-        t_lbl = QLabel("🌐 Ulaşım Ağı, Ön Cephe, Erişim Çapları ve OD Analizleri")
+        t_lbl = QLabel("🌐 Ödev 13: Ulaşım, Ağ ve Erişim Analizleri (PlanX Motoru)")
         t_lbl.setStyleSheet("font-weight: 700; font-size: 10pt; color: #0f766e;")
         info_lay.addWidget(t_lbl)
 
         d_lbl = QLabel(
-            "Saf Python ve QGIS Core topoloji motoru (sıfır QNEAT3/GRASS bağımlılığı) ile: "
-            "ada/binaların yola bakan ön cepheleri, MPYY donatı erişim havzaları ve yürüme servis yolları, "
-            "OD maliyet matrisleri, gerçek ağ rotaları ve yol eğimleri hesaplar."
+            "PLN3113 1. Ara Jüri (AJ1) Ödev 13 Ağ ve Erişim Analizleri Süiti:\n"
+            "PlanX gömülü saf NumPy/SciPy motoru ile Space Syntax (NAIN/NACH), Primal Ağ Merkezilikleri, "
+            "OD Matrisi & Detour Bariyerleri, 5-10-15 dk Yürüme İzokronları & Pedshed, 2SFCA Kapasite Yeterliliği "
+            "ve Mevcut vs Meri Plan A/B Fark Haritası."
         )
         d_lbl.setWordWrap(True)
         d_lbl.setStyleSheet("color: #475569; font-size: 8.5pt;")
         info_lay.addWidget(d_lbl)
         layout.addWidget(card_info)
 
-        # 1. Ön Cephe ve Servis Noktası Bulucu
-        box_cephe = QGroupBox("1. Ada / Parsel / Bina Ön Cephe ve Servis Noktası Bulucu")
-        lay_cephe = QVBoxLayout(box_cephe)
-        lay_cephe.setSpacing(6)
+        sub_tabs = QTabWidget()
+        sub_tabs.setObjectName("nipNetworkSubTabs")
 
-        form_cephe = QFormLayout()
-        form_cephe.setSpacing(6)
+        # -------------------------------------------------------------
+        # Alt Sekme 1: Space Syntax (Açısal Segment Analizi)
+        # -------------------------------------------------------------
+        w_syntax = QWidget()
+        l_syntax = QVBoxLayout(w_syntax)
+        f_syntax = QFormLayout()
+
+        self.cmb_syntax_roads = QgsMapLayerComboBox()
+        self.cmb_syntax_roads.setFilters(QgsMapLayerProxyModel.Filter.LineLayer)
+        f_syntax.addRow("Yol Ağı Katmanı (Mevcut / Meri):", self.cmb_syntax_roads)
+
+        self.txt_syntax_radii = QLineEdit("400, 800, 1200, n")
+        self.txt_syntax_radii.setToolTip("Metrik yarıçaplar (m): Yaya koridorları için 400/800, kent ölçeği için n")
+        f_syntax.addRow("Analiz Yarıçapları (R metre):", self.txt_syntax_radii)
+
+        l_syntax.addLayout(f_syntax)
+        lbl_syntax_hint = QLabel("💡 Çıktılar: NAIN (Varış/Yaya Canlılığı) ve NACH (Geçiş/Arter Yükü) metrikleri.")
+        lbl_syntax_hint.setStyleSheet("color: #64748b; font-size: 8pt; font-style: italic;")
+        l_syntax.addWidget(lbl_syntax_hint)
+
+        self.btn_run_syntax = QPushButton("  🚀 Space Syntax Segment Analizini Çalıştır (NAIN & NACH)")
+        self.btn_run_syntax.setObjectName("PrimaryButton")
+        self.btn_run_syntax.setCursor(_POINTING_HAND)
+        self.btn_run_syntax.clicked.connect(self._on_run_space_syntax)
+        l_syntax.addWidget(self.btn_run_syntax)
+        l_syntax.addStretch()
+        sub_tabs.addTab(w_syntax, "1. Space Syntax")
+
+        # -------------------------------------------------------------
+        # Alt Sekme 2: Primal Ağ Merkeziliği (Betweenness, Closeness)
+        # -------------------------------------------------------------
+        w_cent = QWidget()
+        l_cent = QVBoxLayout(w_cent)
+        f_cent = QFormLayout()
+
+        self.cmb_cent_roads = QgsMapLayerComboBox()
+        self.cmb_cent_roads.setFilters(QgsMapLayerProxyModel.Filter.LineLayer)
+        f_cent.addRow("Yol Ağı Katmanı:", self.cmb_cent_roads)
+
+        self.txt_cent_radii = QLineEdit("800, 5000, n")
+        self.txt_cent_radii.setToolTip("R=800m yaya/ticaret koridorları, R=5000m taşıt/lojistik koridorları")
+        f_cent.addRow("Yarıçaplar (R metre):", self.txt_cent_radii)
+
+        self.chk_cent_edges = QCheckBox("Aks Çizgileri Merkezilikleri (Edges)")
+        self.chk_cent_edges.setChecked(True)
+        f_cent.addRow(self.chk_cent_edges)
+
+        self.chk_cent_nodes = QCheckBox("Kavşak Düğüm Merkezilikleri (Nodes)")
+        self.chk_cent_nodes.setChecked(True)
+        f_cent.addRow(self.chk_cent_nodes)
+
+        l_cent.addLayout(f_cent)
+        lbl_cent_hint = QLabel("💡 Çıktılar: Betweenness (Aradalık), Closeness (Yakınlık) ve Straightness (Doğrusallık).")
+        lbl_cent_hint.setStyleSheet("color: #64748b; font-size: 8pt; font-style: italic;")
+        l_cent.addWidget(lbl_cent_hint)
+
+        self.btn_run_cent = QPushButton("  📊 Primal Ağ Merkeziliklerini Hesapla")
+        self.btn_run_cent.setObjectName("PrimaryButton")
+        self.btn_run_cent.setCursor(_POINTING_HAND)
+        self.btn_run_cent.clicked.connect(self._on_run_network_centrality)
+        l_cent.addWidget(self.btn_run_cent)
+        l_cent.addStretch()
+        sub_tabs.addTab(w_cent, "2. Merkezilik")
+
+        # -------------------------------------------------------------
+        # Alt Sekme 3: OD Matrisi, Rotalama ve Bariyer Analizi
+        # -------------------------------------------------------------
+        w_od = QWidget()
+        l_od = QVBoxLayout(w_od)
+        f_od = QFormLayout()
+
+        self.cmb_od_origins = QgsMapLayerComboBox()
+        self.cmb_od_origins.setFilters(QgsMapLayerProxyModel.Filter.PointLayer)
+        f_od.addRow("Menşe (Origins / Mahalle-Ada Merkezleri):", self.cmb_od_origins)
+
+        self.cmb_od_destinations = QgsMapLayerComboBox()
+        self.cmb_od_destinations.setFilters(QgsMapLayerProxyModel.Filter.PointLayer)
+        f_od.addRow("Hedef (Destinations / MİA, Sanayi, Donatı):", self.cmb_od_destinations)
+
+        self.cmb_od_road = QgsMapLayerComboBox()
+        self.cmb_od_road.setFilters(QgsMapLayerProxyModel.Filter.LineLayer)
+        f_od.addRow("Yol Ağı Katmanı:", self.cmb_od_road)
+
+        self.chk_od_routes = QCheckBox("Ağ üzerindeki gerçek en kısa yol rotalarını çizgi olarak üret")
+        self.chk_od_routes.setChecked(True)
+        f_od.addRow(self.chk_od_routes)
+
+        self.chk_od_desire = QCheckBox("Kuş uçuşu arzu hatları ve Detour Bariyer Analizini üret (> 1.35)")
+        self.chk_od_desire.setChecked(True)
+        f_od.addRow(self.chk_od_desire)
+
+        l_od.addLayout(f_od)
+        lbl_od_hint = QLabel("💡 Detour Ratio = Ağ Mesafesi / Kuş Uçuşu. 1.35 üzerindeki akslar kopukluk/bariyer işaretidir.")
+        lbl_od_hint.setStyleSheet("color: #64748b; font-size: 8pt; font-style: italic;")
+        l_od.addWidget(lbl_od_hint)
+
+        self.btn_run_od = QPushButton("  📍 OD Rotalarını ve Detour Bariyerlerini Üret")
+        self.btn_run_od.setObjectName("AccentButton")
+        self.btn_run_od.setCursor(_POINTING_HAND)
+        self.btn_run_od.clicked.connect(self._on_run_od_rotalama)
+        l_od.addWidget(self.btn_run_od)
+        l_od.addStretch()
+        sub_tabs.addTab(w_od, "3. OD & Rota")
+
+        # -------------------------------------------------------------
+        # Alt Sekme 4: Hizmet Alanları ve Yürüme İzokronları (Pedshed)
+        # -------------------------------------------------------------
+        w_iso = QWidget()
+        l_iso = QVBoxLayout(w_iso)
+        f_iso = QFormLayout()
+
+        self.cmb_iso_facilities = QgsMapLayerComboBox()
+        self.cmb_iso_facilities.setFilters(QgsMapLayerProxyModel.Filter.PointLayer | QgsMapLayerProxyModel.Filter.PolygonLayer)
+        f_iso.addRow("Donatı Katmanı (Okul, Sağlık, Park):", self.cmb_iso_facilities)
+
+        self.cmb_iso_roads = QgsMapLayerComboBox()
+        self.cmb_iso_roads.setFilters(QgsMapLayerProxyModel.Filter.LineLayer)
+        f_iso.addRow("Yol Ağı Katmanı:", self.cmb_iso_roads)
+
+        self.txt_iso_breaks = QLineEdit("400, 800, 1200")
+        f_iso.addRow("Yürüme Eşikleri (metre):", self.txt_iso_breaks)
+
+        self.cmb_iso_method = QComboBox()
+        self.cmb_iso_method.addItems([
+            "Yol Tamponu (Street Buffer - PlanX Hassas)",
+            "İçbükey Gövde (Concave Hull - İzokron Blobu)",
+            "Dışbükey Gövde (Convex Hull - Zarf)"
+        ])
+        f_iso.addRow("İzokron Geometri Yöntemi:", self.cmb_iso_method)
+
+        l_iso.addLayout(f_iso)
+        lbl_iso_hint = QLabel("💡 400m (5 dk), 800m (10 dk), 1200m (15 dk). Pedshed < 0.40 olan donatılar izole sayılır.")
+        lbl_iso_hint.setStyleSheet("color: #64748b; font-size: 8pt; font-style: italic;")
+        l_iso.addWidget(lbl_iso_hint)
+
+        self.btn_run_iso = QPushButton("  🚶 Hizmet İzokronları ve Pedshed Karnesini Üret")
+        self.btn_run_iso.setObjectName("SecondaryButton")
+        self.btn_run_iso.setCursor(_POINTING_HAND)
+        self.btn_run_iso.clicked.connect(self._on_run_hizmet_izokron)
+        l_iso.addWidget(self.btn_run_iso)
+        l_iso.addStretch()
+        sub_tabs.addTab(w_iso, "4. Hizmet İzokronları")
+
+        # -------------------------------------------------------------
+        # Alt Sekme 5: 2SFCA Donatı Yeterliliği (Kapasite + Mesafe)
+        # -------------------------------------------------------------
+        w_fca = QWidget()
+        l_fca = QVBoxLayout(w_fca)
+        f_fca = QFormLayout()
+
+        self.cmb_fca_facilities = QgsMapLayerComboBox()
+        self.cmb_fca_facilities.setFilters(QgsMapLayerProxyModel.Filter.PointLayer | QgsMapLayerProxyModel.Filter.PolygonLayer)
+        f_fca.addRow("Donatı Katmanı (Okul, Sağlık):", self.cmb_fca_facilities)
+
+        self.txt_fca_cap_field = QLineEdit("kapasite")
+        f_fca.addRow("Kapasite Alan Adı:", self.txt_fca_cap_field)
+
+        self.cmb_fca_demand = QgsMapLayerComboBox()
+        self.cmb_fca_demand.setFilters(QgsMapLayerProxyModel.Filter.PointLayer | QgsMapLayerProxyModel.Filter.PolygonLayer)
+        f_fca.addRow("Talep / Ada Nüfus Katmanı:", self.cmb_fca_demand)
+
+        self.txt_fca_pop_field = QLineEdit("nufus")
+        f_fca.addRow("Nüfus Alan Adı (Boşsa 1):", self.txt_fca_pop_field)
+
+        self.cmb_fca_roads = QgsMapLayerComboBox()
+        self.cmb_fca_roads.setFilters(QgsMapLayerProxyModel.Filter.LineLayer)
+        f_fca.addRow("Yol Ağı Katmanı:", self.cmb_fca_roads)
+
+        self.spn_fca_cost = QDoubleSpinBox()
+        self.spn_fca_cost.setRange(100.0, 5000.0)
+        self.spn_fca_cost.setValue(800.0)
+        self.spn_fca_cost.setSuffix(" metre")
+        f_fca.addRow("Maksimum Servis Mesafesi:", self.spn_fca_cost)
+
+        l_fca.addLayout(f_fca)
+        lbl_fca_hint = QLabel("💡 E2SFCA yöntemiyle aşırı yüklü (Overloaded) ve hizmet alamayan (Uncovered) nüfus tespit edilir.")
+        lbl_fca_hint.setStyleSheet("color: #64748b; font-size: 8pt; font-style: italic;")
+        l_fca.addWidget(lbl_fca_hint)
+
+        self.btn_run_fca = QPushButton("  ⚖️ 2SFCA Kapasite ve Aşırı Yük Analizini Çalıştır")
+        self.btn_run_fca.setObjectName("AccentButton")
+        self.btn_run_fca.setCursor(_POINTING_HAND)
+        self.btn_run_fca.clicked.connect(self._on_run_2sfca)
+        l_fca.addWidget(self.btn_run_fca)
+        l_fca.addStretch()
+        sub_tabs.addTab(w_fca, "5. 2SFCA Yeterlilik")
+
+        # -------------------------------------------------------------
+        # Alt Sekme 6: A/B Senaryosu (Mevcut vs Meri Plan Kıyası)
+        # -------------------------------------------------------------
+        w_scen = QWidget()
+        l_scen = QVBoxLayout(w_scen)
+        f_scen = QFormLayout()
+
+        self.cmb_scen_road_a = QgsMapLayerComboBox()
+        self.cmb_scen_road_a.setFilters(QgsMapLayerProxyModel.Filter.LineLayer)
+        f_scen.addRow("Senaryo A: Mevcut Yol Ağı:", self.cmb_scen_road_a)
+
+        self.cmb_scen_road_b = QgsMapLayerComboBox()
+        self.cmb_scen_road_b.setFilters(QgsMapLayerProxyModel.Filter.LineLayer)
+        f_scen.addRow("Senaryo B: Meri / Öneri Plan Yol Ağı:", self.cmb_scen_road_b)
+
+        self.spn_scen_radius = QDoubleSpinBox()
+        self.spn_scen_radius.setRange(200.0, 5000.0)
+        self.spn_scen_radius.setValue(800.0)
+        self.spn_scen_radius.setSuffix(" metre")
+        f_scen.addRow("Space Syntax Karşılaştırma Yarıçapı:", self.spn_scen_radius)
+
+        l_scen.addLayout(f_scen)
+        lbl_scen_hint = QLabel("💡 Delta NACH, Delta NAIN ve 4 Temel Plan Karar Başlığı (Kademelenme, Yayalaştırma vb.) otomatik üretilir.")
+        lbl_scen_hint.setStyleSheet("color: #64748b; font-size: 8pt; font-style: italic;")
+        l_scen.addWidget(lbl_scen_hint)
+
+        self.btn_run_scen = QPushButton("  🔄 A/B Fark Haritası ve Plan Kararlarını Üret")
+        self.btn_run_scen.setObjectName("PrimaryButton")
+        self.btn_run_scen.setCursor(_POINTING_HAND)
+        self.btn_run_scen.clicked.connect(self._on_run_scenario_compare)
+        l_scen.addWidget(self.btn_run_scen)
+        l_scen.addStretch()
+        sub_tabs.addTab(w_scen, "6. A/B Senaryo")
+
+        # -------------------------------------------------------------
+        # Alt Sekme 7: Ada/Bina Ön Cephe ve Servis Noktası Bulucu
+        # -------------------------------------------------------------
+        w_cephe = QWidget()
+        l_cephe = QVBoxLayout(w_cephe)
+        f_cephe = QFormLayout()
 
         self.cmb_cephe_poly = QgsMapLayerComboBox()
         self.cmb_cephe_poly.setFilters(QgsMapLayerProxyModel.Filter.PolygonLayer)
-        form_cephe.addRow("Ada / Parsel / Bina Katmanı:", self.cmb_cephe_poly)
+        f_cephe.addRow("Ada / Parsel / Bina Katmanı:", self.cmb_cephe_poly)
 
         self.cmb_cephe_road = QgsMapLayerComboBox()
         self.cmb_cephe_road.setFilters(QgsMapLayerProxyModel.Filter.LineLayer)
-        form_cephe.addRow("Yol Ağı Katmanı:", self.cmb_cephe_road)
+        f_cephe.addRow("Yol Ağı Katmanı:", self.cmb_cephe_road)
 
         self.spn_cephe_dist = QDoubleSpinBox()
         self.spn_cephe_dist.setRange(5.0, 500.0)
         self.spn_cephe_dist.setValue(100.0)
         self.spn_cephe_dist.setSuffix(" metre")
-        form_cephe.addRow("Maksimum Arama Mesafesi:", self.spn_cephe_dist)
+        f_cephe.addRow("Maksimum Arama Mesafesi:", self.spn_cephe_dist)
 
-        lay_cephe.addLayout(form_cephe)
-
+        l_cephe.addLayout(f_cephe)
         self.btn_run_cephe = QPushButton("  🏢 Ön Cephe Segmentlerini ve Servis Noktalarını Üret")
-        self.btn_run_cephe.setObjectName("PrimaryButton")
+        self.btn_run_cephe.setObjectName("SecondaryButton")
         self.btn_run_cephe.setCursor(_POINTING_HAND)
         self.btn_run_cephe.clicked.connect(self._on_run_on_cephe)
-        lay_cephe.addWidget(self.btn_run_cephe)
-        layout.addWidget(box_cephe)
+        l_cephe.addWidget(self.btn_run_cephe)
+        l_cephe.addStretch()
+        sub_tabs.addTab(w_cephe, "7. Ön Cephe")
 
-        # 2. MPYY Donatı Erişim Havzası ve Yürüme Çapları
-        box_erisme = QGroupBox("2. MPYY Kentsel Donatı Servis Alanı ve Erişim Çapları")
-        lay_erisme = QVBoxLayout(box_erisme)
-        lay_erisme.setSpacing(6)
-
-        form_erisme = QFormLayout()
-        form_erisme.setSpacing(6)
-
-        self.cmb_erisme_fac = QgsMapLayerComboBox()
-        self.cmb_erisme_fac.setFilters(QgsMapLayerProxyModel.Filter.PointLayer | QgsMapLayerProxyModel.Filter.PolygonLayer)
-        form_erisme.addRow("Donatı Katmanı (Okul, Sağlık, Park...):", self.cmb_erisme_fac)
-
-        self.cmb_erisme_road = QgsMapLayerComboBox()
-        self.cmb_erisme_road.setFilters(QgsMapLayerProxyModel.Filter.LineLayer)
-        form_erisme.addRow("Yol Ağı Katmanı:", self.cmb_erisme_road)
-
-        self.txt_erisme_distances = QLineEdit("250, 500, 1000")
-        form_erisme.addRow("Erişim Mesafeleri (m, virgülle):", self.txt_erisme_distances)
-
-        self.cmb_erisme_method = QComboBox()
-        self.cmb_erisme_method.addItems([
-            "Dışbükey Gövde / Convex Hull (Model Standartı)",
-            "İçbükey Gövde / Concave Hull (Alfa Şekli)",
-            "Yol Koridoru Tamponu (Ribbon Buffer)"
-        ])
-        form_erisme.addRow("Havza Geometri Tipi:", self.cmb_erisme_method)
-
-        self.chk_erisme_dissolve = QCheckBox("Havzaları Tek Poligonda Birleştir (Dissolve)")
-        self.chk_erisme_dissolve.setChecked(True)
-        form_erisme.addRow("", self.chk_erisme_dissolve)
-
-        lay_erisme.addLayout(form_erisme)
-
-        self.btn_run_erisme = QPushButton("  🚶 Erişim Havzası Yol Ağını ve MPYY Tamponlarını Üret")
-        self.btn_run_erisme.setObjectName("SecondaryButton")
-        self.btn_run_erisme.setCursor(_POINTING_HAND)
-        self.btn_run_erisme.clicked.connect(self._on_run_erisme_havzasi)
-        lay_erisme.addWidget(self.btn_run_erisme)
-        layout.addWidget(box_erisme)
-
-        # 3. OD Maliyet Matrisi, Güzergah Rotaları ve Merkezilik
-        box_od = QGroupBox("3. Menşe-Hedef (OD) Matrisi, Ağ Rotaları, Eğim ve Merkezilik")
-        lay_od = QVBoxLayout(box_od)
-        lay_od.setSpacing(6)
-
-        form_od = QFormLayout()
-        form_od.setSpacing(6)
-
-        self.cmb_od_origins = QgsMapLayerComboBox()
-        self.cmb_od_origins.setFilters(QgsMapLayerProxyModel.Filter.PointLayer)
-        form_od.addRow("Menşe (Origins - Başlangıç / Ön Cephe):", self.cmb_od_origins)
-
-        self.cmb_od_destinations = QgsMapLayerComboBox()
-        self.cmb_od_destinations.setFilters(QgsMapLayerProxyModel.Filter.PointLayer)
-        form_od.addRow("Hedef (Destinations - Donatılar / Merkezler):", self.cmb_od_destinations)
-
-        self.cmb_od_road = QgsMapLayerComboBox()
-        self.cmb_od_road.setFilters(QgsMapLayerProxyModel.Filter.LineLayer)
-        form_od.addRow("Yol Ağı Katmanı:", self.cmb_od_road)
-
-        self.cmb_od_dem = QgsMapLayerComboBox()
-        self.cmb_od_dem.setFilters(QgsMapLayerProxyModel.Filter.RasterLayer)
-        form_od.addRow("Sayısal Yükseklik Modeli (DEM / Opsiyonel):", self.cmb_od_dem)
-
-        self.chk_od_routes = QCheckBox("Ağ üzerindeki gerçek yol güzergah rotalarını çizgi olarak üret")
-        self.chk_od_routes.setChecked(True)
-        form_od.addRow(self.chk_od_routes)
-
-        self.chk_od_desire = QCheckBox("Kuş uçuşu arzu hatlarını (Desire lines & Sapma Oranı) üret")
-        self.chk_od_desire.setChecked(True)
-        form_od.addRow(self.chk_od_desire)
-
-        self.chk_od_centrality = QCheckBox("Ağ merkezilik (Aradalık / Betweenness & Yakınlık / Closeness) analizi yap")
-        self.chk_od_centrality.setChecked(True)
-        form_od.addRow(self.chk_od_centrality)
-
-        lay_od.addLayout(form_od)
-
-        self.btn_run_od = QPushButton("  📊 OD Matrisi ve Ulaşım Ağı Analizini Çalıştır")
-        self.btn_run_od.setObjectName("AccentButton")
-        self.btn_run_od.setCursor(_POINTING_HAND)
-        self.btn_run_od.clicked.connect(self._on_run_od_merkezilik)
-        lay_od.addWidget(self.btn_run_od)
-        layout.addWidget(box_od)
-
+        layout.addWidget(sub_tabs)
         layout.addStretch()
         return tab
+
+    # -----------------------------------------------------------------
+    # NETWORK ANALİZ TETİKLEYİCİLERİ (ÖDEV 13)
+    # -----------------------------------------------------------------
+    def _on_run_space_syntax(self):
+        road_layer = self.cmb_syntax_roads.currentLayer()
+        if not road_layer or not isinstance(road_layer, QgsVectorLayer):
+            QMessageBox.warning(self, "Uyarı", "Lütfen geçerli bir yol ağı katmanı seçin!")
+            return
+
+        radii = self.txt_syntax_radii.text().strip() or "400, 800, 1200, n"
+        params = {
+            'NETWORK': road_layer,
+            'RADII': radii,
+            'OUTPUT': 'TEMPORARY_OUTPUT'
+        }
+        try:
+            self.btn_run_syntax.setEnabled(False)
+            res = processing.run("pln3113:nip_space_syntax", params)
+            out_id = res.get('OUTPUT')
+            if out_id:
+                layer = QgsProject.instance().mapLayer(out_id) if isinstance(out_id, str) and not os.path.exists(out_id) else QgsVectorLayer(str(out_id), f"Space Syntax ({road_layer.name()})", "ogr")
+                if layer and layer.isValid():
+                    layer.setName(f"Space Syntax - NAIN & NACH ({road_layer.name()})")
+                    style_space_syntax(layer, "NACH_R800")
+                    QgsProject.instance().addMapLayer(layer)
+                    QMessageBox.information(
+                        self, "Başarılı",
+                        f"Space Syntax (Açısal Segment Analizi) tamamlandı!\n"
+                        f"Aks Sayısı: {layer.featureCount()}\n"
+                        f"Hesaplanan Yarıçaplar: {radii}\n"
+                        f"Katman haritaya eklendi ve spektral NACH/NAIN renk skalasıyla stillendirildi."
+                    )
+        except Exception as e:
+            QMessageBox.critical(self, "Hata", f"Space Syntax analizi sırasında hata:\n{str(e)}")
+        finally:
+            self.btn_run_syntax.setEnabled(True)
+
+    def _on_run_network_centrality(self):
+        road_layer = self.cmb_cent_roads.currentLayer()
+        if not road_layer or not isinstance(road_layer, QgsVectorLayer):
+            QMessageBox.warning(self, "Uyarı", "Lütfen geçerli bir yol ağı katmanı seçin!")
+            return
+
+        radii = self.txt_cent_radii.text().strip() or "800, 5000, n"
+        params = {
+            'NETWORK': road_layer,
+            'RADIUS': 800.0,
+            'EDGES': 'TEMPORARY_OUTPUT' if self.chk_cent_edges.isChecked() else None,
+            'NODES': 'TEMPORARY_OUTPUT' if self.chk_cent_nodes.isChecked() else None,
+        }
+        try:
+            self.btn_run_cent.setEnabled(False)
+            res = processing.run("pln3113:nip_network_centrality", params)
+            edges_out = res.get('EDGES')
+            nodes_out = res.get('NODES')
+
+            if edges_out:
+                lyr = QgsProject.instance().mapLayer(edges_out) if isinstance(edges_out, str) and not os.path.exists(edges_out) else QgsVectorLayer(str(edges_out), f"Ağ Merkezilikleri - Akslar ({road_layer.name()})", "ogr")
+                if lyr and lyr.isValid():
+                    lyr.setName(f"Ağ Merkezilikleri - Akslar ({road_layer.name()})")
+                    style_od_and_centrality(centrality_layer=lyr)
+                    QgsProject.instance().addMapLayer(lyr)
+
+            if nodes_out:
+                lyr = QgsProject.instance().mapLayer(nodes_out) if isinstance(nodes_out, str) and not os.path.exists(nodes_out) else QgsVectorLayer(str(nodes_out), f"Kavşak Merkezilikleri - Düğümler ({road_layer.name()})", "ogr")
+                if lyr and lyr.isValid():
+                    lyr.setName(f"Kavşak Merkezilikleri - Düğümler ({road_layer.name()})")
+                    QgsProject.instance().addMapLayer(lyr)
+
+            QMessageBox.information(
+                self, "Başarılı",
+                f"Primal Ağ Merkeziliği Analizi tamamlandı!\n"
+                f"Hesaplanan Metrikler: Betweenness (Aradalık), Closeness (Yakınlık), Straightness (Doğrusallık)."
+            )
+        except Exception as e:
+            QMessageBox.critical(self, "Hata", f"Ağ merkeziliği analizi sırasında hata:\n{str(e)}")
+        finally:
+            self.btn_run_cent.setEnabled(True)
+
+    def _on_run_od_rotalama(self):
+        orig_layer = self.cmb_od_origins.currentLayer()
+        dest_layer = self.cmb_od_destinations.currentLayer()
+        road_layer = self.cmb_od_road.currentLayer()
+
+        if not orig_layer or not isinstance(orig_layer, QgsVectorLayer):
+            QMessageBox.warning(self, "Uyarı", "Lütfen geçerli bir başlangıç (Origin) katmanı seçin!")
+            return
+        if not dest_layer or not isinstance(dest_layer, QgsVectorLayer):
+            QMessageBox.warning(self, "Uyarı", "Lütfen geçerli bir hedef (Destination) katmanı seçin!")
+            return
+        if not road_layer or not isinstance(road_layer, QgsVectorLayer):
+            QMessageBox.warning(self, "Uyarı", "Lütfen geçerli bir yol ağı katmanı seçin!")
+            return
+
+        params = {
+            'NETWORK': road_layer,
+            'ORIGINS': orig_layer,
+            'DESTINATIONS': dest_layer,
+            'OUTPUT_DESIRE': 'TEMPORARY_OUTPUT' if self.chk_od_desire.isChecked() else None,
+            'OUTPUT_ROUTES': 'TEMPORARY_OUTPUT' if self.chk_od_routes.isChecked() else None,
+            'OUTPUT_MATRIX': 'TEMPORARY_OUTPUT',
+        }
+        try:
+            self.btn_run_od.setEnabled(False)
+            res = processing.run("pln3113:nip_od_rotalama", params)
+            desire_out = res.get('OUTPUT_DESIRE')
+            routes_out = res.get('OUTPUT_ROUTES')
+            matrix_out = res.get('OUTPUT_MATRIX')
+
+            if routes_out:
+                lyr = QgsProject.instance().mapLayer(routes_out) if isinstance(routes_out, str) and not os.path.exists(routes_out) else QgsVectorLayer(str(routes_out), "En Kısa Yol Ağ Rotaları", "ogr")
+                if lyr and lyr.isValid():
+                    lyr.setName(f"En Kısa Yol Ağ Rotaları ({orig_layer.name()} -> {dest_layer.name()})")
+                    style_od_and_centrality(routes_layer=lyr)
+                    QgsProject.instance().addMapLayer(lyr)
+
+            if desire_out:
+                lyr = QgsProject.instance().mapLayer(desire_out) if isinstance(desire_out, str) and not os.path.exists(desire_out) else QgsVectorLayer(str(desire_out), "Kuş Uçuşu Arzu Hatları ve Detour", "ogr")
+                if lyr and lyr.isValid():
+                    lyr.setName(f"Arzu Hatları ve Bariyerler (Detour > 1.35)")
+                    style_detour_barrier(lyr)
+                    QgsProject.instance().addMapLayer(lyr)
+
+            if matrix_out:
+                lyr = QgsProject.instance().mapLayer(matrix_out) if isinstance(matrix_out, str) and not os.path.exists(matrix_out) else QgsVectorLayer(str(matrix_out), "OD Mesafe Matrisi Tablosu", "ogr")
+                if lyr and lyr.isValid():
+                    lyr.setName("OD Mesafe Matrisi Tablosu")
+                    QgsProject.instance().addMapLayer(lyr)
+
+            QMessageBox.information(
+                self, "Başarılı",
+                f"OD Matrisi ve Rotalama analizi başarıyla tamamlandı!\n"
+                f"Detour Ratio > 1.35 olan kopuk/bariyerli koridorlar kırmızı kesikli çizgiyle stillendirildi."
+            )
+        except Exception as e:
+            QMessageBox.critical(self, "Hata", f"OD Rotalama analizi sırasında hata:\n{str(e)}")
+        finally:
+            self.btn_run_od.setEnabled(True)
+
+    def _on_run_hizmet_izokron(self):
+        fac_layer = self.cmb_iso_facilities.currentLayer()
+        road_layer = self.cmb_iso_roads.currentLayer()
+        if not fac_layer or not isinstance(fac_layer, QgsVectorLayer):
+            QMessageBox.warning(self, "Uyarı", "Lütfen geçerli bir donatı katmanı seçin!")
+            return
+        if not road_layer or not isinstance(road_layer, QgsVectorLayer):
+            QMessageBox.warning(self, "Uyarı", "Lütfen geçerli bir yol ağı katmanı seçin!")
+            return
+
+        breaks = self.txt_iso_breaks.text().strip() or "400, 800, 1200"
+        method = self.cmb_iso_method.currentIndex()
+        params = {
+            'NETWORK': road_layer,
+            'FACILITIES': fac_layer,
+            'BREAKS': breaks,
+            'METHOD': method,
+            'AREAS': 'TEMPORARY_OUTPUT',
+            'CIRCLES': 'TEMPORARY_OUTPUT',
+            'EDGES': 'TEMPORARY_OUTPUT',
+            'SUMMARY': 'TEMPORARY_OUTPUT'
+        }
+        try:
+            self.btn_run_iso.setEnabled(False)
+            res = processing.run("pln3113:nip_hizmet_izokron", params)
+            areas_out = res.get('AREAS')
+            circles_out = res.get('CIRCLES')
+            edges_out = res.get('EDGES')
+            summary_out = res.get('SUMMARY')
+
+            if circles_out:
+                lyr = QgsProject.instance().mapLayer(circles_out) if isinstance(circles_out, str) and not os.path.exists(circles_out) else QgsVectorLayer(str(circles_out), "Mevzuat Kuş Uçuşu Dairesel Tamponlar", "ogr")
+                if lyr and lyr.isValid():
+                    lyr.setName(f"Mevzuat Etki Daireleri ({fac_layer.name()})")
+                    style_service_area(buffer_layer=lyr)
+                    QgsProject.instance().addMapLayer(lyr)
+
+            if areas_out:
+                lyr = QgsProject.instance().mapLayer(areas_out) if isinstance(areas_out, str) and not os.path.exists(areas_out) else QgsVectorLayer(str(areas_out), "Yürüme İzokron Poligonları (Pedshed)", "ogr")
+                if lyr and lyr.isValid():
+                    lyr.setName(f"Yürüme İzokronları ({fac_layer.name()})")
+                    style_isochrone_bands(lyr)
+                    QgsProject.instance().addMapLayer(lyr)
+
+            if edges_out:
+                lyr = QgsProject.instance().mapLayer(edges_out) if isinstance(edges_out, str) and not os.path.exists(edges_out) else QgsVectorLayer(str(edges_out), "Erişilen Kırpılmış Yol Parçaları", "ogr")
+                if lyr and lyr.isValid():
+                    lyr.setName(f"Erişilen Yol Parçaları ({fac_layer.name()})")
+                    style_service_area(roads_layer=lyr)
+                    QgsProject.instance().addMapLayer(lyr)
+
+            if summary_out:
+                lyr = QgsProject.instance().mapLayer(summary_out) if isinstance(summary_out, str) and not os.path.exists(summary_out) else QgsVectorLayer(str(summary_out), "Pedshed Erişilebilirlik Karnesi", "ogr")
+                if lyr and lyr.isValid():
+                    lyr.setName("Pedshed Erişilebilirlik Karnesi (Tablo)")
+                    QgsProject.instance().addMapLayer(lyr)
+
+            QMessageBox.information(
+                self, "Başarılı",
+                f"Yürüme izokronları ve pedshed analizi tamamlandı!\n"
+                f"Eşikler: {breaks} metre (5, 10, 15 dk @ 4.8 km/s)\n"
+                f"Pedshed Oranı < 0.40 çıkan donatılar 'İzole' olarak etiketlendi."
+            )
+        except Exception as e:
+            QMessageBox.critical(self, "Hata", f"İzokron analizi sırasında hata:\n{str(e)}")
+        finally:
+            self.btn_run_iso.setEnabled(True)
+
+    def _on_run_2sfca(self):
+        fac_layer = self.cmb_fca_facilities.currentLayer()
+        dem_layer = self.cmb_fca_demand.currentLayer()
+        road_layer = self.cmb_fca_roads.currentLayer()
+
+        if not fac_layer or not isinstance(fac_layer, QgsVectorLayer):
+            QMessageBox.warning(self, "Uyarı", "Lütfen geçerli bir donatı katmanı seçin!")
+            return
+        if not dem_layer or not isinstance(dem_layer, QgsVectorLayer):
+            QMessageBox.warning(self, "Uyarı", "Lütfen geçerli bir talep/nüfus katmanı seçin!")
+            return
+        if not road_layer or not isinstance(road_layer, QgsVectorLayer):
+            QMessageBox.warning(self, "Uyarı", "Lütfen geçerli bir yol ağı katmanı seçin!")
+            return
+
+        cap_field = self.txt_fca_cap_field.text().strip()
+        fac_fields = [f.name() for f in fac_layer.fields()]
+        if cap_field not in fac_fields:
+            cap_field = next((f for f in fac_fields if "kapasite" in f.lower() or "ogrenci" in f.lower() or "yatak" in f.lower() or "alan" in f.lower()), fac_fields[0])
+
+        fac_id = next((f for f in fac_fields if "ad" in f.lower() or "id" in f.lower() or "name" in f.lower()), fac_fields[0])
+
+        pop_field = self.txt_fca_pop_field.text().strip()
+        dem_fields = [f.name() for f in dem_layer.fields()]
+        if pop_field not in dem_fields:
+            pop_field = next((f for f in dem_fields if "nufus" in f.lower() or "pop" in f.lower()), "")
+
+        params = {
+            'NETWORK': road_layer,
+            'FACILITIES': fac_layer,
+            'FACILITY_ID': fac_id,
+            'CAPACITY_FIELD': cap_field,
+            'DEMAND': dem_layer,
+            'POP_FIELD': pop_field if pop_field else None,
+            'MAX_COST': self.spn_fca_cost.value(),
+            'FCA_DECAY': 1.0,
+            'OUT_FACILITIES': 'TEMPORARY_OUTPUT',
+            'OUT_DEMAND': 'TEMPORARY_OUTPUT'
+        }
+        try:
+            self.btn_run_fca.setEnabled(False)
+            res = processing.run("pln3113:nip_2sfca_yeterlilik", params)
+            out_f = res.get('OUT_FACILITIES')
+            out_d = res.get('OUT_DEMAND')
+
+            if out_f:
+                lyr = QgsProject.instance().mapLayer(out_f) if isinstance(out_f, str) and not os.path.exists(out_f) else QgsVectorLayer(str(out_f), "Donatı Yeterlilik ve Yük Durumu", "ogr")
+                if lyr and lyr.isValid():
+                    lyr.setName(f"2SFCA Donatı Yeterlilik ({fac_layer.name()})")
+                    style_facility_adequacy_points(lyr)
+                    QgsProject.instance().addMapLayer(lyr)
+
+            if out_d:
+                lyr = QgsProject.instance().mapLayer(out_d) if isinstance(out_d, str) and not os.path.exists(out_d) else QgsVectorLayer(str(out_d), "Talep Kapsama ve 2SFCA Skoru", "ogr")
+                if lyr and lyr.isValid():
+                    lyr.setName(f"2SFCA Talep Kapsama ({dem_layer.name()})")
+                    QgsProject.instance().addMapLayer(lyr)
+
+            QMessageBox.information(
+                self, "Başarılı",
+                f"2SFCA Donatı Yeterliliği analizi tamamlandı!\n"
+                f"Donatılar: Yeterli (Yeşil), Aşırı Yüklü (Kırmızı), Kullanılmayan (Gri) olarak sınıflandırıldı."
+            )
+        except Exception as e:
+            QMessageBox.critical(self, "Hata", f"2SFCA analizi sırasında hata:\n{str(e)}")
+        finally:
+            self.btn_run_fca.setEnabled(True)
+
+    def _on_run_scenario_compare(self):
+        road_a = self.cmb_scen_road_a.currentLayer()
+        road_b = self.cmb_scen_road_b.currentLayer()
+        if not road_a or not isinstance(road_a, QgsVectorLayer):
+            QMessageBox.warning(self, "Uyarı", "Lütfen Senaryo A (Mevcut Yol Ağı) katmanını seçin!")
+            return
+        if not road_b or not isinstance(road_b, QgsVectorLayer):
+            QMessageBox.warning(self, "Uyarı", "Lütfen Senaryo B (Meri / Öneri Plan Yol Ağı) katmanını seçin!")
+            return
+
+        radius = self.spn_scen_radius.value()
+        params = {
+            'NETWORK_A': road_a,
+            'NETWORK_B': road_b,
+            'RADIUS': radius,
+            'DIFF_NETWORK': 'TEMPORARY_OUTPUT',
+            'SUMMARY_TABLE': 'TEMPORARY_OUTPUT'
+        }
+        try:
+            self.btn_run_scen.setEnabled(False)
+            res = processing.run("pln3113:nip_scenario_compare", params)
+            diff_out = res.get('DIFF_NETWORK')
+            sum_out = res.get('SUMMARY_TABLE')
+
+            if diff_out:
+                lyr = QgsProject.instance().mapLayer(diff_out) if isinstance(diff_out, str) and not os.path.exists(diff_out) else QgsVectorLayer(str(diff_out), "A/B Fark Haritası", "ogr")
+                if lyr and lyr.isValid():
+                    lyr.setName(f"A/B Senaryo Fark Haritası (Mevcut vs Meri)")
+                    style_scenario_diff_network(lyr)
+                    QgsProject.instance().addMapLayer(lyr)
+
+            if sum_out:
+                lyr = QgsProject.instance().mapLayer(sum_out) if isinstance(sum_out, str) and not os.path.exists(sum_out) else QgsVectorLayer(str(sum_out), "A/B Senaryo Karşılaştırma Karnesi", "ogr")
+                if lyr and lyr.isValid():
+                    lyr.setName("A/B Senaryo Karşılaştırma Karnesi (Tablo)")
+                    QgsProject.instance().addMapLayer(lyr)
+
+            QMessageBox.information(
+                self, "Başarılı",
+                f"A/B Senaryo Karşılaştırması tamamlandı!\n"
+                f"Fark haritası 4 plan karar başlığına (Kademelenme Revizyonu, Yayalaştırma vb.) göre stillendirildi."
+            )
+        except Exception as e:
+            QMessageBox.critical(self, "Hata", f"Senaryo karşılaştırma analizi sırasında hata:\n{str(e)}")
+        finally:
+            self.btn_run_scen.setEnabled(True)
 
     def _on_run_on_cephe(self):
         poly_layer = self.cmb_cephe_poly.currentLayer()
@@ -3029,6 +3496,7 @@ class TireNipDockWidget(QDockWidget):
         params = {
             'INPUT_POLYGONS': poly_layer,
             'INPUT_ROADS': road_layer,
+            'MAX_DISTANCE': self.spn_cephe_dist.value(),
             'OUTPUT_LINES': 'TEMPORARY_OUTPUT',
             'OUTPUT_POINTS': 'TEMPORARY_OUTPUT'
         }
@@ -3070,165 +3538,6 @@ class TireNipDockWidget(QDockWidget):
         finally:
             self.btn_run_cephe.setEnabled(True)
 
-    def _on_run_erisme_havzasi(self):
-        fac_layer = self.cmb_erisme_fac.currentLayer()
-        road_layer = self.cmb_erisme_road.currentLayer()
-        if not fac_layer or not isinstance(fac_layer, QgsVectorLayer):
-            QMessageBox.warning(self, "Uyarı", "Lütfen geçerli bir donatı/hizmet katmanı seçin!")
-            return
-        if not road_layer or not isinstance(road_layer, QgsVectorLayer):
-            QMessageBox.warning(self, "Uyarı", "Lütfen geçerli bir yol ağı katmanı seçin!")
-            return
-
-        raw_dists = self.txt_erisme_distances.text().strip()
-        dist_list = []
-        for p in raw_dists.split(","):
-            try:
-                val = float(p.strip())
-                if val > 0:
-                    dist_list.append(val)
-            except ValueError:
-                continue
-
-        if not dist_list:
-            dist_list = [500.0]
-
-        try:
-            self.btn_run_erisme.setEnabled(False)
-            for d in dist_list:
-                params = {
-                    'INPUT_FACILITIES': fac_layer,
-                    'INPUT_ROADS': road_layer,
-                    'DISTANCE': d,
-                    'HULL_METHOD': self.cmb_erisme_method.currentIndex(),
-                    'DISSOLVE_POLYGONS': self.chk_erisme_dissolve.isChecked(),
-                    'CALCULATE_NETWORK': True,
-                    'CALCULATE_BUFFER': True,
-                    'OUTPUT_SERVICE_ROADS': 'TEMPORARY_OUTPUT',
-                    'OUTPUT_SERVICE_POLYGONS': 'TEMPORARY_OUTPUT',
-                    'OUTPUT_MPYY_BUFFER': 'TEMPORARY_OUTPUT'
-                }
-                res = processing.run("pln3113:nip_erisme_ve_mpyy_etki_capi", params)
-                roads_out = res.get('OUTPUT_SERVICE_ROADS')
-                poly_out = res.get('OUTPUT_SERVICE_POLYGONS')
-                buf_out = res.get('OUTPUT_MPYY_BUFFER')
-
-                if buf_out:
-                    if isinstance(buf_out, str):
-                        buf_out = QgsVectorLayer(buf_out, f"MPYY Tamponu ({int(d)}m)", "ogr")
-                    else:
-                        buf_out.setName(f"MPYY Tamponu ({int(d)}m)")
-                    style_service_area(buffer_layer=buf_out)
-                    QgsProject.instance().addMapLayer(buf_out)
-
-                if poly_out:
-                    if isinstance(poly_out, str):
-                        poly_out = QgsVectorLayer(poly_out, f"Erişim Havza Poligonu ({int(d)}m)", "ogr")
-                    else:
-                        poly_out.setName(f"Erişim Havza Poligonu ({int(d)}m)")
-                    style_service_area(polygons_layer=poly_out)
-                    QgsProject.instance().addMapLayer(poly_out)
-
-                if roads_out:
-                    if isinstance(roads_out, str):
-                        roads_out = QgsVectorLayer(roads_out, f"Servis Yol Ağı ({int(d)}m)", "ogr")
-                    else:
-                        roads_out.setName(f"Servis Yol Ağı ({int(d)}m)")
-                    style_service_area(roads_layer=roads_out)
-                    QgsProject.instance().addMapLayer(roads_out)
-
-            QMessageBox.information(
-                self, "Başarılı",
-                f"Erişim havzası ve MPYY etki çapları üretildi!\n"
-                f"Hesaplanan Mesafeler: {', '.join(f'{int(d)}m' for d in dist_list)}"
-            )
-        except Exception as e:
-            QMessageBox.critical(self, "Hata", f"Erişim havzası analizi sırasında hata:\n{str(e)}")
-        finally:
-            self.btn_run_erisme.setEnabled(True)
-
-    def _on_run_od_merkezilik(self):
-        orig_layer = self.cmb_od_origins.currentLayer()
-        dest_layer = self.cmb_od_destinations.currentLayer()
-        road_layer = self.cmb_od_road.currentLayer()
-        dem_layer = self.cmb_od_dem.currentLayer()
-
-        if not orig_layer or not isinstance(orig_layer, QgsVectorLayer):
-            QMessageBox.warning(self, "Uyarı", "Lütfen geçerli bir başlangıç (Origin) katmanı seçin!")
-            return
-        if not dest_layer or not isinstance(dest_layer, QgsVectorLayer):
-            QMessageBox.warning(self, "Uyarı", "Lütfen geçerli bir hedef (Destination) katmanı seçin!")
-            return
-        if not road_layer or not isinstance(road_layer, QgsVectorLayer):
-            QMessageBox.warning(self, "Uyarı", "Lütfen geçerli bir yol ağı katmanı seçin!")
-            return
-
-        params = {
-            'INPUT_ORIGINS': orig_layer,
-            'INPUT_DESTINATIONS': dest_layer,
-            'INPUT_ROADS': road_layer,
-            'INPUT_DEM': dem_layer if dem_layer else None,
-            'ROUTE_MODE': 0,
-            'OUTPUT_ROUTES': 'TEMPORARY_OUTPUT',
-            'OUTPUT_DESIRE': 'TEMPORARY_OUTPUT' if self.chk_od_desire.isChecked() else None,
-            'OUTPUT_CENTRALITY': 'TEMPORARY_OUTPUT' if self.chk_od_centrality.isChecked() else None,
-            'OUTPUT_SLOPE': 'TEMPORARY_OUTPUT' if dem_layer else None
-        }
-
-        try:
-            self.btn_run_od.setEnabled(False)
-            res = processing.run("pln3113:nip_od_merkezilik_egim", params)
-
-            routes_out = res.get('OUTPUT_ROUTES')
-            desire_out = res.get('OUTPUT_DESIRE')
-            cent_out = res.get('OUTPUT_CENTRALITY')
-            slope_out = res.get('OUTPUT_SLOPE')
-
-            if routes_out:
-                if isinstance(routes_out, str):
-                    routes_out = QgsVectorLayer(routes_out, f"Ağ Rotaları ({orig_layer.name()} -> {dest_layer.name()})", "ogr")
-                else:
-                    routes_out.setName(f"Ağ Rotaları ({orig_layer.name()} -> {dest_layer.name()})")
-                style_od_and_centrality(routes_layer=routes_out)
-                QgsProject.instance().addMapLayer(routes_out)
-
-            if desire_out:
-                if isinstance(desire_out, str):
-                    desire_out = QgsVectorLayer(desire_out, f"Kuşuçuşu İstek Hatları ({orig_layer.name()})", "ogr")
-                else:
-                    desire_out.setName(f"Kuşuçuşu İstek Hatları ({orig_layer.name()})")
-                style_od_and_centrality(desire_layer=desire_out)
-                QgsProject.instance().addMapLayer(desire_out)
-
-            if cent_out:
-                if isinstance(cent_out, str):
-                    cent_out = QgsVectorLayer(cent_out, "Ağ Merkezilikleri (Betweenness/Closeness)", "ogr")
-                else:
-                    cent_out.setName("Ağ Merkezilikleri (Betweenness/Closeness)")
-                style_od_and_centrality(centrality_layer=cent_out)
-                QgsProject.instance().addMapLayer(cent_out)
-
-            if slope_out:
-                if isinstance(slope_out, str):
-                    slope_out = QgsVectorLayer(slope_out, "Yol Eğim ve Kot Analizi", "ogr")
-                else:
-                    slope_out.setName("Yol Eğim ve Kot Analizi")
-                style_od_and_centrality(slope_layer=slope_out)
-                QgsProject.instance().addMapLayer(slope_out)
-
-            cnt_routes = routes_out.featureCount() if routes_out else 0
-            cnt_desire = desire_out.featureCount() if desire_out else 0
-            QMessageBox.information(
-                self, "Başarılı",
-                f"OD Matrisi ve Ulaşım Ağı Analizi tamamlandı!\n\n"
-                f"• Ağ Rota Çizgileri: {cnt_routes} adet\n"
-                f"• Kuşuçuşu / İstek Çizgileri: {cnt_desire} adet\n"
-                f"• Merkezilik / Eğim Katmanları harita tuvaline eklendi."
-            )
-        except Exception as e:
-            QMessageBox.critical(self, "Hata", f"OD Matrisi analizi sırasında hata:\n{str(e)}")
-        finally:
-            self.btn_run_od.setEnabled(True)
 
 
 
