@@ -37,7 +37,7 @@ def build_nip_dashboard_html(summary: dict, parsed_items: list[dict],
                              ideal_dop: float = 45.0) -> str:
     """Tüm NİP ve DOP analiz verilerini interaktif HTML dashboard şablonuna dönüştürür."""
     if crs is None or not crs.isValid():
-        crs = QgsCoordinateReferenceSystem("EPSG:5637")
+        crs = QgsCoordinateReferenceSystem("EPSG:5253")
 
     wgs84 = QgsCoordinateReferenceSystem("EPSG:4326")
     xform = QgsCoordinateTransform(crs, wgs84, QgsProject.instance())

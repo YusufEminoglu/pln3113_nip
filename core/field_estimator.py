@@ -41,8 +41,23 @@ class FieldEstimatorEngine:
         ada_dict = {}
 
         idx_tucbs = ada_layer.fields().indexOf("tucbs_sinifi")
+        if idx_tucbs == -1:
+            for alt in ["Ort__Detay", "Ort_Detay", "nipfonksiyon", "plan_fonksiyon", "fonk", "kullanim"]:
+                idx_tucbs = ada_layer.fields().indexOf(alt)
+                if idx_tucbs != -1:
+                    break
         idx_tanim = ada_layer.fields().indexOf("arazi_kullanim_tanimi")
+        if idx_tanim == -1:
+            for alt in ["tanim", "aciklama", "detay"]:
+                idx_tanim = ada_layer.fields().indexOf(alt)
+                if idx_tanim != -1:
+                    break
         idx_alan = ada_layer.fields().indexOf("ada_alani_m2")
+        if idx_alan == -1:
+            for alt in ["alan_m2", "alan", "Shape_Area"]:
+                idx_alan = ada_layer.fields().indexOf(alt)
+                if idx_alan != -1:
+                    break
         idx_adano = ada_layer.fields().indexOf("adano")
         idx_kimlik = ada_layer.fields().indexOf("ada_kimlik")
 
@@ -98,8 +113,23 @@ class FieldEstimatorEngine:
         # 2. Binaları ada index'i ile sorgula
         bina_fields = bina_layer.fields()
         idx_kat = bina_fields.indexOf("ZEMINUSTUKATSAYISI")
+        if idx_kat == -1:
+            for alt in ["KAT_ADEDI", "kat_adedi", "kat", "kat_sayisi", "floors"]:
+                idx_kat = bina_fields.indexOf(alt)
+                if idx_kat != -1:
+                    break
         idx_bagimsiz = bina_fields.indexOf("BAGIMSIZBOLUMSAYI")
+        if idx_bagimsiz == -1:
+            for alt in ["bagimsiz_bolum", "bagimsiz", "konut_sayisi", "units"]:
+                idx_bagimsiz = bina_fields.indexOf(alt)
+                if idx_bagimsiz != -1:
+                    break
         idx_bina_alan = bina_fields.indexOf("Shape_Area")
+        if idx_bina_alan == -1:
+            for alt in ["taban_alani", "taban_alani_m2", "alan_m2", "area"]:
+                idx_bina_alan = bina_fields.indexOf(alt)
+                if idx_bina_alan != -1:
+                    break
 
         bina_count = bina_layer.featureCount()
 

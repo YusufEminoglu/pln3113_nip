@@ -598,7 +598,7 @@ class TireNipDockWidget(QDockWidget):
             return
 
         layer = self.cmb_clean_layer.currentLayer()
-        crs_auth = layer.crs().authid() if layer else "EPSG:5637"
+        crs_auth = layer.crs().authid() if layer else "EPSG:5253"
         err_layer = QgsVectorLayer(f"Point?crs={crs_auth}", f"{layer.name() if layer else 'Plan'}_GEOMETRI_HATALARI", "memory")
         prov = err_layer.dataProvider()
         prov.addAttributes([
@@ -773,7 +773,7 @@ class TireNipDockWidget(QDockWidget):
 
         # CRS Seçici
         self.crs_db_selector = QgsProjectionSelectionWidget()
-        self.crs_db_selector.setCrs(QgsCoordinateReferenceSystem("EPSG:5637"))
+        self.crs_db_selector.setCrs(QgsCoordinateReferenceSystem("EPSG:5253"))
         form_db.addRow("Projeksiyon / CRS:", self.crs_db_selector)
 
         layout.addWidget(box_db)
@@ -848,7 +848,7 @@ class TireNipDockWidget(QDockWidget):
             return
 
         crs = self.crs_db_selector.crs()
-        crs_authid = crs.authid() if crs.isValid() else "EPSG:5637"
+        crs_authid = crs.authid() if crs.isValid() else "EPSG:5253"
 
         load_layers = self.chk_db_load_layers.isChecked()
         apply_styles = self.chk_db_apply_styles.isChecked()

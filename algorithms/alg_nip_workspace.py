@@ -63,7 +63,7 @@ class NipWorkspaceAlgorithm(QgsProcessingAlgorithm):
             QgsProcessingParameterCrs(
                 self.CRS,
                 'Koordinat Referans Sistemi (KRS)',
-                defaultValue='EPSG:5637'
+                defaultValue='EPSG:5253'
             )
         )
         self.addParameter(
@@ -89,7 +89,7 @@ class NipWorkspaceAlgorithm(QgsProcessingAlgorithm):
             raise QgsProcessingException("Lütfen geçerli bir çıktı GeoPackage dosya yolu belirleyin!")
 
         if not crs or not crs.isValid():
-            crs = QgsCoordinateReferenceSystem("EPSG:5637")
+            crs = QgsCoordinateReferenceSystem("EPSG:5253")
 
         feedback.pushInfo(f"NİP Çizim Veritabanı üretiliyor: {output_file} (KRS: {crs.authid()})...")
 

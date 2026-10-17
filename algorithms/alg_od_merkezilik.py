@@ -232,7 +232,7 @@ class OdMerkezilikAlgorithm(QgsProcessingAlgorithm):
                 continue
             pt = g.asPoint() if not g.isMultipart() else g.asMultiPoint()[0]
             nid = graph.find_nearest_node(pt)
-            d_label = str(feat[col_dest_id]) if col_dest_id and feat[col_dest_id] is not None else str(feat.id())
+            d_label = str(feat[col_dest_id]) if (col_dest_id and col_dest_id in feat.fields().names() and feat[col_dest_id] is not None) else str(feat.id())
             dest_nodes.append((nid, pt, d_label))
 
         feedback.pushInfo(f"2. Aşama: {source_orig.featureCount()} başlangıç noktasından rotalar çözülüyor...")
@@ -248,7 +248,7 @@ class OdMerkezilikAlgorithm(QgsProcessingAlgorithm):
 
             pt_o = g_o.asPoint() if not g_o.isMultipart() else g_o.asMultiPoint()[0]
             o_node = graph.find_nearest_node(pt_o)
-            o_label = str(f_orig[col_orig_id]) if col_orig_id and f_orig[col_orig_id] is not None else str(f_orig.id())
+            o_label = str(f_orig[col_orig_id]) if (col_orig_id and col_orig_id in f_orig.fields().names() and f_orig[col_orig_id] is not None) else str(f_orig.id())
 
             dist_arr, pred_node, pred_edge = graph.dijkstra_tree(o_node, cutoff=cutoff_val)
 

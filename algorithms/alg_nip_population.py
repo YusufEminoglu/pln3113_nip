@@ -126,35 +126,40 @@ class NipPopulationAlgorithm(QgsProcessingAlgorithm):
             QgsProcessingParameterFeatureSink(
                 self.OUTPUT_DOP,
                 'KÖ - DOP ve Kamu-Özel Dengesi Hesap Özeti',
-                QgsProcessing.SourceType.TypeVector
+                QgsProcessing.SourceType.TypeVector,
+                optional=True
             )
         )
         self.addParameter(
             QgsProcessingParameterFeatureSink(
                 self.OUTPUT_KENT_KARAKTER,
                 'Kent Karakter Tablosu (Kişi Başı m² Metrikleri)',
-                QgsProcessing.SourceType.TypeVector
+                QgsProcessing.SourceType.TypeVector,
+                optional=True
             )
         )
         self.addParameter(
             QgsProcessingParameterFeatureSink(
                 self.OUTPUT_FONKSIYON_DAGILIM,
                 'KÖ - Detaylı Fonksiyon ve Alan Dağılım Tablosu',
-                QgsProcessing.SourceType.TypeVector
+                QgsProcessing.SourceType.TypeVector,
+                optional=True
             )
         )
         self.addParameter(
             QgsProcessingParameterFeatureSink(
                 self.OUTPUT_EK2,
                 'MPYY Ek-2 Donatı Yeterlilik Tablosu',
-                QgsProcessing.SourceType.TypeVector
+                QgsProcessing.SourceType.TypeVector,
+                optional=True
             )
         )
         self.addParameter(
             QgsProcessingParameterFeatureSink(
                 self.OUTPUT_KIYAS,
                 'Tire Tarihsel Nüfus Kıyaslama Tablosu',
-                QgsProcessing.SourceType.TypeVector
+                QgsProcessing.SourceType.TypeVector,
+                optional=True
             )
         )
 
@@ -277,32 +282,34 @@ class NipPopulationAlgorithm(QgsProcessingAlgorithm):
         dop_fields.append(QgsField('oran_yuzde', QVariant.Double))
         dop_fields.append(QgsField('aciklama', QVariant.String))
 
-        (sink_dop, dest_dop_id) = self.parameterAsSink(
-            parameters, self.OUTPUT_DOP, context, dop_fields, QgsWkbTypes.Type.NoGeometry, layer.sourceCrs()
-        )
+        dest_dop_id = None
+        if self.OUTPUT_DOP in parameters and parameters[self.OUTPUT_DOP] is not None:
+            (sink_dop, dest_dop_id) = self.parameterAsSink(
+                parameters, self.OUTPUT_DOP, context, dop_fields, QgsWkbTypes.Type.NoGeometry, layer.sourceCrs()
+            )
+            if sink_dop:
+                p_m2 = dop["toplam_plan_alani_m2"]
+                e_m2 = dop["dop_esas_alan_m2"]
+                sinir_aciklama = "Plan Onama Sınırına Göre Kesin" if dop.get("sinir_katmani_kullanildi") else "İmar Adaları Toplamı Esas Alındı"
 
-        p_m2 = dop["toplam_plan_alani_m2"]
-        e_m2 = dop["dop_esas_alan_m2"]
-        sinir_aciklama = "Plan Onama Sınırına Göre Kesin" if dop.get("sinir_katmani_kullanildi") else "İmar Adaları Toplamı Esas Alındı"
-
-        rows_dop = [
-            ("Plan Onama Sınırı / Toplam Alan", p_m2, dop["toplam_plan_alani_ha"], 100.0, sinir_aciklama),
-            ("İmar Adaları (Kullanım Poligonları)", dop["adalar_toplam_m2"], dop["adalar_toplam_ha"], round(dop["adalar_toplam_m2"]/max(1, p_m2)*100.0, 2), "Plan Fonksiyon Blokları"),
-            ("Net Yol ve Ulaşım Ağı Alanı", dop["hesaplanan_yol_m2"], dop["hesaplanan_yol_ha"], dop["yol_orani_yuzde"], "Plan Sınırı - İmar Adaları Boşluğu"),
-            ("DOP Dışı Alanlar (Harice Ayrılan)", dop["dop_disi_alan_m2"], round(dop["dop_disi_alan_m2"]/10000.0, 2), round(dop["dop_disi_alan_m2"]/max(1, p_m2)*100.0, 2), "Orman, Tarım, Su, Sit vb."),
-            ("Düzenleme Sahası (DOP Esas Alan)", e_m2, round(e_m2/10000.0, 2), round(e_m2/max(1, p_m2)*100.0, 2), "Düzenlemeye Giren Net Saha"),
-            ("Toplam Özel Mülkiyet (Tahsis)", dop["toplam_ozel_tahsis_m2"], round(dop["toplam_ozel_tahsis_m2"]/10000.0, 2), round(dop["toplam_ozel_tahsis_m2"]/max(1, e_m2)*100.0, 2), "Konut, Ticaret, Sanayi vb."),
-            ("Kamu Poligon Donatıları", dop["kamu_poligonlar_m2"], round(dop["kamu_poligonlar_m2"]/10000.0, 2), round(dop["kamu_poligonlar_m2"]/max(1, e_m2)*100.0, 2), "Eğitim, Sağlık, Yeşil vb."),
-            ("Toplam Kamu Alanı (Kesinti + Yol)", dop["toplam_kamu_kesinti_m2"], round(dop["toplam_kamu_kesinti_m2"]/10000.0, 2), dop["dop_orani"], "Donatılar + Hesaplanan Yol"),
-            ("Kamu / Özel Mülkiyet Oranı", 0.0, 0.0, dop["kamu_ozel_orani"], "Kamu Kesintisi / Özel Tahsis Oranı"),
-            ("HESAPLANAN DOP ORANI (%)", 0.0, 0.0, dop["dop_orani"], dop["dop_uygunluk"])
-        ]
-        if dop.get("ortalama_yol_genisligi_m"):
-            rows_dop.insert(3, ("Ortalama Fiili Yol Genişliği (m)", 0.0, 0.0, dop["ortalama_yol_genisligi_m"], f"{dop['yol_agi_uzunlugu_km']} km Yol Ağı / Yol Alanı"))
-        for p, m2, ha, pct, desc in rows_dop:
-            df = QgsFeature(dop_fields)
-            df.setAttributes([p, m2, ha, pct, desc])
-            sink_dop.addFeature(df, QgsFeatureSink.Flag.FastInsert)
+                rows_dop = [
+                    ("Plan Onama Sınırı / Toplam Alan", p_m2, dop["toplam_plan_alani_ha"], 100.0, sinir_aciklama),
+                    ("İmar Adaları (Kullanım Poligonları)", dop["adalar_toplam_m2"], dop["adalar_toplam_ha"], round(dop["adalar_toplam_m2"]/max(1, p_m2)*100.0, 2), "Plan Fonksiyon Blokları"),
+                    ("Net Yol ve Ulaşım Ağı Alanı", dop["hesaplanan_yol_m2"], dop["hesaplanan_yol_ha"], dop["yol_orani_yuzde"], "Plan Sınırı - İmar Adaları Boşluğu"),
+                    ("DOP Dışı Alanlar (Harice Ayrılan)", dop["dop_disi_alan_m2"], round(dop["dop_disi_alan_m2"]/10000.0, 2), round(dop["dop_disi_alan_m2"]/max(1, p_m2)*100.0, 2), "Orman, Tarım, Su, Sit vb."),
+                    ("Düzenleme Sahası (DOP Esas Alan)", e_m2, round(e_m2/10000.0, 2), round(e_m2/max(1, p_m2)*100.0, 2), "Düzenlemeye Giren Net Saha"),
+                    ("Toplam Özel Mülkiyet (Tahsis)", dop["toplam_ozel_tahsis_m2"], round(dop["toplam_ozel_tahsis_m2"]/10000.0, 2), round(dop["toplam_ozel_tahsis_m2"]/max(1, e_m2)*100.0, 2), "Konut, Ticaret, Sanayi vb."),
+                    ("Kamu Poligon Donatıları", dop["kamu_poligonlar_m2"], round(dop["kamu_poligonlar_m2"]/10000.0, 2), round(dop["kamu_poligonlar_m2"]/max(1, e_m2)*100.0, 2), "Eğitim, Sağlık, Yeşil vb."),
+                    ("Toplam Kamu Alanı (Kesinti + Yol)", dop["toplam_kamu_kesinti_m2"], round(dop["toplam_kamu_kesinti_m2"]/10000.0, 2), dop["dop_orani"], "Donatılar + Hesaplanan Yol"),
+                    ("Kamu / Özel Mülkiyet Oranı", 0.0, 0.0, dop["kamu_ozel_orani"], "Kamu Kesintisi / Özel Tahsis Oranı"),
+                    ("HESAPLANAN DOP ORANI (%)", 0.0, 0.0, dop["dop_orani"], dop["dop_uygunluk"])
+                ]
+                if dop.get("ortalama_yol_genisligi_m"):
+                    rows_dop.insert(3, ("Ortalama Fiili Yol Genişliği (m)", 0.0, 0.0, dop["ortalama_yol_genisligi_m"], f"{dop['yol_agi_uzunlugu_km']} km Yol Ağı / Yol Alanı"))
+                for p, m2, ha, pct, desc in rows_dop:
+                    df = QgsFeature(dop_fields)
+                    df.setAttributes([p, m2, ha, pct, desc])
+                    sink_dop.addFeature(df, QgsFeatureSink.Flag.FastInsert)
 
         # 3. Kent Karakter Tablosu
         kk_fields = QgsFields()
@@ -312,13 +319,16 @@ class NipPopulationAlgorithm(QgsProcessingAlgorithm):
         kk_fields.append(QgsField('ust_nufus_m2_kisi', QVariant.Double))
         kk_fields.append(QgsField('proj_nufus_m2_kisi', QVariant.Double))
 
-        (sink_kk, dest_kk_id) = self.parameterAsSink(
-            parameters, self.OUTPUT_KENT_KARAKTER, context, kk_fields, QgsWkbTypes.Type.NoGeometry, layer.sourceCrs()
-        )
-        for kk in summary["kent_karakter"]:
-            kf = QgsFeature(kk_fields)
-            kf.setAttributes([kk["fonksiyon"], kk["toplam_m2"], kk["alt_nufus_m2_kisi"], kk["ust_nufus_m2_kisi"], kk["proj_nufus_m2_kisi"]])
-            sink_kk.addFeature(kf, QgsFeatureSink.Flag.FastInsert)
+        dest_kk_id = None
+        if self.OUTPUT_KENT_KARAKTER in parameters and parameters[self.OUTPUT_KENT_KARAKTER] is not None:
+            (sink_kk, dest_kk_id) = self.parameterAsSink(
+                parameters, self.OUTPUT_KENT_KARAKTER, context, kk_fields, QgsWkbTypes.Type.NoGeometry, layer.sourceCrs()
+            )
+            if sink_kk:
+                for kk in summary["kent_karakter"]:
+                    kf = QgsFeature(kk_fields)
+                    kf.setAttributes([kk["fonksiyon"], kk["toplam_m2"], kk["alt_nufus_m2_kisi"], kk["ust_nufus_m2_kisi"], kk["proj_nufus_m2_kisi"]])
+                    sink_kk.addFeature(kf, QgsFeatureSink.Flag.FastInsert)
 
         # 4. Detaylı Fonksiyon Dağılım Tablosu
         fd_fields = QgsFields()
@@ -332,16 +342,19 @@ class NipPopulationAlgorithm(QgsProcessingAlgorithm):
         fd_fields.append(QgsField('tum_plan_yuzdesi', QVariant.Double))
         fd_fields.append(QgsField('dop_ici_yuzde', QVariant.Double))
 
-        (sink_fd, dest_fd_id) = self.parameterAsSink(
-            parameters, self.OUTPUT_FONKSIYON_DAGILIM, context, fd_fields, QgsWkbTypes.Type.NoGeometry, layer.sourceCrs()
-        )
-        for fd in summary["fonksiyon_dagilim"]:
-            ff = QgsFeature(fd_fields)
-            ff.setAttributes([
-                fd["fonksiyon"], fd["dop_durumu"], fd["dop_turu"], fd["adet"],
-                fd["alan_m2"], fd["alan_ha"], fd["kisi_basi_m2"], fd["tum_plan_yuzdesi"], fd["dop_ici_yuzde"]
-            ])
-            sink_fd.addFeature(ff, QgsFeatureSink.Flag.FastInsert)
+        dest_fd_id = None
+        if self.OUTPUT_FONKSIYON_DAGILIM in parameters and parameters[self.OUTPUT_FONKSIYON_DAGILIM] is not None:
+            (sink_fd, dest_fd_id) = self.parameterAsSink(
+                parameters, self.OUTPUT_FONKSIYON_DAGILIM, context, fd_fields, QgsWkbTypes.Type.NoGeometry, layer.sourceCrs()
+            )
+            if sink_fd:
+                for fd in summary["fonksiyon_dagilim"]:
+                    ff = QgsFeature(fd_fields)
+                    ff.setAttributes([
+                        fd["fonksiyon"], fd["dop_durumu"], fd["dop_turu"], fd["adet"],
+                        fd["alan_m2"], fd["alan_ha"], fd["kisi_basi_m2"], fd["tum_plan_yuzdesi"], fd["dop_ici_yuzde"]
+                    ])
+                    sink_fd.addFeature(ff, QgsFeatureSink.Flag.FastInsert)
 
         # 5. MPYY Ek-2 Tablosu
         ek2_fields = QgsFields()
@@ -355,17 +368,20 @@ class NipPopulationAlgorithm(QgsProcessingAlgorithm):
         ek2_fields.append(QgsField('durum_ust_nufus', QVariant.String))
         ek2_fields.append(QgsField('durum_projeksiyon', QVariant.String))
 
-        (sink_ek2, dest_ek2_id) = self.parameterAsSink(
-            parameters, self.OUTPUT_EK2, context, ek2_fields, QgsWkbTypes.Type.NoGeometry, layer.sourceCrs()
-        )
-        for ek in summary["ek2_rapor"]:
-            ef = QgsFeature(ek2_fields)
-            ef.setAttributes([
-                ek["kategori_adi"], ek["toplam_m2"], ek["standart_m2"],
-                ek["kb_alt"], ek["kb_ust"], ek["kb_proj"],
-                ek["durum_alt"], ek["durum_ust"], ek["durum_proj"]
-            ])
-            sink_ek2.addFeature(ef, QgsFeatureSink.Flag.FastInsert)
+        dest_ek2_id = None
+        if self.OUTPUT_EK2 in parameters and parameters[self.OUTPUT_EK2] is not None:
+            (sink_ek2, dest_ek2_id) = self.parameterAsSink(
+                parameters, self.OUTPUT_EK2, context, ek2_fields, QgsWkbTypes.Type.NoGeometry, layer.sourceCrs()
+            )
+            if sink_ek2:
+                for ek in summary["ek2_rapor"]:
+                    ef = QgsFeature(ek2_fields)
+                    ef.setAttributes([
+                        ek["kategori_adi"], ek["toplam_m2"], ek["standart_m2"],
+                        ek["kb_alt"], ek["kb_ust"], ek["kb_proj"],
+                        ek["durum_alt"], ek["durum_ust"], ek["durum_proj"]
+                    ])
+                    sink_ek2.addFeature(ef, QgsFeatureSink.Flag.FastInsert)
 
         # 6. Kıyaslama Tablosu
         kiyas_fields = QgsFields()
@@ -374,13 +390,16 @@ class NipPopulationAlgorithm(QgsProcessingAlgorithm):
         kiyas_fields.append(QgsField('ilce_geneli', QVariant.String))
         kiyas_fields.append(QgsField('kaynak', QVariant.String))
 
-        (sink_kiyas, dest_kiyas_id) = self.parameterAsSink(
-            parameters, self.OUTPUT_KIYAS, context, kiyas_fields, QgsWkbTypes.Type.NoGeometry, layer.sourceCrs()
-        )
-        for row in summary["kiyaslama"]:
-            kf = QgsFeature(kiyas_fields)
-            kf.setAttributes([str(row["kapsam"]), str(row["merkez"]), str(row["ilce"]), str(row["kaynak"])])
-            sink_kiyas.addFeature(kf, QgsFeatureSink.Flag.FastInsert)
+        dest_kiyas_id = None
+        if self.OUTPUT_KIYAS in parameters and parameters[self.OUTPUT_KIYAS] is not None:
+            (sink_kiyas, dest_kiyas_id) = self.parameterAsSink(
+                parameters, self.OUTPUT_KIYAS, context, kiyas_fields, QgsWkbTypes.Type.NoGeometry, layer.sourceCrs()
+            )
+            if sink_kiyas:
+                for row in summary["kiyaslama"]:
+                    kf = QgsFeature(kiyas_fields)
+                    kf.setAttributes([str(row["kapsam"]), str(row["merkez"]), str(row["ilce"]), str(row["kaynak"])])
+                    sink_kiyas.addFeature(kf, QgsFeatureSink.Flag.FastInsert)
 
         return {
             self.OUTPUT_LAYER: dest_layer_id,

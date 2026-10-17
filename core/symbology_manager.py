@@ -277,3 +277,18 @@ def style_validity_error_points(layer: QgsVectorLayer) -> None:
     })
     layer.setRenderer(QgsSingleSymbolRenderer(sym))
     layer.triggerRepaint()
+
+
+class SymbologyManager:
+    """Kartografik stil yöneticisi sınıfı."""
+    apply_mpyy_qml_style = staticmethod(apply_mpyy_qml_style)
+    apply_road_platform_symbology = staticmethod(style_road_platform)
+    apply_junction_trim_symbology = staticmethod(style_road_junctions)
+    apply_road_polygons_symbology = staticmethod(style_road_polygons)
+    apply_front_facade_symbology = staticmethod(style_front_facade)
+    apply_accessibility_symbology = staticmethod(style_service_area)
+    apply_od_routes_symbology = staticmethod(lambda routes, desire: style_od_and_centrality(routes_layer=routes, desire_layer=desire))
+    apply_centrality_symbology = staticmethod(lambda centrality: style_od_and_centrality(centrality_layer=centrality))
+    apply_slope_symbology = staticmethod(lambda slope: style_od_and_centrality(slope_layer=slope))
+    apply_validity_error_points = staticmethod(style_validity_error_points)
+

@@ -323,7 +323,7 @@ def test_nip_workspace_generation():
 
     with tempfile.TemporaryDirectory(prefix="nip_gpkg_test_") as tmpdir:
         gpkg_path = os.path.join(tmpdir, "test_nip.gpkg")
-        create_nip_drawing_workspace(gpkg_path, "EPSG:5637")
+        create_nip_drawing_workspace(gpkg_path, "EPSG:5253")
 
         if not os.path.exists(gpkg_path):
             return _ok("nip workspace GeoPackage creation", False, "file does not exist")
@@ -353,7 +353,7 @@ def test_network_engine_topological_routing():
     from pln3113_nip.core.network_engine import build_network_graph
     from qgis.core import QgsVectorLayer, QgsFeature, QgsGeometry, QgsPointXY
 
-    layer = QgsVectorLayer("LineString?crs=EPSG:5637", "test_roads", "memory")
+    layer = QgsVectorLayer("LineString?crs=EPSG:5253", "test_roads", "memory")
     pr = layer.dataProvider()
 
     g1 = QgsGeometry.fromPolylineXY([QgsPointXY(0.0, 0.0), QgsPointXY(100.0, 0.0)])

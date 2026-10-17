@@ -71,14 +71,14 @@ def _field_defn(name, declared):
 def _crs_srs(value):
     crs = value if isinstance(value, QgsCoordinateReferenceSystem) else QgsCoordinateReferenceSystem(str(value))
     if not crs.isValid():
-        crs = QgsCoordinateReferenceSystem("EPSG:5637")
+        crs = QgsCoordinateReferenceSystem("EPSG:5253")
     srs = osr.SpatialReference()
     if srs.SetFromUserInput(crs.authid() or crs.toWkt()) != 0:
         raise ValueError("GDAL seçilen KRS'yi okuyamıyor")
     return srs
 
 
-def create_nip_workspace(output_path, crs="EPSG:5637"):
+def create_nip_workspace(output_path, crs="EPSG:5253"):
     """MpyyNipDB 1/5000 şablonuyla hazır NİP GeoPackage oluşturur."""
     output = Path(output_path).resolve()
     if output.exists():
