@@ -322,7 +322,7 @@ def test_nip_workspace_generation():
     import sqlite3
 
     with tempfile.TemporaryDirectory(prefix="nip_gpkg_test_") as tmpdir:
-        gpkg_path = os.path.join(tmpdir, "test_nip.gpkg")
+        gpkg_path = os.path.join(tmpdir, "test_nip_mpyy117.gpkg")
         create_nip_drawing_workspace(gpkg_path, "EPSG:5253")
 
         if not os.path.exists(gpkg_path):
@@ -332,20 +332,29 @@ def test_nip_workspace_generation():
         cursor = conn.cursor()
         cursor.execute("SELECT table_name FROM gpkg_contents")
         tables = {row[0] for row in cursor.fetchall()}
+
+        cursor.execute("SELECT plan_kademesi, xsd_dosyasi FROM mpyy_sema")
+        sema_row = cursor.fetchone()
         conn.close()
 
         expected = {
-            "alanlar-5000",
-            "cizgiler_5000_v2",
-            "5000_revizyon_planonama_snr",
-            "fonksiyonlar-5000_tablo",
-            "yolgenisliksembol"
+            "GelismeKonut",
+            "MevcutKonut",
+            "KentselCalisma",
+            "AcikYesilAlan",
+            "PlanSiniri",
+            "Yolorta",
+            "YolDuzenlemeAlanlari",
+            "mpyy_sema",
+            "mpyy_detay_katalogu",
+            "layer_styles"
         }
         missing = expected - tables
+        ok = (len(missing) == 0 and sema_row == ("NIP", "nip.V.1.1.7.xsd") and len(tables) >= 87)
         return _ok(
-            "nip workspace GeoPackage has all 5 official standard layers/tables",
-            len(missing) == 0,
-            f"tables={tables} missing={missing}"
+            "nip workspace GeoPackage has official MPYY 1.1.7 XSD schema (87 types + styles + hierarchy)",
+            ok,
+            f"tables_count={len(tables)} sema={sema_row} missing={missing}"
         )
 
 

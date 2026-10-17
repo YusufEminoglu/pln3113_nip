@@ -802,24 +802,23 @@ class TireNipDockWidget(QDockWidget):
         layout.addWidget(box_opts)
 
         # Buton
-        self.btn_create_db = QPushButton("  🚀 1/5000 NİP Çizim Veritabanını Oluştur ve Katmanları Yükle")
+        self.btn_create_db = QPushButton("  🚀 MPYY 1.1.7 NİP Çizim Veritabanını Oluştur ve Katmanları Yükle")
         self.btn_create_db.setObjectName("PrimaryButton")
         self.btn_create_db.setCursor(_POINTING_HAND)
         self.btn_create_db.clicked.connect(self._on_create_database)
         layout.addWidget(self.btn_create_db)
 
         # Bilgilendirme Kartı: Üretilecek Katman Şeması
-        box_schema = QGroupBox("Oluşturulacak Standart NİP Katmanları ve Hiyerarşisi")
+        box_schema = QGroupBox("Oluşturulacak Resmî MPYY 1.1.7 NİP Katmanları ve Hiyerarşisi")
         schema_lay = QVBoxLayout(box_schema)
         schema_html = QLabel(
-            "<div style='font-size:8.5pt; color:#334155; line-height:1.4;'>"
-            "• <b>alanlar-5000</b> (MultiPolygon): Konut Alanları, Ticaret Alanları, Kentsel Çalışma Alanları, "
-            "Kentsel Sosyal & Teknik Donatılar, Yeşil Alanlar ve Açık Alanlar.<br/>"
-            "• <b>cizgiler_5000_v2</b> (MultiLineString): Plan Onama Sınırı, Kentsel Çalışma Sınırı, İmar Hatları, "
-            "Karayolu, Demiryolu aksları ve Yol Genişlikleri.<br/>"
-            "• <b>5000_revizyon_planonama_snr</b> (MultiPolygon): Yasal Plan Onama Sınırı ve Revizyon Poligonu.<br/>"
-            "• <b>fonksiyonlar-5000_tablo</b> (Öznitelik Tablosu): Karma kullanım ve parsel bazında alt fonksiyon kayıtları.<br/>"
-            "• <b>yolgenisliksembol</b> (Point): Yol genişlik daireleri ve tip etiketleri."
+            "<div style='font-size:8.5pt; color:#334155; line-height:1.45;'>"
+            "• <b>Alanlar (58 Poligon Katmanı)</b>: GelismeKonut, MevcutKonut, DonusumKonutAlanlari, KentselCalisma, "
+            "AcikYesilAlan, EgitimTesisAlani, SaglikTesisAlani, PlanSiniri, YolDuzenlemeAlanlari, AfetHizmetAlani, AraziKoruma vb.<br/>"
+            "• <b>Çizgiler (23 Çizgi Katmanı)</b>: KarayoluGuzergahi, Demiryolu, AdaKenari, ManiaSiniri, SuUlasimBaglantisi vb.<br/>"
+            "• <b>Noktalar (6 Nokta Katmanı)</b>: Heliport, OzelKanunlarlaBelirlenenAlan, Merkez vb.<br/>"
+            "• <b>Ek-1e Sembol Kataloğu (mpyy_detay_katalogu)</b>: 199 adet mevzuat sembolü ve detay sınıflandırması.<br/>"
+            "• <b>Resmî e-Plan SLD Stilleri & Formlar</b>: Her katman için Bakanlık e-Plan renkleri, taramaları ve ValueMap açılır menüleri hazır."
             "</div>"
         )
         schema_html.setWordWrap(True)

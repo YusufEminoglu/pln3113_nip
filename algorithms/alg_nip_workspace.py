@@ -29,7 +29,7 @@ class NipWorkspaceAlgorithm(QgsProcessingAlgorithm):
         return 'nip_workspace_generator'
 
     def displayName(self):
-        return '1/5000 NİP Çizim Veritabanı ve Şablonu Oluştur (GeoPackage)'
+        return '1/5000 NİP Çizim Veritabanı ve Şablonu Oluştur (GeoPackage) - MPYY 1.1.7'
 
     def group(self):
         return '02. NİP Çizim Veritabanı ve Şablonu'
@@ -39,16 +39,15 @@ class NipWorkspaceAlgorithm(QgsProcessingAlgorithm):
 
     def shortHelpString(self):
         return (
-            "Mekânsal Planlar Yapım Yönetmeliği (MPYY) ve PLN3113 stüdyo standartlarına uygun "
+            "Çevre, Şehircilik ve İklim Değişikliği Bakanlığı Mekânsal Planlar Yapım Yönetmeliği "
+            "(MPYY) 1.1.7 XSD şemasına (nip.V.1.1.7.xsd) ve PLN3113 stüdyo standartlarına uygun "
             "1/5000 Nazım İmar Planı (NİP) boş çizim veritabanını (GeoPackage) üretir.\n\n"
             "Veritabanı içeriğinde:\n"
-            "• alanlar_5000 (Plan Kullanım ve Donatı Poligonları)\n"
-            "• cizgiler_5000 (Yol Sınırları, Plan Hatları ve Kısıtlar)\n"
-            "• plan_onama_siniri (Yasal Onama ve İnceleme Sınırı)\n"
-            "• yol_orta_cizgi & yolgenisliksembol (Ulaşım Kademelenmesi)\n"
-            "• fonksiyonlar_5000_tablo (Tüm MPYY NİP fonksiyon ve renk lookup kütüğü)\n\n"
-            "Tüm katmanlar resmi mevzuat renk paletleri (QML) ve akıllı açılır menü (ValueRelation) "
-            "nitelik formlarıyla birlikte hazır olarak oluşturulur."
+            "• 87 adet MPYY 1.1.7 plan nesnesi tipi (Alanlar, Çizgiler, Noktalar)\n"
+            "• Bakanlık e-Plan SLD stilleri ve gömülü raster taramalar\n"
+            "• Ek-1e Sembol Hiyerarşisi kütüğü (mpyy_detay_katalogu)\n"
+            "• Tüm nitelikler için hazır Türkçe ValueMap açılır form menüleri ve kısıtları\n\n"
+            "Varsayılan Koordinat Referans Sistemi: EPSG:5253 (TUREF / 3-derece Dilim 9)."
         )
 
     def initAlgorithm(self, config=None):
