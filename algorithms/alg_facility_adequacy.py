@@ -10,6 +10,7 @@ from __future__ import annotations
 import numpy as np
 
 from qgis.core import (
+    QgsCoordinateTransform,
     QgsFeature,
     QgsFeatureSink,
     QgsGeometry,
@@ -46,6 +47,8 @@ class FacilityAdequacyAlgorithm(PlanXBaseAlgorithm):
     FCA_DECAY = "FCA_DECAY"
     OUT_FACILITIES = "OUT_FACILITIES"
     OUT_DEMAND = "OUT_DEMAND"
+    OUT_DEMAND_POINTS = "OUT_DEMAND_POINTS"
+    OUT_FACILITY_POINTS = "OUT_FACILITY_POINTS"
 
     def name(self):
         return "nip_2sfca_yeterlilik"
@@ -62,8 +65,9 @@ class FacilityAdequacyAlgorithm(PlanXBaseAlgorithm):
             "2. Adım: Her talep noktası (ada nüfus merkezi / konut) için erişilebilir donatıların "
             "R_j oranları Gauss mesafe azalım fonksiyonuyla toplanır (fca_erisim_skoru).\n\n"
             "Çıktılar:\n"
-            "- Donatılar: Atanan nüfus, doluluk oranı (utilization) ve durum (Yeterli, Aşırı Yüklü, Kullanılmayan).\n"
-            "- Talep Noktaları: Kapsandı (1/0), en yakın donatı, ağ yürüme mesafesi ve 2SFCA erişim skoru."
+            "- Donatılar: Orijinal geometri (poligon/nokta), atanan nüfus, doluluk oranı (utilization) ve yük durumu.\n"
+            "- Talep Alanları: Orijinal ada/bina poligonları veya noktaları (Kapsandı 1/0, ağ mesafesi, 2SFCA skoru).\n"
+            "- Talep Noktaları: Ada/bina merkez noktaları (Nokta katmanı)."
         )
 
     def initAlgorithm(self, config=None):
@@ -96,11 +100,17 @@ class FacilityAdequacyAlgorithm(PlanXBaseAlgorithm):
             self.FCA_DECAY, self.tr("Gauss Mesafe Azalım Gücü (Decay Strength, 0 = Ağırlıksız)"),
             QgsProcessingParameterNumber.Type.Double, 1.0, minValue=0.0, maxValue=10.0))
         self.addParameter(QgsProcessingParameterFeatureSink(
-            self.OUT_FACILITIES, self.tr("Donatı Yeterlilik ve Yük Durumu"),
-            type=QgsProcessing.SourceType.TypeVectorPoint))
+            self.OUT_FACILITIES, self.tr("Donatı Yeterlilik ve Yük Durumu (Orijinal Geometri)"),
+            type=QgsProcessing.SourceType.TypeVectorAnyGeometry))
         self.addParameter(QgsProcessingParameterFeatureSink(
-            self.OUT_DEMAND, self.tr("Talep Kapsama ve 2SFCA Erişim Skoru"),
-            type=QgsProcessing.SourceType.TypeVectorPoint))
+            self.OUT_DEMAND, self.tr("Talep Kapsama ve 2SFCA Erişim Skoru (Orijinal Geometri)"),
+            type=QgsProcessing.SourceType.TypeVectorAnyGeometry))
+        self.addParameter(QgsProcessingParameterFeatureSink(
+            self.OUT_DEMAND_POINTS, self.tr("Talep Merkez / Servis Noktaları (Nokta Çıktısı)"),
+            type=QgsProcessing.SourceType.TypeVectorPoint, optional=True))
+        self.addParameter(QgsProcessingParameterFeatureSink(
+            self.OUT_FACILITY_POINTS, self.tr("Donatı Servis Giriş Noktaları (Nokta Çıktısı)"),
+            type=QgsProcessing.SourceType.TypeVectorPoint, optional=True))
 
     def processAlgorithm(self, parameters, context, feedback):
         network = self.parameterAsSource(parameters, self.NETWORK, context)
@@ -196,13 +206,24 @@ class FacilityAdequacyAlgorithm(PlanXBaseAlgorithm):
         fca_access = decay_weights.T @ supply_ratio
 
         # Demand output
+        dem_geom_type = demand.wkbType()
+        is_dem_poly = (QgsWkbTypes.geometryType(dem_geom_type) == QgsWkbTypes.GeometryType.PolygonGeometry)
+        out_dem_wkb = QgsWkbTypes.Type.MultiPolygon if is_dem_poly else QgsWkbTypes.Type.Point
+
+        dem_xform = None
+        if crs is not None and demand.sourceCrs() != crs:
+            dem_xform = QgsCoordinateTransform(demand.sourceCrs(), crs, context.transformContext())
+
         assigned = {}
         d_fields = self.make_fields(
             ("kapsandi", INT), ("donati", STRING),
             ("ag_mesafesi_m", DOUBLE), ("fca_erisim_skoru", DOUBLE),
             base=demand.fields())
+
         d_sink, d_dest = self.parameterAsSink(
-            parameters, self.OUT_DEMAND, context, d_fields, QgsWkbTypes.Type.Point, crs)
+            parameters, self.OUT_DEMAND, context, d_fields, out_dem_wkb, crs)
+        d_pts_sink, d_pts_dest = self.parameterAsSink(
+            parameters, self.OUT_DEMAND_POINTS, context, d_fields, QgsWkbTypes.Type.Point, crs)
 
         covered_pop = 0.0
         total_pop = float(np.sum(populations))
@@ -225,19 +246,48 @@ class FacilityAdequacyAlgorithm(PlanXBaseAlgorithm):
                 assigned[j] = assigned.get(j, 0.0) + p
                 covered_pop += p
 
-            out = QgsFeature(d_fields)
-            out.setGeometry(QgsGeometry.fromPointXY(QgsPointXY(*d_xy[i])))
-            out.setAttributes(list(feat.attributes())[:n_dem] +
-                              [1 if covered else 0, fac, round(cost_val, 1), round(float(fca_access[i]), 5)])
-            d_sink.addFeature(out, QgsFeatureSink.Flag.FastInsert)
+            attrs = list(feat.attributes())[:n_dem] + [
+                1 if covered else 0, fac, round(cost_val, 1), round(float(fca_access[i]), 5)
+            ]
+
+            if d_sink:
+                out = QgsFeature(d_fields)
+                if is_dem_poly:
+                    g = QgsGeometry(feat.geometry())
+                    if dem_xform is not None:
+                        g.transform(dem_xform)
+                    if not g.isMultipart():
+                        g.convertToMultiType()
+                    out.setGeometry(g)
+                else:
+                    out.setGeometry(QgsGeometry.fromPointXY(QgsPointXY(*d_xy[i])))
+                out.setAttributes(attrs)
+                d_sink.addFeature(out, QgsFeatureSink.Flag.FastInsert)
+
+            if d_pts_sink:
+                out_pt = QgsFeature(d_fields)
+                out_pt.setGeometry(QgsGeometry.fromPointXY(QgsPointXY(*d_xy[i])))
+                out_pt.setAttributes(attrs)
+                d_pts_sink.addFeature(out_pt, QgsFeatureSink.Flag.FastInsert)
 
         # Facilities output
+        fac_geom_type = facilities.wkbType()
+        is_fac_poly = (QgsWkbTypes.geometryType(fac_geom_type) == QgsWkbTypes.GeometryType.PolygonGeometry)
+        out_fac_wkb = QgsWkbTypes.Type.MultiPolygon if is_fac_poly else QgsWkbTypes.Type.Point
+
+        fac_xform = None
+        if crs is not None and facilities.sourceCrs() != crs:
+            fac_xform = QgsCoordinateTransform(facilities.sourceCrs(), crs, context.transformContext())
+
         f_fields = self.make_fields(
             ("donati", STRING), ("kapasite", DOUBLE), ("atanan_nufus", DOUBLE),
             ("doluluk_orani", DOUBLE), ("durum", STRING),
             ("havza_talep", DOUBLE), ("arz_orani_R", DOUBLE))
+
         f_sink, f_dest = self.parameterAsSink(
-            parameters, self.OUT_FACILITIES, context, f_fields, QgsWkbTypes.Type.Point, crs)
+            parameters, self.OUT_FACILITIES, context, f_fields, out_fac_wkb, crs)
+        f_pts_sink, f_pts_dest = self.parameterAsSink(
+            parameters, self.OUT_FACILITY_POINTS, context, f_fields, QgsWkbTypes.Type.Point, crs)
 
         overloaded = 0
         for j, feat in enumerate(f_feats):
@@ -252,20 +302,42 @@ class FacilityAdequacyAlgorithm(PlanXBaseAlgorithm):
                 status = "Aşırı Yüklü (Overloaded)"
                 overloaded += 1
 
-            out = QgsFeature(f_fields)
-            out.setGeometry(QgsGeometry.fromPointXY(QgsPointXY(*f_xy[j])))
-            out.setAttributes([
+            attrs = [
                 f_ids[j], cap, round(load, 1), round(util, 3), status,
                 round(float(catchment_demand[j]), 1), round(float(supply_ratio[j]), 5)
-            ])
-            f_sink.addFeature(out, QgsFeatureSink.Flag.FastInsert)
+            ]
+
+            if f_sink:
+                out = QgsFeature(f_fields)
+                if is_fac_poly:
+                    g = QgsGeometry(feat.geometry())
+                    if fac_xform is not None:
+                        g.transform(fac_xform)
+                    if not g.isMultipart():
+                        g.convertToMultiType()
+                    out.setGeometry(g)
+                else:
+                    out.setGeometry(QgsGeometry.fromPointXY(QgsPointXY(*f_xy[j])))
+                out.setAttributes(attrs)
+                f_sink.addFeature(out, QgsFeatureSink.Flag.FastInsert)
+
+            if f_pts_sink:
+                out_pt = QgsFeature(f_fields)
+                out_pt.setGeometry(QgsGeometry.fromPointXY(QgsPointXY(*f_xy[j])))
+                out_pt.setAttributes(attrs)
+                f_pts_sink.addFeature(out_pt, QgsFeatureSink.Flag.FastInsert)
 
         share = covered_pop / total_pop if total_pop > 0 else 0.0
         feedback.pushInfo(self.tr(
             f"Kapsanan Nüfus: {covered_pop:.0f} / {total_pop:.0f} (%{share * 100:.1f}); "
             f"{overloaded} donatıda aşırı yük (kapasite yetersizliği) tespit edildi."))
 
-        return {self.OUT_FACILITIES: f_dest, self.OUT_DEMAND: d_dest}
+        results = {self.OUT_FACILITIES: f_dest, self.OUT_DEMAND: d_dest}
+        if d_pts_dest:
+            results[self.OUT_DEMAND_POINTS] = d_pts_dest
+        if f_pts_dest:
+            results[self.OUT_FACILITY_POINTS] = f_pts_dest
+        return results
 
     def createInstance(self):
         return FacilityAdequacyAlgorithm()

@@ -65,7 +65,8 @@ from qgis.core import (
     QgsRendererCategory,
     QgsRendererRange,
     QgsSingleSymbolRenderer,
-    QgsVectorLayer
+    QgsVectorLayer,
+    QgsWkbTypes,
 )
 from qgis.gui import QgsFieldComboBox, QgsMapLayerComboBox, QgsProjectionSelectionWidget
 
@@ -3490,6 +3491,9 @@ class TireNipDockWidget(QDockWidget):
         pop_field = self.cmb_fca_pop_field.currentField().strip() or None
         default_cap = self.spn_fca_default_cap.value()
 
+        is_dem_poly = (QgsWkbTypes.geometryType(dem_layer.wkbType()) == QgsWkbTypes.GeometryType.PolygonGeometry)
+        is_fac_poly = (QgsWkbTypes.geometryType(fac_layer.wkbType()) == QgsWkbTypes.GeometryType.PolygonGeometry)
+
         params = {
             'NETWORK': road_layer,
             'FACILITIES': fac_layer,
@@ -3501,31 +3505,52 @@ class TireNipDockWidget(QDockWidget):
             'MAX_COST': self.spn_fca_cost.value(),
             'FCA_DECAY': 1.0,
             'OUT_FACILITIES': 'TEMPORARY_OUTPUT',
-            'OUT_DEMAND': 'TEMPORARY_OUTPUT'
+            'OUT_DEMAND': 'TEMPORARY_OUTPUT',
+            'OUT_DEMAND_POINTS': 'TEMPORARY_OUTPUT' if is_dem_poly else None,
+            'OUT_FACILITY_POINTS': 'TEMPORARY_OUTPUT' if is_fac_poly else None,
         }
         try:
             self.btn_run_fca.setEnabled(False)
             res = processing.run("pln3113:nip_2sfca_yeterlilik", params)
             out_f = res.get('OUT_FACILITIES')
             out_d = res.get('OUT_DEMAND')
+            out_d_pts = res.get('OUT_DEMAND_POINTS')
+            out_f_pts = res.get('OUT_FACILITY_POINTS')
 
             lyr_f = self._to_vector_layer(out_f, "2SFCA Donatı Yeterlilik")
             if lyr_f and lyr_f.isValid():
-                lyr_f.setName(f"2SFCA Donatı Yeterlilik ({fac_layer.name()})")
+                geom_f_desc = "Poligon" if is_fac_poly else "Noktalar"
+                lyr_f.setName(f"2SFCA Donatı Yeterlilik ({fac_layer.name()}) [{geom_f_desc}]")
                 style_facility_adequacy_points(lyr_f)
                 QgsProject.instance().addMapLayer(lyr_f)
 
+            if out_f_pts:
+                lyr_f_pts = self._to_vector_layer(out_f_pts, "2SFCA Donatı Giriş Noktaları")
+                if lyr_f_pts and lyr_f_pts.isValid():
+                    lyr_f_pts.setName(f"2SFCA Donatı Giriş Noktaları ({fac_layer.name()})")
+                    style_facility_adequacy_points(lyr_f_pts)
+                    QgsProject.instance().addMapLayer(lyr_f_pts)
+
             lyr_d = self._to_vector_layer(out_d, "2SFCA Talep Kapsama")
             if lyr_d and lyr_d.isValid():
-                lyr_d.setName(f"2SFCA Talep Kapsama ({dem_layer.name()})")
+                geom_d_desc = "Adalar/Binalar Poligon" if is_dem_poly else "Noktalar"
+                lyr_d.setName(f"2SFCA Talep Kapsama ({dem_layer.name()}) [{geom_d_desc}]")
                 style_fca_demand_points(lyr_d)
                 QgsProject.instance().addMapLayer(lyr_d)
 
+            if out_d_pts:
+                lyr_d_pts = self._to_vector_layer(out_d_pts, "2SFCA Talep Merkez Noktaları")
+                if lyr_d_pts and lyr_d_pts.isValid():
+                    lyr_d_pts.setName(f"2SFCA Talep Merkez Noktaları ({dem_layer.name()})")
+                    style_fca_demand_points(lyr_d_pts)
+                    QgsProject.instance().addMapLayer(lyr_d_pts)
+
+            poly_info = "\n\n💡 Girdiğiniz ada/bina/parsel poligon geometrisi korunarak analiz skorlarıyla tematik olarak renklendirildi ve hesaplama merkez noktaları da haritanıza eklendi." if is_dem_poly else ""
             QMessageBox.information(
                 self, "Başarılı",
                 f"2SFCA Donatı Yeterliliği ve Kapasite Analizi tamamlandı!\n\n"
                 f"✅ 1. Donatılar: Yeterli (Yeşil), Aşırı Yüklü (Kırmızı), Kullanılmayan (Gri).\n"
-                f"✅ 2. Talep Noktaları: Kapsanan (Yeşil) ve Kapsanamayan (Kırmızı) nüfus noktaları haritaya eklendi."
+                f"✅ 2. Talep Alanları: Kapsanan (Yeşil) ve Kapsanamayan (Kırmızı) alanlar haritaya eklendi.{poly_info}"
             )
         except Exception as e:
             QMessageBox.critical(self, "Hata", f"2SFCA analizi sırasında hata:\n{str(e)}")

@@ -23,7 +23,8 @@ from qgis.core import (
     QgsSimpleFillSymbolLayer,
     QgsSimpleLineSymbolLayer,
     QgsSimpleMarkerSymbolLayer,
-    QgsVectorLayer
+    QgsVectorLayer,
+    QgsWkbTypes,
 )
 from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtGui import QColor
@@ -340,34 +341,77 @@ def style_isochrone_bands(layer: QgsVectorLayer) -> None:
 
 
 def style_facility_adequacy_points(layer: QgsVectorLayer) -> None:
-    """2SFCA donatı durumunu (Yeterli, Aşırı Yüklü, Kullanılmayan) renklendirir."""
+    """2SFCA donatı durumunu (Yeterli, Aşırı Yüklü, Kullanılmayan) renklendirir (Poligon veya Nokta)."""
     if not layer or not layer.isValid():
         return
-    categories = [
-        QgsRendererCategory("Yeterli (Adequate)", QgsMarkerSymbol.createSimple({"color": "#16a34a", "outline_color": "#ffffff", "size": "3.5"}), "Yeterli Kapasite"),
-        QgsRendererCategory("Aşırı Yüklü (Overloaded)", QgsMarkerSymbol.createSimple({"color": "#dc2626", "outline_color": "#ffffff", "size": "4.5"}), "Aşırı Yüklü (Kapasite Yetersiz)"),
-        QgsRendererCategory("Kullanılmayan (Unused)", QgsMarkerSymbol.createSimple({"color": "#64748b", "outline_color": "#ffffff", "size": "3.0"}), "Atıl / Kullanılmayan"),
-    ]
+    is_polygon = (QgsWkbTypes.geometryType(layer.wkbType()) == QgsWkbTypes.GeometryType.PolygonGeometry)
+    if is_polygon:
+        categories = [
+            QgsRendererCategory(
+                "Yeterli (Adequate)",
+                QgsFillSymbol.createSimple({"color": "22,163,74,150", "outline_color": "#15803d", "outline_width": "0.5"}),
+                "Yeterli Kapasite"
+            ),
+            QgsRendererCategory(
+                "Aşırı Yüklü (Overloaded)",
+                QgsFillSymbol.createSimple({"color": "220,38,38,160", "outline_color": "#b91c1c", "outline_width": "0.7"}),
+                "Aşırı Yüklü (Kapasite Yetersiz)"
+            ),
+            QgsRendererCategory(
+                "Kullanılmayan (Unused)",
+                QgsFillSymbol.createSimple({"color": "100,116,139,120", "outline_color": "#475569", "outline_width": "0.4"}),
+                "Atıl / Kullanılmayan"
+            ),
+        ]
+    else:
+        categories = [
+            QgsRendererCategory("Yeterli (Adequate)", QgsMarkerSymbol.createSimple({"color": "#16a34a", "outline_color": "#ffffff", "size": "3.5"}), "Yeterli Kapasite"),
+            QgsRendererCategory("Aşırı Yüklü (Overloaded)", QgsMarkerSymbol.createSimple({"color": "#dc2626", "outline_color": "#ffffff", "size": "4.5"}), "Aşırı Yüklü (Kapasite Yetersiz)"),
+            QgsRendererCategory("Kullanılmayan (Unused)", QgsMarkerSymbol.createSimple({"color": "#64748b", "outline_color": "#ffffff", "size": "3.0"}), "Atıl / Kullanılmayan"),
+        ]
     layer.setRenderer(QgsCategorizedSymbolRenderer("durum", categories))
     layer.triggerRepaint()
 
 
 def style_fca_demand_points(layer: QgsVectorLayer) -> None:
-    """2SFCA talep noktalarının hizmet alma durumunu (Kapsandı / Kapsanmadı) renklendirir."""
+    """2SFCA talep noktalarının/adalarının hizmet alma durumunu (Kapsandı / Kapsanmadı) renklendirir."""
     if not layer or not layer.isValid():
         return
-    categories = [
-        QgsRendererCategory(
-            "1",
-            QgsMarkerSymbol.createSimple({"color": "#10b981", "outline_color": "#ffffff", "size": "2.8"}),
-            "Hizmet Alan Nüfus (Kapsandı)"
-        ),
-        QgsRendererCategory(
-            "0",
-            QgsMarkerSymbol.createSimple({"color": "#ef4444", "outline_color": "#ffffff", "size": "3.2"}),
-            "Hizmet Alamayan Nüfus (Kapsanamadı)"
-        ),
-    ]
+    is_polygon = (QgsWkbTypes.geometryType(layer.wkbType()) == QgsWkbTypes.GeometryType.PolygonGeometry)
+    if is_polygon:
+        categories = [
+            QgsRendererCategory(
+                1,
+                QgsFillSymbol.createSimple({
+                    "color": "16,185,129,140",
+                    "outline_color": "#059669",
+                    "outline_width": "0.5"
+                }),
+                "Hizmet Alan Nüfus / Ada (Kapsandı)"
+            ),
+            QgsRendererCategory(
+                0,
+                QgsFillSymbol.createSimple({
+                    "color": "239,68,68,140",
+                    "outline_color": "#dc2626",
+                    "outline_width": "0.6"
+                }),
+                "Hizmet Alamayan Nüfus / Ada (Kapsanamadı)"
+            ),
+        ]
+    else:
+        categories = [
+            QgsRendererCategory(
+                1,
+                QgsMarkerSymbol.createSimple({"color": "#10b981", "outline_color": "#ffffff", "size": "2.8"}),
+                "Hizmet Alan Nüfus (Kapsandı)"
+            ),
+            QgsRendererCategory(
+                0,
+                QgsMarkerSymbol.createSimple({"color": "#ef4444", "outline_color": "#ffffff", "size": "3.2"}),
+                "Hizmet Alamayan Nüfus (Kapsanamadı)"
+            ),
+        ]
     layer.setRenderer(QgsCategorizedSymbolRenderer("kapsandi", categories))
     layer.triggerRepaint()
 
