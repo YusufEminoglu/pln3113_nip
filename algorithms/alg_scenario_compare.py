@@ -11,6 +11,7 @@ from __future__ import annotations
 import numpy as np
 
 from qgis.core import (
+    QgsCoordinateReferenceSystem,
     QgsFeature,
     QgsFeatureSink,
     QgsGeometry,
@@ -241,7 +242,7 @@ class ScenarioCompareAlgorithm(PlanXBaseAlgorithm):
         )
         sum_sink, sum_dest = self.parameterAsSink(
             parameters, self.SUMMARY_TABLE, context, sum_fields,
-            QgsWkbTypes.Type.NoGeometry, crs)
+            QgsWkbTypes.Type.NoGeometry, QgsCoordinateReferenceSystem())
 
         mean_nach_a = float(np.mean(nach_a)) if len(nach_a) else 0.0
         mean_nach_b = float(np.mean(nach_b)) if len(nach_b) else 0.0

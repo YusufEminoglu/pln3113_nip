@@ -13,6 +13,7 @@ import math
 import numpy as np
 
 from qgis.core import (
+    QgsCoordinateReferenceSystem,
     QgsFeature,
     QgsFeatureSink,
     QgsGeometry,
@@ -219,7 +220,7 @@ class ODCostMatrixAlgorithm(PlanXBaseAlgorithm):
         if self.MATRIX in parameters and parameters[self.MATRIX]:
             matrix_sink, m_dest = self.parameterAsSink(
                 parameters, self.MATRIX, context, matrix_fields,
-                QgsWkbTypes.Type.NoGeometry, crs
+                QgsWkbTypes.Type.NoGeometry, QgsCoordinateReferenceSystem()
             )
             results[self.MATRIX] = m_dest
 

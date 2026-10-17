@@ -121,6 +121,18 @@ _MOVEMENT_STATIC = QListView.Movement.Static
 PLUGIN_DIR = os.path.dirname(__file__)
 
 
+def _get_plugin_version() -> str:
+    """Read version dynamically from metadata.txt."""
+    meta_path = os.path.join(PLUGIN_DIR, "metadata.txt")
+    if os.path.exists(meta_path):
+        import configparser
+        cp = configparser.ConfigParser()
+        with contextlib.suppress(Exception):
+            cp.read(meta_path, encoding="utf-8")
+            return cp.get("general", "version", fallback="1.1.1")
+    return "1.1.1"
+
+
 class _TabsAdapter:
     """Compatibility adapter for test suites or scripts calling dock.tabs."""
 
@@ -195,7 +207,7 @@ class TireNipDockWidget(QDockWidget):
         lbl_title.setObjectName("nipHeroTitle")
         title_row.addWidget(lbl_title)
 
-        badge_version = QLabel("v1.0.0")
+        badge_version = QLabel(f"v{_get_plugin_version()}")
         badge_version.setObjectName("nipVersionBadge")
         title_row.addWidget(badge_version)
         title_row.addStretch()
@@ -1516,49 +1528,56 @@ class TireNipDockWidget(QDockWidget):
 
     def _on_nip_layer_changed(self):
         layer = self.cmb_nip_layer.currentLayer()
-        self.cmb_fonk_field.clear()
-        self.cmb_secondary_fonk_field.clear()
-        self.cmb_secondary_fonk_field.addItem("<Yok / İkincil Sütun Yok>")
-        if not layer or not isinstance(layer, QgsVectorLayer):
-            return
+        self.cmb_fonk_field.blockSignals(True)
+        self.cmb_secondary_fonk_field.blockSignals(True)
+        try:
+            self.cmb_fonk_field.clear()
+            self.cmb_secondary_fonk_field.clear()
+            self.cmb_secondary_fonk_field.addItem("<Yok / İkincil Sütun Yok>")
+            if not layer or not isinstance(layer, QgsVectorLayer) or not layer.isValid():
+                self.tbl_rules.blockSignals(True)
+                self.tbl_rules.setRowCount(0)
+                self.tbl_rules.blockSignals(False)
+                return
 
-        fields = [f.name() for f in layer.fields()]
-        self.cmb_fonk_field.addItems(fields)
-        self.cmb_secondary_fonk_field.addItems(fields)
+            fields = [f.name() for f in layer.fields()]
+            self.cmb_fonk_field.addItems(fields)
+            self.cmb_secondary_fonk_field.addItems(fields)
 
-        fields_lower = {f.lower(): f for f in fields}
-        layer_name_lower = layer.name().lower()
+            fields_lower = {f.lower(): f for f in fields}
+            layer_name_lower = layer.name().lower()
 
-        # Otomatik Mod ve Sütun Tespiti
-        is_fiziki = (
-            "tucbs_sinifi" in fields_lower
-            or "arazi_kullanim_tanimi" in fields_lower
-            or "kadastro" in layer_name_lower
-            or "fiziki" in layer_name_lower
-            or "mevcut" in layer_name_lower
-        )
+            # Otomatik Mod ve Sütun Tespiti
+            is_fiziki = (
+                "tucbs_sinifi" in fields_lower
+                or "arazi_kullanim_tanimi" in fields_lower
+                or "kadastro" in layer_name_lower
+                or "fiziki" in layer_name_lower
+                or "mevcut" in layer_name_lower
+            )
 
-        if is_fiziki:
-            # Fiziki Mevcut Durum Modu (TUCBS)
-            self.cmb_analysis_mode.setCurrentIndex(1)
-            if "tucbs_sinifi" in fields_lower:
-                self.cmb_fonk_field.setCurrentText(fields_lower["tucbs_sinifi"])
-            elif "arazi_kullanim_tanimi" in fields_lower:
-                self.cmb_fonk_field.setCurrentText(fields_lower["arazi_kullanim_tanimi"])
+            if is_fiziki:
+                self.cmb_analysis_mode.setCurrentIndex(1)
+                if "tucbs_sinifi" in fields_lower:
+                    self.cmb_fonk_field.setCurrentText(fields_lower["tucbs_sinifi"])
+                elif "arazi_kullanim_tanimi" in fields_lower:
+                    self.cmb_fonk_field.setCurrentText(fields_lower["arazi_kullanim_tanimi"])
 
-            if "arazi_kullanim_tanimi" in fields_lower and self.cmb_fonk_field.currentText() != fields_lower["arazi_kullanim_tanimi"]:
-                self.cmb_secondary_fonk_field.setCurrentText(fields_lower["arazi_kullanim_tanimi"])
-        else:
-            # Standart NİP Modu
-            self.cmb_analysis_mode.setCurrentIndex(0)
-            priority = ["Ort__Detay", "Ort_Detay", "nipfonksiyon", "plan_fonksiyon", "fonksiyon", "Kullan__m_"]
-            for p in priority:
-                if p in fields:
-                    self.cmb_fonk_field.setCurrentText(p)
-                    break
-            self.cmb_secondary_fonk_field.setCurrentIndex(0)
+                if "arazi_kullanim_tanimi" in fields_lower and self.cmb_fonk_field.currentText() != fields_lower["arazi_kullanim_tanimi"]:
+                    self.cmb_secondary_fonk_field.setCurrentText(fields_lower["arazi_kullanim_tanimi"])
+            else:
+                self.cmb_analysis_mode.setCurrentIndex(0)
+                priority = ["Ort__Detay", "Ort_Detay", "nipfonksiyon", "plan_fonksiyon", "fonksiyon", "Kullan__m_"]
+                for p in priority:
+                    if p in fields:
+                        self.cmb_fonk_field.setCurrentText(p)
+                        break
+                self.cmb_secondary_fonk_field.setCurrentIndex(0)
+        finally:
+            self.cmb_fonk_field.blockSignals(False)
+            self.cmb_secondary_fonk_field.blockSignals(False)
 
-        # Fonksiyon tablosunu katmandan otomatik doldur
+        # Fonksiyon tablosunu katmandan güvenle tek seferde doldur
         self._load_rules_table_from_layer()
 
     def _on_fonk_col_changed(self, col_name: str = ""):
@@ -1585,7 +1604,10 @@ class TireNipDockWidget(QDockWidget):
         """
         layer = self.cmb_nip_layer.currentLayer()
         col = self.cmb_fonk_field.currentText()
-        if not layer or not isinstance(layer, QgsVectorLayer) or not col:
+        if not layer or not isinstance(layer, QgsVectorLayer) or not layer.isValid() or not col:
+            self.tbl_rules.blockSignals(True)
+            self.tbl_rules.setRowCount(0)
+            self.tbl_rules.blockSignals(False)
             return
 
         idx = layer.fields().indexOf(col)
@@ -1596,7 +1618,10 @@ class TireNipDockWidget(QDockWidget):
         sec_idx = layer.fields().indexOf(sec_col) if sec_col and not sec_col.startswith("<") else -1
 
         unique_fonks_set = set()
-        for feat in layer.getFeatures():
+        MAX_SAFE_FONKS = 120
+        # Halihazır, kadastro veya ham CAD katmanlarında binlerce benzersiz ID/kot/etiket olabilir.
+        # NİP plan fonksiyonları asla 60-80'i geçmez. 120'den fazlası bir fonksiyon sütunu değil sayısal/ID verisidir.
+        for i, feat in enumerate(layer.getFeatures()):
             val1 = feat[idx]
             val = None
             if val1 is not None and str(val1).strip() not in ("", "NULL", "None"):
@@ -1607,9 +1632,23 @@ class TireNipDockWidget(QDockWidget):
                     val = str(val2).strip()
             if val:
                 unique_fonks_set.add(val)
+                if len(unique_fonks_set) > MAX_SAFE_FONKS:
+                    break
+            if i > 50000:
+                break
+
+        if len(unique_fonks_set) > MAX_SAFE_FONKS:
+            # Sütun bir fonksiyon sütunu değil (ID veya kot gibi benzersiz veri). Tabloyu doldurma (çökme koruması).
+            self.tbl_rules.blockSignals(True)
+            self.tbl_rules.setRowCount(0)
+            self.tbl_rules.blockSignals(False)
+            return
 
         unique_fonks = sorted(list(unique_fonks_set))
         if not unique_fonks:
+            self.tbl_rules.blockSignals(True)
+            self.tbl_rules.setRowCount(0)
+            self.tbl_rules.blockSignals(False)
             return
 
         # Mevcut kullanıcı düzenlemelerini fonksiyon adına göre sakla
@@ -3254,7 +3293,7 @@ class TireNipDockWidget(QDockWidget):
             if layer and layer.isValid():
                 layer.setName(f"Space Syntax - NAIN & NACH ({road_layer.name()})")
                 style_space_syntax(layer, "NACH_R800")
-                QgsProject.instance().addMapLayer(layer)
+                self._safe_add_map_layer(layer)
                 QMessageBox.information(
                     self, "Başarılı",
                     f"Space Syntax (Açısal Segment Analizi) tamamlandı!\n"
@@ -3290,12 +3329,12 @@ class TireNipDockWidget(QDockWidget):
             if lyr and lyr.isValid():
                 lyr.setName(f"Ağ Merkezilikleri - Akslar ({road_layer.name()})")
                 style_od_and_centrality(centrality_layer=lyr)
-                QgsProject.instance().addMapLayer(lyr)
+                self._safe_add_map_layer(lyr)
 
             lyr_n = self._to_vector_layer(nodes_out, f"Kavşak Merkezilikleri - Düğümler ({road_layer.name()})")
             if lyr_n and lyr_n.isValid():
                 lyr_n.setName(f"Kavşak Merkezilikleri - Düğümler ({road_layer.name()})")
-                QgsProject.instance().addMapLayer(lyr_n)
+                self._safe_add_map_layer(lyr_n)
 
             QMessageBox.information(
                 self, "Başarılı",
@@ -3341,18 +3380,18 @@ class TireNipDockWidget(QDockWidget):
             if lyr_r and lyr_r.isValid():
                 lyr_r.setName(f"En Kısa Yol Ağ Rotaları ({orig_layer.name()} -> {dest_layer.name()})")
                 style_od_and_centrality(routes_layer=lyr_r)
-                QgsProject.instance().addMapLayer(lyr_r)
+                self._safe_add_map_layer(lyr_r)
 
             lyr_d = self._to_vector_layer(desire_out, "Kuş Uçuşu Arzu Hatları ve Detour")
             if lyr_d and lyr_d.isValid():
                 lyr_d.setName(f"Arzu Hatları ve Bariyerler (Detour > 1.35)")
                 style_detour_barrier(lyr_d)
-                QgsProject.instance().addMapLayer(lyr_d)
+                self._safe_add_map_layer(lyr_d)
 
             lyr_m = self._to_vector_layer(matrix_out, "OD Mesafe Matrisi Tablosu")
             if lyr_m and lyr_m.isValid():
                 lyr_m.setName("OD Mesafe Matrisi Tablosu")
-                QgsProject.instance().addMapLayer(lyr_m)
+                self._safe_add_map_layer(lyr_m)
 
             QMessageBox.information(
                 self, "Başarılı",
@@ -3398,24 +3437,24 @@ class TireNipDockWidget(QDockWidget):
             if lyr_c and lyr_c.isValid():
                 lyr_c.setName(f"Mevzuat Etki Daireleri ({fac_layer.name()})")
                 style_service_area(buffer_layer=lyr_c)
-                QgsProject.instance().addMapLayer(lyr_c)
+                self._safe_add_map_layer(lyr_c)
 
             lyr_a = self._to_vector_layer(areas_out, "Yürüme İzokron Poligonları (Pedshed)")
             if lyr_a and lyr_a.isValid():
                 lyr_a.setName(f"Yürüme İzokronları ({fac_layer.name()})")
                 style_isochrone_bands(lyr_a)
-                QgsProject.instance().addMapLayer(lyr_a)
+                self._safe_add_map_layer(lyr_a)
 
             lyr_e = self._to_vector_layer(edges_out, "Erişilen Kırpılmış Yol Parçaları")
             if lyr_e and lyr_e.isValid():
                 lyr_e.setName(f"Erişilen Yol Parçaları ({fac_layer.name()})")
                 style_service_area(roads_layer=lyr_e)
-                QgsProject.instance().addMapLayer(lyr_e)
+                self._safe_add_map_layer(lyr_e)
 
             lyr_s = self._to_vector_layer(summary_out, "Pedshed Erişilebilirlik Karnesi")
             if lyr_s and lyr_s.isValid():
                 lyr_s.setName("Pedshed Erişilebilirlik Karnesi (Tablo)")
-                QgsProject.instance().addMapLayer(lyr_s)
+                self._safe_add_map_layer(lyr_s)
 
             QMessageBox.information(
                 self, "Başarılı",
@@ -3442,6 +3481,14 @@ class TireNipDockWidget(QDockWidget):
                 if lyr and lyr.isValid():
                     return lyr
         return None
+
+    @staticmethod
+    def _safe_add_map_layer(layer: QgsVectorLayer) -> None:
+        """Adds a map layer to QgsProject only if valid and not already registered."""
+        if layer and isinstance(layer, QgsVectorLayer) and layer.isValid():
+            proj = QgsProject.instance()
+            if layer.id() not in proj.mapLayers():
+                proj.addMapLayer(layer)
 
     def _on_fca_fac_layer_changed(self, layer):
         if not layer or not isinstance(layer, QgsVectorLayer) or not layer.isValid():
@@ -3522,28 +3569,28 @@ class TireNipDockWidget(QDockWidget):
                 geom_f_desc = "Poligon" if is_fac_poly else "Noktalar"
                 lyr_f.setName(f"2SFCA Donatı Yeterlilik ({fac_layer.name()}) [{geom_f_desc}]")
                 style_facility_adequacy_points(lyr_f)
-                QgsProject.instance().addMapLayer(lyr_f)
+                self._safe_add_map_layer(lyr_f)
 
             if out_f_pts:
                 lyr_f_pts = self._to_vector_layer(out_f_pts, "2SFCA Donatı Giriş Noktaları")
                 if lyr_f_pts and lyr_f_pts.isValid():
                     lyr_f_pts.setName(f"2SFCA Donatı Giriş Noktaları ({fac_layer.name()})")
                     style_facility_adequacy_points(lyr_f_pts)
-                    QgsProject.instance().addMapLayer(lyr_f_pts)
+                    self._safe_add_map_layer(lyr_f_pts)
 
             lyr_d = self._to_vector_layer(out_d, "2SFCA Talep Kapsama")
             if lyr_d and lyr_d.isValid():
                 geom_d_desc = "Adalar/Binalar Poligon" if is_dem_poly else "Noktalar"
                 lyr_d.setName(f"2SFCA Talep Kapsama ({dem_layer.name()}) [{geom_d_desc}]")
                 style_fca_demand_points(lyr_d)
-                QgsProject.instance().addMapLayer(lyr_d)
+                self._safe_add_map_layer(lyr_d)
 
             if out_d_pts:
                 lyr_d_pts = self._to_vector_layer(out_d_pts, "2SFCA Talep Merkez Noktaları")
                 if lyr_d_pts and lyr_d_pts.isValid():
                     lyr_d_pts.setName(f"2SFCA Talep Merkez Noktaları ({dem_layer.name()})")
                     style_fca_demand_points(lyr_d_pts)
-                    QgsProject.instance().addMapLayer(lyr_d_pts)
+                    self._safe_add_map_layer(lyr_d_pts)
 
             poly_info = "\n\n💡 Girdiğiniz ada/bina/parsel poligon geometrisi korunarak analiz skorlarıyla tematik olarak renklendirildi ve hesaplama merkez noktaları da haritanıza eklendi." if is_dem_poly else ""
             QMessageBox.information(
@@ -3585,12 +3632,12 @@ class TireNipDockWidget(QDockWidget):
             if lyr_diff and lyr_diff.isValid():
                 lyr_diff.setName(f"A/B Senaryo Fark Haritası (Mevcut vs Meri)")
                 style_scenario_diff_network(lyr_diff)
-                QgsProject.instance().addMapLayer(lyr_diff)
+                self._safe_add_map_layer(lyr_diff)
 
             lyr_sum = self._to_vector_layer(sum_out, "A/B Senaryo Karşılaştırma Karnesi")
             if lyr_sum and lyr_sum.isValid():
                 lyr_sum.setName("A/B Senaryo Karşılaştırma Karnesi (Tablo)")
-                QgsProject.instance().addMapLayer(lyr_sum)
+                self._safe_add_map_layer(lyr_sum)
 
             QMessageBox.information(
                 self, "Başarılı",
@@ -3626,21 +3673,17 @@ class TireNipDockWidget(QDockWidget):
             lines_layer = res.get('OUTPUT_LINES')
             pts_layer = res.get('OUTPUT_POINTS')
 
-            if lines_layer:
-                if isinstance(lines_layer, str):
-                    lines_layer = QgsVectorLayer(lines_layer, f"Servis Bağlantı Çizgileri ({poly_layer.name()})", "ogr")
-                else:
-                    lines_layer.setName(f"Servis Bağlantı Çizgileri ({poly_layer.name()})")
+            lines_layer = self._to_vector_layer(lines_layer, f"Servis Bağlantı Çizgileri ({poly_layer.name()})")
+            if lines_layer and lines_layer.isValid():
+                lines_layer.setName(f"Servis Bağlantı Çizgileri ({poly_layer.name()})")
                 style_front_facade(lines_layer=lines_layer)
-                QgsProject.instance().addMapLayer(lines_layer)
+                self._safe_add_map_layer(lines_layer)
 
-            if pts_layer:
-                if isinstance(pts_layer, str):
-                    pts_layer = QgsVectorLayer(pts_layer, f"Ön Cephe Servis Noktaları - Origin ({poly_layer.name()})", "ogr")
-                else:
-                    pts_layer.setName(f"Ön Cephe Servis Noktaları - Origin ({poly_layer.name()})")
+            pts_layer = self._to_vector_layer(pts_layer, f"Ön Cephe Servis Noktaları - Origin ({poly_layer.name()})")
+            if pts_layer and pts_layer.isValid():
+                pts_layer.setName(f"Ön Cephe Servis Noktaları - Origin ({poly_layer.name()})")
                 style_front_facade(points_layer=pts_layer)
-                QgsProject.instance().addMapLayer(pts_layer)
+                self._safe_add_map_layer(pts_layer)
                 self.cmb_od_origins.setLayer(pts_layer)
 
             cnt_lines = lines_layer.featureCount() if lines_layer else 0

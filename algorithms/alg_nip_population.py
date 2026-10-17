@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from qgis.core import (
     NULL,
+    QgsCoordinateReferenceSystem,
     QgsDistanceArea,
     QgsFeature,
     QgsFeatureSink,
@@ -285,7 +286,7 @@ class NipPopulationAlgorithm(QgsProcessingAlgorithm):
         dest_dop_id = None
         if self.OUTPUT_DOP in parameters and parameters[self.OUTPUT_DOP] is not None:
             (sink_dop, dest_dop_id) = self.parameterAsSink(
-                parameters, self.OUTPUT_DOP, context, dop_fields, QgsWkbTypes.Type.NoGeometry, layer.sourceCrs()
+                parameters, self.OUTPUT_DOP, context, dop_fields, QgsWkbTypes.Type.NoGeometry, QgsCoordinateReferenceSystem()
             )
             if sink_dop:
                 p_m2 = dop["toplam_plan_alani_m2"]
@@ -322,7 +323,7 @@ class NipPopulationAlgorithm(QgsProcessingAlgorithm):
         dest_kk_id = None
         if self.OUTPUT_KENT_KARAKTER in parameters and parameters[self.OUTPUT_KENT_KARAKTER] is not None:
             (sink_kk, dest_kk_id) = self.parameterAsSink(
-                parameters, self.OUTPUT_KENT_KARAKTER, context, kk_fields, QgsWkbTypes.Type.NoGeometry, layer.sourceCrs()
+                parameters, self.OUTPUT_KENT_KARAKTER, context, kk_fields, QgsWkbTypes.Type.NoGeometry, QgsCoordinateReferenceSystem()
             )
             if sink_kk:
                 for kk in summary["kent_karakter"]:
@@ -345,7 +346,7 @@ class NipPopulationAlgorithm(QgsProcessingAlgorithm):
         dest_fd_id = None
         if self.OUTPUT_FONKSIYON_DAGILIM in parameters and parameters[self.OUTPUT_FONKSIYON_DAGILIM] is not None:
             (sink_fd, dest_fd_id) = self.parameterAsSink(
-                parameters, self.OUTPUT_FONKSIYON_DAGILIM, context, fd_fields, QgsWkbTypes.Type.NoGeometry, layer.sourceCrs()
+                parameters, self.OUTPUT_FONKSIYON_DAGILIM, context, fd_fields, QgsWkbTypes.Type.NoGeometry, QgsCoordinateReferenceSystem()
             )
             if sink_fd:
                 for fd in summary["fonksiyon_dagilim"]:
@@ -371,7 +372,7 @@ class NipPopulationAlgorithm(QgsProcessingAlgorithm):
         dest_ek2_id = None
         if self.OUTPUT_EK2 in parameters and parameters[self.OUTPUT_EK2] is not None:
             (sink_ek2, dest_ek2_id) = self.parameterAsSink(
-                parameters, self.OUTPUT_EK2, context, ek2_fields, QgsWkbTypes.Type.NoGeometry, layer.sourceCrs()
+                parameters, self.OUTPUT_EK2, context, ek2_fields, QgsWkbTypes.Type.NoGeometry, QgsCoordinateReferenceSystem()
             )
             if sink_ek2:
                 for ek in summary["ek2_rapor"]:
@@ -393,7 +394,7 @@ class NipPopulationAlgorithm(QgsProcessingAlgorithm):
         dest_kiyas_id = None
         if self.OUTPUT_KIYAS in parameters and parameters[self.OUTPUT_KIYAS] is not None:
             (sink_kiyas, dest_kiyas_id) = self.parameterAsSink(
-                parameters, self.OUTPUT_KIYAS, context, kiyas_fields, QgsWkbTypes.Type.NoGeometry, layer.sourceCrs()
+                parameters, self.OUTPUT_KIYAS, context, kiyas_fields, QgsWkbTypes.Type.NoGeometry, QgsCoordinateReferenceSystem()
             )
             if sink_kiyas:
                 for row in summary["kiyaslama"]:

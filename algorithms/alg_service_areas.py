@@ -9,6 +9,7 @@ from __future__ import annotations
 import numpy as np
 
 from qgis.core import (
+    QgsCoordinateReferenceSystem,
     QgsFeature,
     QgsFeatureSink,
     QgsField,
@@ -402,7 +403,7 @@ class ServiceAreasAlgorithm(PlanXBaseAlgorithm):
             ("pedshed", DOUBLE), ("durum", STRING), ("yol_uzunlugu_m", DOUBLE))
         sum_sink, summary_dest = self.parameterAsSink(
             parameters, self.SUMMARY, context, sum_fields,
-            QgsWkbTypes.Type.NoGeometry, crs)
+            QgsWkbTypes.Type.NoGeometry, QgsCoordinateReferenceSystem())
 
         scope_labels = [lab for lab, _, _, _ in scopes]
         for lab in scope_labels:
