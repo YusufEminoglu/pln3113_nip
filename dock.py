@@ -99,9 +99,12 @@ class TireNipDockWidget(QDockWidget):
         header_layout.setContentsMargins(8, 6, 8, 6)
 
         icon_label = QLabel()
-        icon_path = os.path.join(PLUGIN_DIR, "icons", "icon.png")
-        if os.path.exists(icon_path):
-            icon_label.setPixmap(QIcon(icon_path).pixmap(40, 40))
+        icon_label.setObjectName("HeaderAvatarLabel")
+        avatar_path = os.path.join(PLUGIN_DIR, "icons", "avatar.png")
+        if not os.path.exists(avatar_path):
+            avatar_path = os.path.join(PLUGIN_DIR, "icons", "icon.png")
+        if os.path.exists(avatar_path):
+            icon_label.setPixmap(QIcon(avatar_path).pixmap(48, 48))
         header_layout.addWidget(icon_label)
 
         title_layout = QVBoxLayout()
