@@ -431,18 +431,20 @@
 <header class="hero">
     <div class="hero-inner">
         <span class="badge-academic">Dokuz Eylül Üniversitesi • Mimarlık Fakültesi • Şehir ve Bölge Planlama Bölümü</span>
-        <h1 class="hero-title">Tire 1/5000 NİP Kentsel Analiz, Nüfus, Donatı, DOP & Morfoloji Rehberi</h1>
+        <h1 class="hero-title">1/5000 NİP Kentsel Analiz, Nüfus, Donatı, DOP, Ağ & Morfoloji Rehberi</h1>
         <p class="hero-subtitle">
-            PLN3113 Şehir Planlama Projesi III kapsamında; Tire Nazım İmar Planı (NİP) katmanlarının brüt plan nüfusu, 
-            Mekânsal Planlar Yapım Yönetmeliği (MPYY) donatı yeterliliği, Düzenleme Ortaklık Payı (DOP), kamu-özel mülkiyet dengesi, 
-            ulaşım yükleri ile kadastro adası/bina bazında <strong>TAKS (GSI), KAKS (FSI), Kat Sayısı (L), Açık Alan (OSR), Yapı Nizamı (A4)</strong> 
+            PLN3113 Şehir Planlama Projesi III başta olmak üzere; Türkiye genelindeki tüm Şehir ve Bölge Planlama lisans/lisansüstü 
+            stüdyoları ve araştırmacıları için 1/5000 Nazım İmar Planı (NİP) katmanlarının brüt plan nüfusu, 
+            Mekânsal Planlar Yapım Yönetmeliği (MPYY) donatı yeterliliği, 3194 sayılı Kanun md. 18 Düzenleme Ortaklık Payı (DOP), 
+            kamu-özel mülkiyet dengesi, yol hiyerarşisi ve kavşak geometrisi, kentsel ağ analitiği (Space Syntax NACH/NAIN, 
+            merkezilik, OD rotalama, dinamik pedshed izokronları, 2SFCA donatı yeterliliği) ile ada/bina bazında 
+            <strong>TAKS (GSI), KAKS (FSI), Kat Sayısı (L), Açık Alan (OSR), Yapı Nizamı (A4)</strong> 
             ve kentsel doku tipolojilerinin teorik, mevzuatsal ve adım adım pratik el kitabı.
         </p>
         <div class="hero-meta">
-            <span><strong>Ders:</strong> PLN3113 Şehir Planlama Projesi III (Tire Stüdyosu)</span>
-            <span><strong>Akademik Yıl:</strong> 2026-2027 Güz Dönemi</span>
-            <span><strong>Geliştirici & Yazar:</strong> Arş. Gör. Yusuf Eminoğlu</span>
-            <span><strong>Entegrasyon:</strong> QGIS 3.x / QGIS 4 / PlanX Kentsel Morfoloji Motoru</span>
+            <span><strong>Ders & Kapsam:</strong> PLN3113 Şehir Planlama Projesi III & Türkiye ŞBP Stüdyoları</span>
+            <span><strong>Geliştirici & Yazar:</strong> Arş. Gör. Yusuf Eminoğlu (DEÜ ŞBP)</span>
+            <span><strong>Entegrasyon:</strong> QGIS 3.22+ / QGIS 4 / PlanX Kentsel Analitik & Morfoloji Motoru</span>
         </div>
     </div>
 </header>
@@ -461,6 +463,7 @@
                 <li><a href="#bolum6">📐 6. Morfoloji: TAKS, KAKS, Spacematrix</a></li>
                 <li><a href="#bolum7">🏠 7. Mevcut Saha & Fiili Nüfus</a></li>
                 <li><a href="#bolum8">🎓 8. Stüdyo & Jüri Teslim İpuçları</a></li>
+                <li class="highlight"><a href="#bolum8b">🚶 8B. Kentsel Ağ & Space Syntax</a></li>
                 <li class="highlight"><a href="#bolum9">📜 9. Resmî Mevzuat & Standartlar</a></li>
             </ul>
         </div>
@@ -1260,7 +1263,84 @@
             </ol>
         </section>
 
-        <!-- BÖLÜM 9: RESMÎ MEVZUAT VE BAKANLIK STANDARTLARI -->
+        <!-- BÖLÜM 8B: KENTSEL AĞ, SPACE SYNTAX VE ERİŞİLEBİLİRLİK MODELLERİ -->
+        <section class="card" id="bolum8b">
+            <h2>🚶 8B. Kentsel Ağ, Yaya Erişimi, Space Syntax ve Donatı Yeterliliği Metodolojisi</h2>
+
+            <div class="callout callout-info">
+                <div class="callout-title">📐 PlanX Entegre Analitik Ağ Motoru</div>
+                PLN3113 NİP Stüdyosu, salt iki boyutlu alan ve mülkiyet hesaplarının ötesine geçerek; kentin 
+                topolojik ulaşım dokusunu, eksensel entegrasyon koridorlarını ve yaya yürüme havzalarını 
+                gömülü <strong>PlanX Graph & Pathfinding</strong> motoruyla modeller.
+            </div>
+
+            <h3>8B.1. Space Syntax: Açısal Entegrasyon ve Seçim (NAIN / NACH)</h3>
+            <p>
+                Geleneksel metrik uzaklık analizlerinin aksine Space Syntax; kent mekanındaki yönelimleri, 
+                görsel doğrultuları ve kognitif sapmaları (açısal dönüş maliyetlerini) esas alır:
+            </p>
+            <ul class="bullet-list">
+                <li>
+                    <strong>NACH (Normalized Angular Choice):</strong> Bir yol segmentinin, kentteki tüm başlangıç-bitiş (OD) 
+                    çiftleri arasındaki en kısa açısal rotalarda yer alma sıklığıdır. Kentin ana hareket omurgasını ve 
+                    transit yaya/araç akış koridorlarını ($NACH &gt; 1.30$) tespit eder.
+                </li>
+                <li>
+                    <strong>NAIN (Normalized Angular Integration):</strong> Bir aksın kentin diğer tüm akslarına ortalama 
+                    açısal yakınlığıdır. Yüksek entegrasyona ($NAIN &gt; 1.0$) sahip sokaklar kentsel canlılığın, 
+                    ticari çekirdeklerin ve meydanlaşma potansiyelinin merkezleridir.
+                </li>
+            </ul>
+
+            <h3>8B.2. Primal Ağ Merkeziliği (Betweenness & Closeness) ve Yol Eğimi</h3>
+            <p>
+                Dijkstra topolojik grafı üzerinde hesaplanan <strong>Betweenness (Aradalık)</strong> merkeziliği, 
+                şebeke üzerindeki darboğazları; <strong>Closeness (Yakınlık)</strong> ise kamu servislerine en hızlı 
+                erişilebilen düğüm noktalarını açığa çıkarır. DEM rasterı üzerinden hesaplanan <strong>Aks Eğimi (%)</strong> 
+                ise engelli ve bisikletli erişimi için %5 düz, %5-10 orta, %10-15 dik ve %15+ kritik eğim kademeleriyle 
+                erişilebilirlik kısıtlarını ortaya koyar.
+            </p>
+
+            <h3>8B.3. Dinamik Yürüme İzokronları ve Pedshed (Concave Hull) Analizi</h3>
+            <p>
+                Donatılara (okul, aile sağlığı merkezi, park vb.) erişim incelenirken kuş uçuşu daireler kentsel 
+                engelleri ve sokak dokusunu yansıtmaz. Eklentimiz gerçek yol ağı üzerinde bütçenin bittiği tam metrede 
+                kırpılmış aks parçalarını <strong>İçbükey Gövde (Concave Hull)</strong> ile birleştirerek gerçek 
+                yürüyüş havzalarını (Pedshed) türetir:
+            </p>
+            <div class="formula-box">
+                Pedshed Oranı = Gerçek Ağ Yürüme Havzası Alanı (m²) / Mevzuat Kuş Uçuşu Daire Alanı (m²)
+            </div>
+            <p>
+                <strong>Değerlendirme İlkesi:</strong> Pedshed oranı <strong>0.40'ın altında</strong> kalan donatılar 
+                çıkmaz sokaklar, demiryolları veya topoğrafik engeller nedeniyle <em>"İzole / Kopuk Donatı"</em> 
+                olarak etiketlenir ve plan revizyonu gerektirir.
+            </p>
+
+            <h3>8B.4. 2SFCA (Two-Step Floating Catchment Area) Donatı Yeterlilik Modeli</h3>
+            <p>
+                Kişi başına m² standardı mekânsal dağılımı göstermez. <strong>2SFCA</strong> modeli ise donatı kapasitesi 
+                ile nüfus talebini ağ mesafesi bozulma fonksiyonuyla ($f(d) = 1 - (d/d_0)^2$) iki aşamada dengeler:
+            </p>
+            <ol class="step-list">
+                <li><strong>1. Adım:</strong> Her donatının hizmet eşiği içindeki nüfus ağırlıklı olarak toplanır ve donatı başına düşen kapasite/talep oranı ($R_j$) bulunur.</li>
+                <li><strong>2. Adım:</strong> Her yerleşim/konut odağının erişebildiği donatıların $R_j$ skorları toplanarak nihai erişilebilirlik puanı ($A_i$) hesaplanır.</li>
+            </ol>
+            <p>
+                Sonuç katmanı hem nokta donatılar hem de ada/bina poligonları üzerinde 
+                <span class="badge badge-green">Yeterli Kapasite</span>, 
+                <span class="badge badge-red">Aşırı Yüklü</span> ve 
+                <span class="badge badge-amber">Kullanılmayan / Atıl</span> 
+                olarak otomatik tematikleştirilir.
+            </p>
+
+            <h3>8B.5. Bina Ön Cephe Tespiti ve A/B Senaryo Karşılaştırması</h3>
+            <p>
+                İmar adası veya bina kütlelerinin yola en yakın sınırından türetilen <strong>Ön Cephe Servis Noktası</strong>, 
+                yapıların doğrudan sokağa bağlanmasını sağlar. <strong>A/B Senaryo Farkı</strong> aracı ise mevcut durum ile 
+                öneri plan senaryosu arasındaki erişim mesafesi ve rota iyileşmelerini delta ($\Delta$) haritalarıyla kanıtlar.
+            </p>
+        </section>
         <section class="card" id="bolum9">
             <h2>📜 9. Resmî Mevzuat, Yönetmelik ve Bakanlık Standartları Bağlantıları</h2>
 
