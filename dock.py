@@ -72,6 +72,7 @@ from qgis.gui import QgsMapLayerComboBox, QgsProjectionSelectionWidget
 from .core.cleaner import GeometryCleanerEngine
 from .core.field_estimator import FieldEstimatorEngine
 from .core.nip_calculator import NipCalculatorEngine
+from .core.nip_dashboard_builder import open_nip_dashboard, build_nip_dashboard_html
 from .core.nip_workspace import create_nip_drawing_workspace, load_nip_drawing_layers
 from .core.tire_constants import (
     get_default_dop_rule,
@@ -1339,6 +1340,53 @@ class TireNipDockWidget(QDockWidget):
         export_bar.addWidget(self.btn_export_html)
         layout.addLayout(export_bar)
 
+        # Canlı Görsel Göstergeler (Mikro-Barlar)
+        box_kpi_gauges = QGroupBox("Canlı Yasal Oran Göstergeleri")
+        lay_kpi = QVBoxLayout(box_kpi_gauges)
+        lay_kpi.setSpacing(6)
+
+        row_dop_bar = QHBoxLayout()
+        lbl_dop_bar = QLabel("DOP Oranı (Hedef %45.0):")
+        lbl_dop_bar.setStyleSheet("font-weight: 600; font-size: 8.5pt;")
+        self.bar_dop = QProgressBar()
+        self.bar_dop.setRange(0, 80)
+        self.bar_dop.setValue(0)
+        self.bar_dop.setTextVisible(True)
+        self.bar_dop.setFormat("%v.0% / %45.0")
+        self.bar_dop.setStyleSheet("QProgressBar::chunk { background-color: #10b981; }")
+        self.lbl_dop_badge = QLabel("-")
+        self.lbl_dop_badge.setStyleSheet("font-size: 8pt; font-weight: 700; padding: 2px 6px; border-radius: 4px; background: #e2e8f0;")
+        row_dop_bar.addWidget(lbl_dop_bar)
+        row_dop_bar.addWidget(self.bar_dop, 1)
+        row_dop_bar.addWidget(self.lbl_dop_badge)
+        lay_kpi.addLayout(row_dop_bar)
+
+        row_yesil_bar = QHBoxLayout()
+        lbl_yesil_bar = QLabel("PAİY Md.9 Açık-Yeşil (Hedef %75):")
+        lbl_yesil_bar.setStyleSheet("font-weight: 600; font-size: 8.5pt;")
+        self.bar_yesil = QProgressBar()
+        self.bar_yesil.setRange(0, 100)
+        self.bar_yesil.setValue(0)
+        self.bar_yesil.setTextVisible(True)
+        self.bar_yesil.setFormat("%v.0% / %75.0")
+        self.bar_yesil.setStyleSheet("QProgressBar::chunk { background-color: #22c55e; }")
+        self.lbl_yesil_badge = QLabel("-")
+        self.lbl_yesil_badge.setStyleSheet("font-size: 8pt; font-weight: 700; padding: 2px 6px; border-radius: 4px; background: #e2e8f0;")
+        row_yesil_bar.addWidget(lbl_yesil_bar)
+        row_yesil_bar.addWidget(self.bar_yesil, 1)
+        row_yesil_bar.addWidget(self.lbl_yesil_badge)
+        lay_kpi.addLayout(row_yesil_bar)
+
+        layout.addWidget(box_kpi_gauges)
+
+        # İnteraktif Dashboard Butonu
+        self.btn_open_dashboard = QPushButton("  📊 İnteraktif NİP & DOP Dashboard Raporunu Aç (Plotly + Leaflet)")
+        self.btn_open_dashboard.setObjectName("AccentButton")
+        self.btn_open_dashboard.setCursor(_POINTING_HAND)
+        self.btn_open_dashboard.setEnabled(False)
+        self.btn_open_dashboard.clicked.connect(self._open_nip_dashboard)
+        layout.addWidget(self.btn_open_dashboard)
+
         # 6. Sonuç Sekmeleri (Tab Widget)
         self.tabs_nip_results = QTabWidget()
         self.tabs_nip_results.setMinimumHeight(280)
@@ -2205,9 +2253,38 @@ class TireNipDockWidget(QDockWidget):
 
             # Durumu Sakla ve Dışa Aktarmayı Etkinleştir
             self._last_nip_summary = summary
+            self._last_nip_items = parsed_items
+            self._last_nip_sinir_geom = sinir_geom
+            self._last_nip_crs = layer.crs()
             self._last_nip_html = report_html
             self.btn_export_csv.setEnabled(True)
             self.btn_export_html.setEnabled(True)
+            self.btn_open_dashboard.setEnabled(True)
+
+            # Canlı Görsel Göstergeleri Güncelle
+            dop_val = dop.get('dop_orani', 0.0)
+            self.bar_dop.setValue(min(80, max(0, int(round(dop_val)))))
+            if dop_val <= 45.0:
+                self.bar_dop.setStyleSheet("QProgressBar::chunk { background-color: #10b981; }")
+                self.lbl_dop_badge.setText(f"%{dop_val:.2f} YASAL UYGUN")
+                self.lbl_dop_badge.setStyleSheet("font-size: 8pt; font-weight: 700; padding: 2px 6px; border-radius: 4px; background: #dcfce7; color: #15803d;")
+            else:
+                self.bar_dop.setStyleSheet("QProgressBar::chunk { background-color: #ef4444; }")
+                self.lbl_dop_badge.setText(f"%{dop_val:.2f} AŞIM (+%{dop_val - 45.0:.2f})")
+                self.lbl_dop_badge.setStyleSheet("font-size: 8pt; font-weight: 700; padding: 2px 6px; border-radius: 4px; background: #fee2e2; color: #b91c1c;")
+
+            toplam_kamu_donati_m2 = dop.get("kamu_poligonlar_m2", 0.0)
+            yesil_alan_m2 = sum(it.get("alan_m2", 0.0) for it in parsed_items if any(k in it.get("fonk_raw", "").upper() for k in ["PARK", "YEŞİL", "YESIL", "ÇOCUK", "COCUK", "MEYDAN", "REKREASYON", "SPOR"]) and it.get("dop_durumu") == "DOP İÇİ")
+            acik_yesil_pct = round((yesil_alan_m2 / max(1.0, toplam_kamu_donati_m2)) * 100.0, 1)
+            self.bar_yesil.setValue(min(100, max(0, int(round(acik_yesil_pct)))))
+            if acik_yesil_pct >= 75.0:
+                self.bar_yesil.setStyleSheet("QProgressBar::chunk { background-color: #16a34a; }")
+                self.lbl_yesil_badge.setText(f"%{acik_yesil_pct:.1f} YETERLİ")
+                self.lbl_yesil_badge.setStyleSheet("font-size: 8pt; font-weight: 700; padding: 2px 6px; border-radius: 4px; background: #dcfce7; color: #15803d;")
+            else:
+                self.bar_yesil.setStyleSheet("QProgressBar::chunk { background-color: #f59e0b; }")
+                self.lbl_yesil_badge.setText(f"%{acik_yesil_pct:.1f} EKSİK")
+                self.lbl_yesil_badge.setStyleSheet("font-size: 8pt; font-weight: 700; padding: 2px 6px; border-radius: 4px; background: #fef3c7; color: #b45309;")
 
             QMessageBox.information(
                 self, f"{mode_title} Analizi Tamamlandı",
@@ -2294,44 +2371,60 @@ class TireNipDockWidget(QDockWidget):
         except Exception as e:
             QMessageBox.critical(self, "Hata", f"CSV dışa aktarım hatası: {str(e)}")
 
+    def _open_nip_dashboard(self):
+        """İnteraktif Plotly + Leaflet NİP & DOP Dashboard raporunu tarayıcıda açar."""
+        if not self._last_nip_summary or not hasattr(self, "_last_nip_items"):
+            QMessageBox.warning(self, "Uyarı", "Lütfen önce NİP analizini çalıştırın!")
+            return
+
+        try:
+            open_nip_dashboard(
+                self._last_nip_summary,
+                self._last_nip_items,
+                sinir_geom=self._last_nip_sinir_geom,
+                crs=self._last_nip_crs,
+                ideal_dop=45.0
+            )
+        except Exception as e:
+            QMessageBox.critical(self, "Hata", f"Dashboard açılırken hata:\n{str(e)}")
+
     def _export_nip_report_html(self):
-        """Oluşturulan HTML analiz raporunu dosyaya kaydeder."""
-        if not self._last_nip_html:
+        """İnteraktif Plotly + Leaflet NİP & DOP Dashboard raporunu HTML dosyası olarak kaydeder."""
+        if not self._last_nip_summary or not hasattr(self, "_last_nip_items"):
             QMessageBox.warning(self, "Uyarı", "Lütfen önce NİP analizini çalıştırın!")
             return
 
         file_path, _ = QFileDialog.getSaveFileName(
-            self, "HTML Raporunu Kaydet", "pln3113_nip_analiz_raporu.html", "HTML Dosyaları (*.html)"
+            self, "İnteraktif NİP & DOP Dashboard Raporunu Kaydet",
+            "pln3113_nip_dashboard.html", "HTML Dosyaları (*.html)"
         )
         if not file_path:
             return
 
+        if not file_path.lower().endswith(".html"):
+            file_path += ".html"
+
         try:
-            full_html = f"""<!DOCTYPE html>
-<html lang="tr">
-<head>
-<meta charset="UTF-8">
-<title>PLN3113 1/5000 NİP Kentsel Analiz Raporu</title>
-<style>
-body {{ font-family: 'Segoe UI', Arial, sans-serif; margin: 30px; color: #1e293b; background: #f8fafc; line-height: 1.5; }}
-h3 {{ color: #0f766e; border-bottom: 2px solid #0f766e; padding-bottom: 6px; }}
-h4 {{ color: #0d9488; margin-top: 24px; }}
-table {{ border-collapse: collapse; width: 100%; margin-bottom: 20px; background: white; box-shadow: 0 1px 3px rgba(0,0,0,0.1); border-radius: 4px; overflow: hidden; }}
-th, td {{ border: 1px solid #cbd5e1; padding: 8px 12px; text-align: left; font-size: 13px; }}
-th {{ background: #0f766e; color: white; font-weight: 600; }}
-tr:nth-child(even) {{ background: #f8fafc; }}
-tr:hover {{ background: #f1f5f9; }}
-</style>
-</head>
-<body>
-{self._last_nip_html}
-</body>
-</html>"""
+            html_content = build_nip_dashboard_html(
+                self._last_nip_summary,
+                self._last_nip_items,
+                sinir_geom=self._last_nip_sinir_geom,
+                crs=self._last_nip_crs,
+                ideal_dop=45.0
+            )
             with open(file_path, "w", encoding="utf-8") as f:
-                f.write(full_html)
-            QMessageBox.information(self, "Başarılı", f"HTML Raporu kaydedildi:\n{file_path}")
+                f.write(html_content)
+
+            reply = QMessageBox.question(
+                self, "Rapor Kaydedildi",
+                f"İnteraktif NİP & DOP Dashboard raporu başarıyla kaydedildi:\n{file_path}\n\n"
+                f"Raporu şimdi varsayılan tarayıcınızda açmak ister misiniz?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+            if reply == QMessageBox.StandardButton.Yes:
+                QDesktopServices.openUrl(QUrl.fromLocalFile(file_path))
         except Exception as e:
-            QMessageBox.critical(self, "Hata", f"HTML raporu kaydedilirken hata: {str(e)}")
+            QMessageBox.critical(self, "Hata", f"HTML Dashboard kaydedilirken hata: {str(e)}")
 
     def _apply_nip_styling(self, layer: QgsVectorLayer):
         """UST_SNR yoğunluk değerlerine göre katmana şık bir graduated semboloji atar."""
