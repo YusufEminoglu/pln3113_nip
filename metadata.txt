@@ -17,5 +17,5 @@ deprecated=False
 hasProcessingProvider=yes
 license=GPL-2.0-or-later
 icon=icons/icon.png
-changelog=1.1.0 - Odev 13 Ag ve Erisim Analizleri Suiti (Space Syntax, Primal Merkezilik, OD Rotasi, Hizmet Izokronlari, 2SFCA Tesis Yeterliligi, A/B Senaryo Farki ve On Cephe Servis Noktasi).
+changelog=1.1.0 - Kentsel Ag ve Erisim Analizleri Suiti (Space Syntax, Primal Merkezilik, OD Rotasi, Hizmet Izokronlari, 2SFCA Tesis Yeterliligi, A/B Senaryo Farki ve On Cephe Servis Noktasi).
  1.0.0 - Ilk resmi surum: MPYY standartlarinda 1/5000 NIP nufus, Ek-2 donati yeterliligi, DOP/nDOP kurallar tablosu, ada/bina bazli TAKS, KAKS, Spacematrix OSR, Yapi Nizami metrikleri, 1-tikla tematik harita motoru ve kapsamli metodoloji rehberi.

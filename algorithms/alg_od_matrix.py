@@ -60,7 +60,7 @@ class ODCostMatrixAlgorithm(PlanXBaseAlgorithm):
         return (
             "Ulaşım ağı üzerinden Menşe (Orijin) ve Hedef (Destinasyon) çiftleri arasında tam "
             "ağ maliyet matrisi, kuş uçuşu arzu hatları ve en kısa ağ rotalarını üretir.\n\n"
-            "PLN3113 Ödev 13 Standartları:\n"
+            "Ulaşım ve Ağ Analizi Standartları:\n"
             "- Orijin: Konut mahalleleri, ada ağırlık merkezleri veya nüfus yoğunluk odakları.\n"
             "- Destinasyon: MİA (Merkezi İş Alanı), Sanayi, Hastane, Terminal/Otogar odakları.\n"
             "- Detour Ratio (Sapma Oranı) = Ağ Mesafesi / Kuş Uçuşu Mesafe.\n"
@@ -128,7 +128,7 @@ class ODCostMatrixAlgorithm(PlanXBaseAlgorithm):
         self.addParameter(
             QgsProcessingParameterNumber(
                 self.BARRIER_RATIO,
-                "Engel (Barrier) Eşiği Detour Oranı (Ödev 13 Standardı = 1.35)",
+                "Engel (Barrier) Eşiği Detour Oranı (Eşik = 1.35)",
                 QgsProcessingParameterNumber.Type.Double,
                 1.35,
                 minValue=1.0,

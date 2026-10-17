@@ -47,7 +47,7 @@ class NipEklentiProvider(QgsProcessingProvider):
         self.addAlgorithm(OnCepheBulucuAlgorithm())
         self.addAlgorithm(ErismeHavzasiAlgorithm())
 
-        # 06. PlanX Ağ ve Erişim Analizleri (Ödev 13 · AJ1)
+        # 06. PlanX Kentsel Ağ ve Mekânsal Erişim Analizleri
         self.addAlgorithm(SpaceSyntaxAlgorithm())
         self.addAlgorithm(NetworkCentralityAlgorithm())
         self.addAlgorithm(ODMatrixAlgorithm())

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""PLN3113 NİP - Hizmet Alanları ve Yürüme İzokronları Analizi (Ödev 13).
+"""PLN3113 NİP - Hizmet Alanları ve Yürüme İzokronları Analizi.
 
 5 dk (400 m), 10 dk (800 m), 15 dk (1200 m) yürüyüş izokronları (4.8 km/s).
 PlanX yüksek performanslı kısmi kenar kırpma ve pedshed motoru.
@@ -68,11 +68,11 @@ class ServiceAreasAlgorithm(PlanXBaseAlgorithm):
         return "nip_hizmet_izokron"
 
     def displayName(self):
-        return self.tr("13.4 Hizmet Alanları ve Yürüme İzokronları (Pedshed Analizi)")
+        return self.tr("4. Hizmet Alanları ve Yürüme İzokronları (Pedshed Analizi)")
 
     def shortHelpString(self):
         return self.tr(
-            "PLN3113 1. Ara Jüri Ödev 13 gereksinimi 4. Adım:\n\n"
+            "Kentsel Hizmet Alanları ve Yaya İzokron Analizi:\n\n"
             "5 dk (400 m), 10 dk (800 m) ve 15 dk (1200 m) yürüme izokronları "
             "(4.8 km/s ortalama yaya hızı). Odak: ilkokullar, sağlık ocakları, açık yeşil alanlar.\n\n"
             "PlanX gömülü Dijkstra motoru ile caddeler mid-street (tam bütçenin bittiği metrede) "

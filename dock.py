@@ -2938,12 +2938,12 @@ class TireNipDockWidget(QDockWidget):
         info_lay.setContentsMargins(10, 8, 10, 8)
         info_lay.setSpacing(4)
 
-        t_lbl = QLabel("🌐 Ödev 13: Ulaşım, Ağ ve Erişim Analizleri (PlanX Motoru)")
+        t_lbl = QLabel("🌐 Kentsel Ulaşım, Ağ ve Mekânsal Erişim Analizleri (PlanX Motoru)")
         t_lbl.setStyleSheet("font-weight: 700; font-size: 10pt; color: #0f766e;")
         info_lay.addWidget(t_lbl)
 
         d_lbl = QLabel(
-            "PLN3113 1. Ara Jüri (AJ1) Ödev 13 Ağ ve Erişim Analizleri Süiti:\n"
+            "Kentsel Ağ ve Mekânsal Erişim Analizleri Süiti:\n"
             "PlanX gömülü saf NumPy/SciPy motoru ile Space Syntax (NAIN/NACH), Primal Ağ Merkezilikleri, "
             "OD Matrisi & Detour Bariyerleri, 5-10-15 dk Yürüme İzokronları & Pedshed, 2SFCA Kapasite Yeterliliği "
             "ve Mevcut vs Meri Plan A/B Fark Haritası."
@@ -3232,7 +3232,7 @@ class TireNipDockWidget(QDockWidget):
         return tab
 
     # -----------------------------------------------------------------
-    # NETWORK ANALİZ TETİKLEYİCİLERİ (ÖDEV 13)
+    # NETWORK ANALİZ TETİKLEYİCİLERİ
     # -----------------------------------------------------------------
     def _on_run_space_syntax(self):
         road_layer = self.cmb_syntax_roads.currentLayer()

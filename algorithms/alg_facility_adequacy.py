@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""PLN3113 NİP - 2SFCA Tesis Yeterliliği ve Kapasite-Talep Analizi (Ödev 13).
+"""PLN3113 NİP - 2SFCA Tesis Yeterliliği ve Kapasite-Talep Analizi.
 
 Donatı kapasitesi (öğrenci, yatak, m²) ile talep (ada nüfus merkez noktaları)
 karşılaştırılır. Aşırı yüklü (overloaded) ve hizmet ulaşamayan (uncovered) alanlar tespit edilir.
@@ -54,11 +54,11 @@ class FacilityAdequacyAlgorithm(PlanXBaseAlgorithm):
         return "nip_2sfca_yeterlilik"
 
     def displayName(self):
-        return self.tr("13.5 2SFCA Donatı Yeterliliği ve Kapasite-Erişim Analizi")
+        return self.tr("5. 2SFCA Donatı Yeterliliği ve Kapasite-Erişim Analizi")
 
     def shortHelpString(self):
         return self.tr(
-            "PLN3113 1. Ara Jüri Ödev 13 gereksinimi 5. Adım:\n\n"
+            "2SFCA Donatı Yeterliliği ve Kapasite-Erişim Analizi:\n\n"
             "2SFCA (Geliştirilmiş İki Adımlı Yüzen Havza / E2SFCA) Yöntemi:\n"
             "1. Adım: Donatı kapasitesi (öğrenci, yatak, m²) ile yol ağı havzasındaki ağırlıklı "
             "nüfus talebi oranlanır (Arz-Talep Oranı R_j).\n"

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""PLN3113 NİP - A/B Senaryosu: Mevcut ve Meri Plan Karşılaştırma Analizi (Ödev 13).
+"""PLN3113 NİP - A/B Senaryosu: Mevcut ve Meri Plan Karşılaştırma Analizi.
 
 Her iki yol ağında Space Syntax ve erişim analizleri çalıştırılır;
 Delta NACH, Delta NAIN, pedshed verimlilik artışı ve donatı açığı kapanma fark haritası üretilir.
@@ -49,11 +49,11 @@ class ScenarioCompareAlgorithm(PlanXBaseAlgorithm):
         return "nip_scenario_compare"
 
     def displayName(self):
-        return self.tr("13.6 A/B Senaryo Karşılaştırması (Mevcut vs Meri Plan Fark Haritası)")
+        return self.tr("6. A/B Senaryo Karşılaştırması (Mevcut vs Meri Plan Fark Haritası)")
 
     def shortHelpString(self):
         return self.tr(
-            "PLN3113 1. Ara Jüri Ödev 13 gereksinimi 6. Adım:\n\n"
+            "Mevcut ve Meri Plan Senaryo Karşılaştırması (A/B Analizi):\n\n"
             "Mevcut yol ağı (A) ile Meri / Öneri plan yol ağı (B) üzerinde Space Syntax ve "
             "erişim analizlerini eşzamanlı çalıştırır.\n\n"
             "Fark Haritası ve Metrikler:\n"
