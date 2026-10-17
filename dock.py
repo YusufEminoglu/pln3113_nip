@@ -129,8 +129,8 @@ def _get_plugin_version() -> str:
         cp = configparser.ConfigParser()
         with contextlib.suppress(Exception):
             cp.read(meta_path, encoding="utf-8")
-            return cp.get("general", "version", fallback="1.1.2")
-    return "1.1.2"
+            return cp.get("general", "version", fallback="1.1.3")
+    return "1.1.3"
 
 
 class _TabsAdapter:
