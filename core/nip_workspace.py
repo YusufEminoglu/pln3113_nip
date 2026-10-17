@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
-"""1/5000 Nazım İmar Planı (NİP) Çizim Veritabanı ve Şablon Motoru.
+"""1/5000 Nazım İmar Planı (NİP) Çizim Şablonu ve GeoPackage Üretici Motoru.
 
-DEÜ Mimarlık Fakültesi Şehir ve Bölge Planlama Bölümü
-PLN3113 Şehir Planlama Projesi III - Tire Stüdyosu
+Dokuz Eylül Üniversitesi Şehir ve Bölge Planlama Bölümü PLN3113 NİP Stüdyosu için
+MpyyNipDB 1/5000 standart katmanlarını (alanlar-5000, cizgiler_5000, plan onama sınırı,
+fonksiyon tabloları, QML stilleri, öznitelik formları ve ilişkileri) atomik olarak üretir.
 """
-from __future__ import annotations
 
 import contextlib
 import json
@@ -14,19 +14,23 @@ import uuid
 from contextlib import closing
 from pathlib import Path
 
-from osgeo import ogr, osr
+from osgeo import gdal, ogr, osr
 from qgis.core import (
     QgsCoordinateReferenceSystem,
     QgsEditorWidgetSetup,
     QgsProject,
     QgsRelation,
-    QgsVectorLayer
+    QgsVectorLayer,
 )
 from qgis.PyQt.QtXml import QDomDocument
 
-TEMPLATE_DIR = Path(__file__).resolve().parents[1] / "forms" / "yerel_nip"
-GROUP_NAME = "1/5000 Nazım İmar Planı Çizim Katmanları"
-STYLE_NAME = "PLN3113 1/5000 NİP Çizim Şablonu"
+gdal.UseExceptions()
+
+TEMPLATE_DIR = Path(__file__).resolve().parents[1] / "resources" / "yerel_nip"
+GROUP_NAME = "PLN3113 1/5000 NİP Çizim Katmanları"
+STYLE_NAME = "PLN3113 MpyyNipDB Çizim Şablonu"
+SCHEMA_VERSION = 1
+KIND = "PLN3113_YEREL_NIP"
 
 _GEOMETRY = {
     "MULTIPOLYGON": ogr.wkbMultiPolygon,
@@ -37,17 +41,15 @@ _GEOMETRY = {
 }
 
 
-def get_template_spec() -> dict:
-    """NİP şablon tablo ve katman spesifikasyonunu döndürür."""
+def get_template():
     return json.loads((TEMPLATE_DIR / "template.json").read_text(encoding="utf-8"))
 
 
-def get_lookups_data() -> dict:
-    """NİP fonksiyon ve tabaka eşleştirme verilerini döndürür."""
+def get_lookups():
     return json.loads((TEMPLATE_DIR / "lookups.json").read_text(encoding="utf-8"))
 
 
-def _field_defn(name: str, declared: str) -> ogr.FieldDefn:
+def _field_defn(name, declared):
     declared = declared.upper()
     width = 0
     if "(" in declared:
@@ -66,33 +68,26 @@ def _field_defn(name: str, declared: str) -> ogr.FieldDefn:
     return defn
 
 
-def _to_srs(crs: QgsCoordinateReferenceSystem) -> osr.SpatialReference:
-    if not crs or not crs.isValid():
+def _crs_srs(value):
+    crs = value if isinstance(value, QgsCoordinateReferenceSystem) else QgsCoordinateReferenceSystem(str(value))
+    if not crs.isValid():
         crs = QgsCoordinateReferenceSystem("EPSG:5637")
     srs = osr.SpatialReference()
-    auth = crs.authid()
-    if auth and srs.SetFromUserInput(auth) == 0:
-        return srs
-    srs.ImportFromWkt(crs.toWkt())
+    if srs.SetFromUserInput(crs.authid() or crs.toWkt()) != 0:
+        raise ValueError("GDAL seçilen KRS'yi okuyamıyor")
     return srs
 
 
-def create_nip_drawing_workspace(output_path: str, crs: QgsCoordinateReferenceSystem = None) -> str:
-    """MpyyNipDB 1/5000 NİP çizim şablonu yapısında GeoPackage veritabanı üretir."""
+def create_nip_workspace(output_path, crs="EPSG:5637"):
+    """MpyyNipDB 1/5000 şablonuyla hazır NİP GeoPackage oluşturur."""
     output = Path(output_path).resolve()
     if output.exists():
         raise FileExistsError(f"Hedef dosya zaten mevcut: {output}")
     if output.suffix.lower() != ".gpkg":
-        output = output.with_suffix(".gpkg")
+        raise ValueError("Çıktı uzantısı .gpkg olmalıdır.")
 
-    spec = get_template_spec()
-    if isinstance(crs, str):
-        crs_obj = QgsCoordinateReferenceSystem(crs)
-    elif isinstance(crs, QgsCoordinateReferenceSystem) and crs.isValid():
-        crs_obj = crs
-    else:
-        crs_obj = QgsCoordinateReferenceSystem("EPSG:5637")
-    srs = _to_srs(crs_obj)
+    spec = get_template()
+    srs = _crs_srs(crs)
     staging = output.parent / (".nip-" + uuid.uuid4().hex)
     staging.mkdir(parents=True, exist_ok=True)
     staged = staging / "dataset.gpkg"
@@ -100,7 +95,7 @@ def create_nip_drawing_workspace(output_path: str, crs: QgsCoordinateReferenceSy
     try:
         source = ogr.GetDriverByName("GPKG").CreateDataSource(str(staged))
         if source is None:
-            raise RuntimeError("GeoPackage veri kaynağı oluşturulamadı.")
+            raise RuntimeError("GeoPackage oluşturulamadı.")
 
         for table in spec["tables"]:
             geometry = table["geometry"]
@@ -112,11 +107,10 @@ def create_nip_drawing_workspace(output_path: str, crs: QgsCoordinateReferenceSy
                 if layer.CreateField(_field_defn(field["name"], field["type"])) != 0:
                     raise RuntimeError(f"Alan oluşturulamadı: {table['table']}.{field['name']}")
 
-        lookups = get_lookups_data()
-        for table, data in lookups.items():
+        for table, data in get_lookups().items():
             layer = source.GetLayerByName(table)
             if layer is None:
-                continue
+                raise RuntimeError(f"Lookup tablosu bulunamadı: {table}")
             for row in data["rows"]:
                 feature = ogr.Feature(layer.GetLayerDefn())
                 for column, value in zip(data["columns"], row):
@@ -125,37 +119,43 @@ def create_nip_drawing_workspace(output_path: str, crs: QgsCoordinateReferenceSy
                     else:
                         feature.SetField(column, value)
                 if layer.CreateFeature(feature) != 0:
-                    raise RuntimeError(f"Lookup satırı yazılamadı: {table}")
+                    raise RuntimeError(f"Satır yazılamadı: {table}")
         source = None
 
         with closing(sqlite3.connect(staged)) as con, con:
             con.execute(
-                "CREATE TABLE IF NOT EXISTS layer_styles ("
-                "id INTEGER PRIMARY KEY AUTOINCREMENT, f_table_catalog TEXT(256), f_table_schema TEXT(256), "
-                "f_table_name TEXT(256), f_geometry_column TEXT(256), styleName TEXT(30), styleQML TEXT, "
-                "styleSLD TEXT, useAsDefault BOOLEAN, description TEXT, owner TEXT(30), ui TEXT(30), "
-                "update_time DATETIME DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')))"
+                "CREATE TABLE mpyy_metadata (dataset_id TEXT PRIMARY KEY, schema_version INTEGER NOT NULL, "
+                "workspace_kind TEXT NOT NULL, plan_levels TEXT NOT NULL)"
             )
             con.execute(
-                "INSERT INTO gpkg_contents(table_name, data_type, identifier) "
-                "VALUES ('layer_styles','attributes','layer_styles')"
+                "INSERT INTO mpyy_metadata VALUES (?,?,?,?)",
+                (str(uuid.uuid4()), SCHEMA_VERSION, KIND, "NIP"),
+            )
+            con.execute(
+                """CREATE TABLE layer_styles (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT, f_table_catalog TEXT(256), f_table_schema TEXT(256),
+                    f_table_name TEXT(256), f_geometry_column TEXT(256), styleName TEXT(30), styleQML TEXT,
+                    styleSLD TEXT, useAsDefault BOOLEAN, description TEXT, owner TEXT(30), ui TEXT(30),
+                    update_time DATETIME DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')))"""
+            )
+            con.execute(
+                "INSERT INTO gpkg_contents(table_name, data_type, identifier) VALUES ('layer_styles','attributes','layer_styles')"
             )
             for table in spec["tables"]:
                 name = table["table"]
-                style_file = spec.get("styles", {}).get(name, {}).get("qml")
-                if style_file and (TEMPLATE_DIR / style_file).exists():
-                    qml_content = (TEMPLATE_DIR / style_file).read_text(encoding="utf-8")
-                    con.execute(
-                        "INSERT INTO layer_styles(f_table_catalog, f_table_schema, f_table_name, f_geometry_column, "
-                        "styleName, styleQML, useAsDefault, description) VALUES ('', '', ?, ?, ?, ?, 1, ?)",
-                        (
-                            name,
-                            "geom" if table["geometry"] else "",
-                            name,
-                            qml_content,
-                            STYLE_NAME,
-                        ),
-                    )
+                qml_file = TEMPLATE_DIR / spec["styles"][name]["qml"]
+                qml_content = qml_file.read_text(encoding="utf-8") if qml_file.exists() else ""
+                con.execute(
+                    "INSERT INTO layer_styles(f_table_catalog, f_table_schema, f_table_name, f_geometry_column, "
+                    "styleName, styleQML, useAsDefault, description) VALUES ('', '', ?, ?, ?, ?, 1, ?)",
+                    (
+                        name,
+                        "geom" if table["geometry"] else "",
+                        name,
+                        qml_content,
+                        STYLE_NAME,
+                    ),
+                )
             integrity = con.execute("PRAGMA integrity_check").fetchone()[0]
             if integrity != "ok":
                 raise RuntimeError(f"Veritabanı bütünlüğü doğrulanamadı: {integrity}")
@@ -171,64 +171,101 @@ def create_nip_drawing_workspace(output_path: str, crs: QgsCoordinateReferenceSy
     return str(output)
 
 
-def bind_function_relation(project: QgsProject, referencing: QgsVectorLayer, referenced: QgsVectorLayer, field_pairs: list, relation_id: str):
-    """QGIS Nitelik Formu için fonksiyon ilişki bağlamasını yapar."""
+def import_template_style(layer, template_table):
+    """MpyyNipDB şablon katman stil ve formunu katmana uygular."""
+    spec = get_template()["styles"].get(template_table)
+    if not spec:
+        return
+    qml_path = TEMPLATE_DIR / spec["qml"]
+    if not qml_path.exists():
+        return
+    document = QDomDocument("qgis")
+    document.setContent(qml_path.read_text(encoding="utf-8"))
+    ok, message = layer.importNamedStyle(document)
+    if not ok:
+        raise RuntimeError(f"{layer.name()} stili uygulanamadı: {message}")
+    layer.setCustomProperty("nip/form", f"{STYLE_NAME}: {template_table}")
+    layer.setCustomProperty("nip/template", template_table)
+    layer.triggerRepaint()
+
+
+def bind_function_relation(project, referencing, referenced, field_pairs, relation_id=None):
+    """NİP fonksiyon açılır menüsü için QGIS proje ilişkisini (RelationReference) kurar."""
+    relation_id = relation_id or get_template()["relations"][0]["id"]
     manager = project.relationManager()
-    existing = manager.relation(relation_id)
-    if existing.isValid():
+    if manager.relation(relation_id).isValid():
         manager.removeRelation(relation_id)
+
     relation = QgsRelation()
     relation.setId(relation_id)
-    relation.setName(relation_id)
+    relation.setName("1/5000 NİP Fonksiyon Kataloğu")
     relation.setReferencingLayer(referencing.id())
     relation.setReferencedLayer(referenced.id())
-    for child in field_pairs:
-        relation.addFieldPair(child, child)
+    for child, parent in field_pairs.items():
+        relation.addFieldPair(child, parent)
+    if not relation.isValid():
+        raise RuntimeError(f"NİP fonksiyon ilişkisi kurulamadı: {relation.validationError()}")
+
     manager.addRelation(relation)
+
     for child in field_pairs:
         index = referencing.fields().indexFromName(child)
-        if index != -1:
-            setup = referencing.editorWidgetSetup(index)
-            if setup.type() == "RelationReference":
-                config = dict(setup.config())
-                config.update({
-                    "Relation": relation_id,
-                    "ReferencedLayerId": referenced.id(),
-                    "ReferencedLayerName": referenced.name(),
-                    "ReferencedLayerDataSource": referenced.source(),
-                    "ReferencedLayerProviderKey": referenced.providerType(),
-                })
-                referencing.setEditorWidgetSetup(index, QgsEditorWidgetSetup("RelationReference", config))
+        if index < 0:
+            continue
+        setup = referencing.editorWidgetSetup(index)
+        if setup.type() != "RelationReference":
+            continue
+        config = dict(setup.config())
+        config.update(
+            {
+                "Relation": relation_id,
+                "ReferencedLayerId": referenced.id(),
+                "ReferencedLayerName": referenced.name(),
+                "ReferencedLayerDataSource": referenced.source(),
+                "ReferencedLayerProviderKey": referenced.providerType(),
+            }
+        )
+        referencing.setEditorWidgetSetup(index, QgsEditorWidgetSetup("RelationReference", config))
     return relation
 
 
-def load_nip_drawing_layers(path: str, project: QgsProject = None) -> list[QgsVectorLayer]:
-    """1/5000 NİP şablon katmanlarını QGIS projesine yükler, stillerini ve formlarını bağlar."""
+def load_nip_workspace_layers(
+    path,
+    iface=None,
+    project=None,
+    apply_styles=True,
+    setup_forms=True,
+    setup_relations=True
+):
+    """1/5000 NİP şablonundaki tüm katmanları QGIS projesine yükler ve stilleri bağlar."""
     project = project or QgsProject.instance()
-    spec = get_template_spec()
+    spec = get_template()
     gpkg = str(Path(path).resolve())
     root = project.layerTreeRoot()
     group = root.findGroup(GROUP_NAME) or root.insertGroup(0, GROUP_NAME)
     loaded = {}
 
-    for name in spec.get("layer_order", []):
+    for name in spec["layer_order"]:
         layer = QgsVectorLayer(f"{gpkg}|layername={name}", name, "ogr")
         if not layer.isValid():
-            continue
-        style_file = spec.get("styles", {}).get(name, {}).get("qml")
-        if style_file and (TEMPLATE_DIR / style_file).exists():
-            doc = QDomDocument("qgis")
-            doc.setContent((TEMPLATE_DIR / style_file).read_text(encoding="utf-8"))
-            layer.importNamedStyle(doc)
-            layer.triggerRepaint()
+            raise RuntimeError(f"Katman açılamadı: {name}")
+        if apply_styles:
+            import_template_style(layer, name)
         project.addMapLayer(layer, False)
         group.addLayer(layer)
         loaded[name] = layer
 
-    for rel in spec.get("relations", []):
-        ref_ing = loaded.get(rel.get("referencing"))
-        ref_ed = loaded.get(rel.get("referenced"))
-        if ref_ing and ref_ed:
-            bind_function_relation(project, ref_ing, ref_ed, rel.get("pairs", []), rel.get("id"))
+    if setup_relations:
+        for relation in spec.get("relations", []):
+            referencing = loaded.get(relation["referencing"])
+            referenced = loaded.get(relation["referenced"])
+            if referencing is not None and referenced is not None:
+                bind_function_relation(project, referencing, referenced, relation["pairs"], relation["id"])
 
-    return list(loaded.values())
+    return loaded
+
+
+# Uyumluluk Takma Adları (Aliases)
+create_nip_drawing_workspace = create_nip_workspace
+load_nip_drawing_layers = load_nip_workspace_layers
+
