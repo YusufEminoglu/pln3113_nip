@@ -317,6 +317,103 @@ def test_boundary_filter_and_clipping():
     )
 
 
+def test_nip_workspace_generation():
+    from pln3113_nip.core.nip_workspace import create_nip_drawing_workspace
+    import sqlite3
+
+    with tempfile.TemporaryDirectory(prefix="nip_gpkg_test_") as tmpdir:
+        gpkg_path = os.path.join(tmpdir, "test_nip.gpkg")
+        create_nip_drawing_workspace(gpkg_path, "EPSG:5637")
+
+        if not os.path.exists(gpkg_path):
+            return _ok("nip workspace GeoPackage creation", False, "file does not exist")
+
+        conn = sqlite3.connect(gpkg_path)
+        cursor = conn.cursor()
+        cursor.execute("SELECT table_name FROM gpkg_contents")
+        tables = {row[0] for row in cursor.fetchall()}
+        conn.close()
+
+        expected = {
+            "alanlar-5000",
+            "cizgiler_5000_v2",
+            "5000_revizyon_planonama_snr",
+            "fonksiyonlar-5000_tablo",
+            "yolgenisliksembol"
+        }
+        missing = expected - tables
+        return _ok(
+            "nip workspace GeoPackage has all 5 official standard layers/tables",
+            len(missing) == 0,
+            f"tables={tables} missing={missing}"
+        )
+
+
+def test_network_engine_topological_routing():
+    from pln3113_nip.core.network_engine import build_network_graph
+    from qgis.core import QgsVectorLayer, QgsFeature, QgsGeometry, QgsPointXY
+
+    layer = QgsVectorLayer("LineString?crs=EPSG:5637", "test_roads", "memory")
+    pr = layer.dataProvider()
+
+    g1 = QgsGeometry.fromPolylineXY([QgsPointXY(0.0, 0.0), QgsPointXY(100.0, 0.0)])
+    g2 = QgsGeometry.fromPolylineXY([QgsPointXY(100.0, 0.0), QgsPointXY(100.0, 100.0)])
+
+    f1 = QgsFeature()
+    f1.setGeometry(g1)
+    f2 = QgsFeature()
+    f2.setGeometry(g2)
+    pr.addFeatures([f1, f2])
+    layer.updateExtents()
+
+    graph = build_network_graph(layer, tolerance=0.5)
+
+    node_start = graph.nearest_node(QgsPointXY(0.0, 0.0))
+    node_end = graph.nearest_node(QgsPointXY(100.0, 100.0))
+
+    dist, pred_node, pred_edge = graph.dijkstra(node_start)
+    path_edges = graph.reconstruct_path_edges(node_start, node_end, pred_node, pred_edge)
+
+    ok = (
+        graph.num_nodes == 3
+        and graph.num_edges == 2
+        and round(dist[node_end], 1) == 200.0
+        and len(path_edges) == 2
+    )
+    return _ok(
+        "network engine Dijkstra topological pathfinding and route reconstruction",
+        ok,
+        f"nodes={graph.num_nodes} edges={graph.num_edges} dist={dist[node_end]}"
+    )
+
+
+def test_all_10_processing_algorithms_registered():
+    from pln3113_nip.provider import NipProvider
+    provider = NipProvider()
+    provider.loadAlgorithms()
+    algs = provider.algorithms()
+    alg_names = {a.name() for a in algs}
+
+    expected_algs = {
+        "tire_geometri_temizle",
+        "nip_workspace_generator",
+        "nip_yol_platform_uretici",
+        "nip_yol_kavsak_trim",
+        "nip_yol_poligonlasma_esleme",
+        "tire_nip_nufus_hesapla",
+        "tire_saha_bina_nufus",
+        "on_cephe_ve_servis_noktasi_bulucu",
+        "nip_erisme_ve_mpyy_etki_capi",
+        "nip_od_merkezilik_egim"
+    }
+    missing = expected_algs - alg_names
+    return _ok(
+        "processing provider registers all 10 algorithms across 5 hierarchical groups",
+        len(missing) == 0,
+        f"registered={len(algs)} missing={missing}"
+    )
+
+
 def run_all(iface):
     print("=" * 60)
     print(" pln3113_nip - lifecycle smoke")
@@ -329,6 +426,9 @@ def run_all(iface):
         test_lifecycle(iface),
         test_dop_calculation_engine(),
         test_boundary_filter_and_clipping(),
+        test_nip_workspace_generation(),
+        test_network_engine_topological_routing(),
+        test_all_10_processing_algorithms_registered(),
     ]
     passed = sum(1 for r in results if r)
     print("-" * 60)
@@ -344,6 +444,18 @@ def main():
         profile = tempfile.TemporaryDirectory(prefix="pln3113_nip-smoke-")
         app = QgsApplication([], True, profile.name, "external")
         app.initQgis()
+
+    plugins_dir = os.path.join(QgsApplication.prefixPath(), "python", "plugins")
+    if os.path.exists(plugins_dir) and plugins_dir not in sys.path:
+        sys.path.append(plugins_dir)
+    try:
+        from processing.core.Processing import Processing
+        from qgis.analysis import QgsNativeAlgorithms
+        QgsApplication.processingRegistry().addProvider(QgsNativeAlgorithms())
+        Processing.initialize()
+    except Exception:
+        pass
+
     iface = _Iface()
     try:
         return run_all(iface)

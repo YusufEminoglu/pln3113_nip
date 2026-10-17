@@ -1,0 +1,302 @@
+{
+ "version": 1,
+ "source": {
+  "file": "MpyyNipDB.gpkg",
+  "sha256": "2c23ca3c3b33f35e 6e79fee583a8813f 25acb8e791847720 39345d5f3d1a9b13",
+  "project": "5000_RevizyonPlanCizimProjesi"
+ },
+ "layer_order": [
+  "yolgenisliksembol",
+  "yollar_ve_Adalar_icin_cizgiler",
+  "alanlar-5000",
+  "cizgiler_5000_v2",
+  "5000_revizyon_planonama_snr",
+  "fonksiyonlar-5000_tablo"
+ ],
+ "tables": [
+  {
+   "table": "alanlar-5000",
+   "geometry": "MULTIPOLYGON",
+   "fields": [
+    {
+     "name": "nipfonksiyon",
+     "type": "TEXT(100)",
+     "notnull": false,
+     "pk": false
+    },
+    {
+     "name": "TipSINIR",
+     "type": "TEXT(100)",
+     "notnull": false,
+     "pk": false
+    },
+    {
+     "name": "NotasyonuVarMI",
+     "type": "TEXT(10)",
+     "notnull": false,
+     "pk": false
+    },
+    {
+     "name": "TarihIlk",
+     "type": "DATETIME",
+     "notnull": false,
+     "pk": false
+    },
+    {
+     "name": "TarihSon",
+     "type": "DATETIME",
+     "notnull": false,
+     "pk": false
+    },
+    {
+     "name": "Kullanici",
+     "type": "TEXT(50)",
+     "notnull": false,
+     "pk": false
+    },
+    {
+     "name": "AlanHa",
+     "type": "REAL",
+     "notnull": false,
+     "pk": false
+    },
+    {
+     "name": "ALT_SNR",
+     "type": "MEDIUMINT",
+     "notnull": false,
+     "pk": false
+    },
+    {
+     "name": "UST_SNR",
+     "type": "MEDIUMINT",
+     "notnull": false,
+     "pk": false
+    },
+    {
+     "name": "ALT_NUFUS",
+     "type": "MEDIUMINT",
+     "notnull": false,
+     "pk": false
+    },
+    {
+     "name": "UST_NUFUS",
+     "type": "MEDIUMINT",
+     "notnull": false,
+     "pk": false
+    },
+    {
+     "name": "k/m2_UST_NUFUS",
+     "type": "REAL",
+     "notnull": false,
+     "pk": false
+    },
+    {
+     "name": "k/m2_ALT_NUFUS",
+     "type": "REAL",
+     "notnull": false,
+     "pk": false
+    }
+   ]
+  },
+  {
+   "table": "cizgiler_5000_v2",
+   "geometry": "MULTILINESTRING",
+   "fields": [
+    {
+     "name": "nipfonksiyon",
+     "type": "TEXT(100)",
+     "notnull": false,
+     "pk": false
+    },
+    {
+     "name": "yolTipi",
+     "type": "TEXT",
+     "notnull": false,
+     "pk": false
+    },
+    {
+     "name": "yolGenislik",
+     "type": "REAL",
+     "notnull": false,
+     "pk": false
+    },
+    {
+     "name": "solKaldirimGenislik",
+     "type": "REAL",
+     "notnull": false,
+     "pk": false
+    },
+    {
+     "name": "refujGenislik",
+     "type": "REAL",
+     "notnull": false,
+     "pk": false
+    },
+    {
+     "name": "SolSeritSayisi",
+     "type": "INTEGER",
+     "notnull": false,
+     "pk": false
+    },
+    {
+     "name": "SagSeritSayisi",
+     "type": "INTEGER",
+     "notnull": false,
+     "pk": false
+    },
+    {
+     "name": "yolGenislik2",
+     "type": "REAL",
+     "notnull": false,
+     "pk": false
+    },
+    {
+     "name": "sagKaldirimGenislik",
+     "type": "REAL",
+     "notnull": false,
+     "pk": false
+    },
+    {
+     "name": "Kullanıcı",
+     "type": "TEXT(50)",
+     "notnull": false,
+     "pk": false
+    },
+    {
+     "name": "TarihIlk",
+     "type": "DATETIME",
+     "notnull": false,
+     "pk": false
+    },
+    {
+     "name": "TarihSon",
+     "type": "TEXT(50)",
+     "notnull": false,
+     "pk": false
+    },
+    {
+     "name": "Uzunluk(m)",
+     "type": "REAL",
+     "notnull": false,
+     "pk": false
+    }
+   ]
+  },
+  {
+   "table": "yollar_ve_Adalar_icin_cizgiler",
+   "geometry": "LINESTRING",
+   "fields": []
+  },
+  {
+   "table": "yolgenisliksembol",
+   "geometry": "POINT",
+   "fields": [
+    {
+     "name": "YolGenislik",
+     "type": "TEXT",
+     "notnull": false,
+     "pk": false
+    },
+    {
+     "name": "YolTamsayi",
+     "type": "MEDIUMINT",
+     "notnull": false,
+     "pk": false
+    }
+   ]
+  },
+  {
+   "table": "5000_revizyon_planonama_snr",
+   "geometry": "MULTIPOLYGON",
+   "fields": []
+  },
+  {
+   "table": "fonksiyonlar-5000_tablo",
+   "geometry": null,
+   "fields": [
+    {
+     "name": "ust_konu_grup_2",
+     "type": "TEXT",
+     "notnull": false,
+     "pk": false
+    },
+    {
+     "name": "nip_fonksiyon",
+     "type": "TEXT",
+     "notnull": false,
+     "pk": false
+    },
+    {
+     "name": "nip_tabaka",
+     "type": "TEXT",
+     "notnull": false,
+     "pk": false
+    },
+    {
+     "name": "id1",
+     "type": "INTEGER",
+     "notnull": false,
+     "pk": false
+    },
+    {
+     "name": "ust_konu_grup",
+     "type": "TEXT",
+     "notnull": false,
+     "pk": false
+    },
+    {
+     "name": "nipFonksiyonSymbol",
+     "type": "TEXT(100)",
+     "notnull": false,
+     "pk": false
+    }
+   ]
+  }
+ ],
+ "relations": [
+  {
+   "id": "alanlar_50_nipfonksiyon_fonksiyonl_nip_fonksiyon",
+   "referencing": "alanlar-5000",
+   "referenced": "fonksiyonlar-5000_tablo",
+   "pairs": {
+    "nipfonksiyon": "nip_fonksiyon"
+   }
+  }
+ ],
+ "styles": {
+  "alanlar-5000": {
+   "qml": "alanlar-5000.qml",
+   "sha256": "bc0a7ef7af3a3703 d7b4476e27523f8c 5a14550dff8dfc09 c1d3e0a987bc97b3"
+  },
+  "cizgiler_5000_v2": {
+   "qml": "cizgiler_5000_v2.qml",
+   "sha256": "0b987064bd712dcd aad49dcdafb34023 06e33211d55741da 273f83db9f164ba5"
+  },
+  "yollar_ve_Adalar_icin_cizgiler": {
+   "qml": "yollar_ve_Adalar_icin_cizgiler.qml",
+   "sha256": "041f92c5081842ec 306ac4185822df01 cbd8f1871677e68f ff42cbfe970c3f6c"
+  },
+  "yolgenisliksembol": {
+   "qml": "yolgenisliksembol.qml",
+   "sha256": "abf5885a0374c6e7 381405a59dfc1536 a9c7626c9909ebc6 4317bde96b9630da"
+  },
+  "5000_revizyon_planonama_snr": {
+   "qml": "5000_revizyon_planonama_snr.qml",
+   "sha256": "1b42dd1982c6fc49 ccdd875f86ba1e3b e4e9c5616bff618f 89587a7d97e23520"
+  },
+  "fonksiyonlar-5000_tablo": {
+   "qml": "fonksiyonlar-5000_tablo.qml",
+   "sha256": "1c2d737662640ef3 250c9d40ac557cd9 ec47c453970bebc6 3fe9c5bb27dff967"
+  }
+ },
+ "skipped": [
+  "halihazir",
+  "meri_5000_nokta",
+  "meri_5000_cizgi",
+  "meri_5000_alan",
+  "meri_1000_alan",
+  "ak_ada_duzeyi_tahmini_calisan_sayisi",
+  "Google Satellite",
+  "cizgiler-5000"
+ ]
+}

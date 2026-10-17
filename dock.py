@@ -9,10 +9,15 @@ from __future__ import annotations
 import contextlib
 import csv
 import os
+try:
+    import processing
+except ImportError:
+    processing = None
 from qgis.PyQt.QtCore import QSize, Qt, QUrl, QVariant
 from qgis.PyQt.QtGui import QColor, QDesktopServices, QFont, QIcon
 from qgis.PyQt.QtWidgets import (
     QAbstractItemView,
+    QCheckBox,
     QComboBox,
     QDockWidget,
     QDoubleSpinBox,
@@ -24,6 +29,7 @@ from qgis.PyQt.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QLineEdit,
     QListView,
     QListWidget,
     QListWidgetItem,
@@ -43,6 +49,7 @@ from qgis.PyQt.QtWidgets import (
 from qgis.core import (
     NULL,
     QgsCategorizedSymbolRenderer,
+    QgsCoordinateReferenceSystem,
     QgsDistanceArea,
     QgsFeature,
     QgsField,
@@ -54,16 +61,18 @@ from qgis.core import (
     QgsMarkerSymbol,
     QgsPointXY,
     QgsProject,
+    QgsRasterLayer,
     QgsRendererCategory,
     QgsRendererRange,
     QgsSingleSymbolRenderer,
     QgsVectorLayer
 )
-from qgis.gui import QgsMapLayerComboBox
+from qgis.gui import QgsMapLayerComboBox, QgsProjectionSelectionWidget
 
 from .core.cleaner import GeometryCleanerEngine
 from .core.field_estimator import FieldEstimatorEngine
 from .core.nip_calculator import NipCalculatorEngine
+from .core.nip_workspace import create_nip_drawing_workspace, load_nip_drawing_layers
 from .core.tire_constants import (
     get_default_dop_rule,
     get_default_employment_rule,
@@ -184,7 +193,7 @@ class TireNipDockWidget(QDockWidget):
         # Vertical Navigation Rail
         self.nav_list = QListWidget()
         self.nav_list.setObjectName("nipNavRail")
-        self.nav_list.setFixedWidth(70)
+        self.nav_list.setFixedWidth(78)
         self.nav_list.setViewMode(_VIEW_MODE_ICON)
         self.nav_list.setIconSize(QSize(28, 28))
         self.nav_list.setMovement(_MOVEMENT_STATIC)
@@ -194,9 +203,12 @@ class TireNipDockWidget(QDockWidget):
 
         nav_items = [
             ("clean.png", "Geometri", "1. Geometri Onarımı ve Duplike Ayıklama"),
-            ("plan.png", "NİP & DOP", "2. NİP Nüfus, Donatı (Ek-2) ve DOP Analizi"),
-            ("field.png", "Saha/Yapı", "3. Saha ve Bina Fiili Nüfus Kestirimi"),
-            ("report.png", "Rehber", "4. NİP Metodolojisi, Standartlar ve El Kitabı"),
+            ("database.png", "Veritabanı", "2. NİP Çizim Veritabanı ve Şablonu (GeoPackage)"),
+            ("road.png", "Yol/Kavşak", "3. Yol Platformu, Bordür ve Kavşak Geometrisi"),
+            ("plan.png", "NİP & DOP", "4. NİP Nüfus, Donatı (Ek-2) ve DOP Analizi"),
+            ("field.png", "Saha/Yapı", "5. Saha ve Bina Fiili Nüfus Kestirimi"),
+            ("network.png", "Network", "6. Ulaşım Ağı, Ön Cephe, Erişim Çapları ve OD Matrisi"),
+            ("report.png", "Rehber", "7. NİP Metodolojisi, Standartlar ve El Kitabı"),
         ]
 
         for icon_file, text, tip in nav_items:
@@ -204,7 +216,7 @@ class TireNipDockWidget(QDockWidget):
             item = QListWidgetItem(QIcon(icon_p) if os.path.exists(icon_p) else QIcon(), text)
             item.setToolTip(tip)
             item.setTextAlignment(_ALIGN_CENTER)
-            item.setSizeHint(QSize(62, 54))
+            item.setSizeHint(QSize(70, 52))
             self.nav_list.addItem(item)
 
         body_layout.addWidget(self.nav_list)
@@ -213,8 +225,11 @@ class TireNipDockWidget(QDockWidget):
         self.main_stack = QStackedWidget()
         self.main_stack.setObjectName("nipMainStack")
         self.main_stack.addWidget(self._create_tab_cleaner())
+        self.main_stack.addWidget(self._create_tab_database())
+        self.main_stack.addWidget(self._create_tab_roads())
         self.main_stack.addWidget(self._create_tab_nip())
         self.main_stack.addWidget(self._create_tab_field())
+        self.main_stack.addWidget(self._create_tab_network())
         self.main_stack.addWidget(self._create_tab_guide())
 
         stack_scroll = QScrollArea()
@@ -226,7 +241,7 @@ class TireNipDockWidget(QDockWidget):
         main_layout.addWidget(body_widget, 1)
 
         self.nav_list.currentRowChanged.connect(self.main_stack.setCurrentIndex)
-        self.nav_list.setCurrentRow(1)  # Default to NİP tab
+        self.nav_list.setCurrentRow(3)  # Default to NİP & DOP tab
 
         self.tabs = _TabsAdapter(self)
 
@@ -695,9 +710,435 @@ class TireNipDockWidget(QDockWidget):
             self.btn_run_clean.setEnabled(True)
             self.clean_progress.setVisible(False)
 
+    # -----------------------------------------------------------------
+    # SEKME 2: NİP ÇİZİM VERİTABANI VE ŞABLONU (GEOPACKAGE)
+    # -----------------------------------------------------------------
+    def _create_tab_database(self) -> QWidget:
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        layout.setContentsMargins(4, 4, 4, 4)
+        layout.setSpacing(8)
+
+        # Kart: Bilgilendirme
+        card_info = QFrame()
+        card_info.setObjectName("nipAccentCard")
+        info_lay = QVBoxLayout(card_info)
+        info_lay.setContentsMargins(10, 8, 10, 8)
+        info_lay.setSpacing(4)
+
+        t_lbl = QLabel("🗄️ 1/5000 Nazım İmar Planı (NİP) Çizim Veritabanı ve Şablonu")
+        t_lbl.setStyleSheet("font-weight: 700; font-size: 10pt; color: #0f766e;")
+        info_lay.addWidget(t_lbl)
+
+        d_lbl = QLabel(
+            "Mekânsal Planlar Yapım Yönetmeliği (MPYY) standartlarına birebir uygun, "
+            "resmi çizgi/alan lejant stilleri, hiyerarşik öznitelik formları, açılır menü (Value Map) "
+            "kodlamaları ve 1-N ilişkileri (Relations) içeren hazır GeoPackage (.gpkg) çalışma alanı üretir."
+        )
+        d_lbl.setWordWrap(True)
+        d_lbl.setStyleSheet("color: #475569; font-size: 8.5pt;")
+        info_lay.addWidget(d_lbl)
+        layout.addWidget(card_info)
+
+        # Hedef Veritabanı Konumu ve CRS
+        box_db = QGroupBox("Veritabanı Ayarları ve Dosya Konumu")
+        form_db = QFormLayout(box_db)
+        form_db.setSpacing(8)
+
+        # GPKG Dosya Yolu Seçici
+        path_box = QHBoxLayout()
+        self.txt_db_path = QLineEdit()
+        self.txt_db_path.setPlaceholderText("Örn: C:/Projeler/1_5000_Nazim_Imar_Plani.gpkg")
+        default_dir = QgsProject.instance().homePath() or os.path.expanduser("~/Documents")
+        default_file = os.path.join(default_dir, "1_5000_Nazim_Imar_Plani.gpkg").replace("\\", "/")
+        self.txt_db_path.setText(default_file)
+        self.btn_db_browse = QPushButton("...")
+        self.btn_db_browse.setFixedWidth(32)
+        self.btn_db_browse.setCursor(_POINTING_HAND)
+        self.btn_db_browse.clicked.connect(self._browse_db_path)
+        path_box.addWidget(self.txt_db_path)
+        path_box.addWidget(self.btn_db_browse)
+        form_db.addRow("Hedef GeoPackage (.gpkg):", path_box)
+
+        # CRS Seçici
+        self.crs_db_selector = QgsProjectionSelectionWidget()
+        self.crs_db_selector.setCrs(QgsCoordinateReferenceSystem("EPSG:5637"))
+        form_db.addRow("Projeksiyon / CRS:", self.crs_db_selector)
+
+        layout.addWidget(box_db)
+
+        # Seçenekler
+        box_opts = QGroupBox("Otomasyon ve Proje Entegrasyon Seçenekleri")
+        opts_lay = QVBoxLayout(box_opts)
+        opts_lay.setSpacing(6)
+
+        self.chk_db_load_layers = QCheckBox("Üretilen katmanları mevcut QGIS projesine otomatik ekle")
+        self.chk_db_load_layers.setChecked(True)
+        opts_lay.addWidget(self.chk_db_load_layers)
+
+        self.chk_db_apply_styles = QCheckBox("MPYY resmî lejant stillerini (.qml) otomatik bağla")
+        self.chk_db_apply_styles.setChecked(True)
+        opts_lay.addWidget(self.chk_db_apply_styles)
+
+        self.chk_db_setup_forms = QCheckBox("Hiyerarşik öznitelik formlarını ve açılır menü (Value Map) kurallarını kur")
+        self.chk_db_setup_forms.setChecked(True)
+        opts_lay.addWidget(self.chk_db_setup_forms)
+
+        self.chk_db_setup_relations = QCheckBox("Çoklu fonksiyon ilişkilerini (Relations: alanlar-5000 <-> fonksiyonlar) aktifleştir")
+        self.chk_db_setup_relations.setChecked(True)
+        opts_lay.addWidget(self.chk_db_setup_relations)
+
+        layout.addWidget(box_opts)
+
+        # Buton
+        self.btn_create_db = QPushButton("  🚀 1/5000 NİP Çizim Veritabanını Oluştur ve Katmanları Yükle")
+        self.btn_create_db.setObjectName("PrimaryButton")
+        self.btn_create_db.setCursor(_POINTING_HAND)
+        self.btn_create_db.clicked.connect(self._on_create_database)
+        layout.addWidget(self.btn_create_db)
+
+        # Bilgilendirme Kartı: Üretilecek Katman Şeması
+        box_schema = QGroupBox("Oluşturulacak Standart NİP Katmanları ve Hiyerarşisi")
+        schema_lay = QVBoxLayout(box_schema)
+        schema_html = QLabel(
+            "<div style='font-size:8.5pt; color:#334155; line-height:1.4;'>"
+            "• <b>alanlar-5000</b> (MultiPolygon): Konut Alanları, Ticaret Alanları, Kentsel Çalışma Alanları, "
+            "Kentsel Sosyal & Teknik Donatılar, Yeşil Alanlar ve Açık Alanlar.<br/>"
+            "• <b>cizgiler_5000_v2</b> (MultiLineString): Plan Onama Sınırı, Kentsel Çalışma Sınırı, İmar Hatları, "
+            "Karayolu, Demiryolu aksları ve Yol Genişlikleri.<br/>"
+            "• <b>5000_revizyon_planonama_snr</b> (MultiPolygon): Yasal Plan Onama Sınırı ve Revizyon Poligonu.<br/>"
+            "• <b>fonksiyonlar-5000_tablo</b> (Öznitelik Tablosu): Karma kullanım ve parsel bazında alt fonksiyon kayıtları.<br/>"
+            "• <b>yolgenisliksembol</b> (Point): Yol genişlik daireleri ve tip etiketleri."
+            "</div>"
+        )
+        schema_html.setWordWrap(True)
+        schema_lay.addWidget(schema_html)
+        layout.addWidget(box_schema)
+
+        layout.addStretch()
+        return tab
+
+    def _browse_db_path(self):
+        filename, _ = QFileDialog.getSaveFileName(
+            self,
+            "1/5000 NİP GeoPackage Dosyasını Seçin veya Oluşturun",
+            self.txt_db_path.text() or "",
+            "GeoPackage (*.gpkg)"
+        )
+        if filename:
+            if not filename.lower().endswith(".gpkg"):
+                filename += ".gpkg"
+            self.txt_db_path.setText(filename)
+
+    def _on_create_database(self):
+        gpkg_path = self.txt_db_path.text().strip()
+        if not gpkg_path:
+            QMessageBox.warning(self, "Eksik Bilgi", "Lütfen geçerli bir GeoPackage dosya yolu belirtin.")
+            return
+
+        crs = self.crs_db_selector.crs()
+        crs_authid = crs.authid() if crs.isValid() else "EPSG:5637"
+
+        load_layers = self.chk_db_load_layers.isChecked()
+        apply_styles = self.chk_db_apply_styles.isChecked()
+        setup_forms = self.chk_db_setup_forms.isChecked()
+        setup_relations = self.chk_db_setup_relations.isChecked()
+
+        try:
+            self.btn_create_db.setEnabled(False)
+            create_nip_drawing_workspace(gpkg_path, crs_authid)
+
+            loaded_names = []
+            if load_layers:
+                layers_dict = load_nip_drawing_layers(
+                    gpkg_path,
+                    iface=self.iface,
+                    project=QgsProject.instance(),
+                    apply_styles=apply_styles,
+                    setup_forms=setup_forms,
+                    setup_relations=setup_relations
+                )
+                loaded_names = list(layers_dict.keys())
+
+            msg = (
+                f"1/5000 NİP Çizim Veritabanı başarıyla oluşturuldu!\n\n"
+                f"📁 Dosya: {gpkg_path}\n"
+                f"🌐 Projeksiyon: {crs_authid}\n"
+            )
+            if loaded_names:
+                msg += f"✅ Projeye Yüklenen Katmanlar:\n- " + "\n- ".join(loaded_names)
+
+            QMessageBox.information(self, "Veritabanı Hazır", msg)
+
+        except Exception as e:
+            QMessageBox.critical(self, "Hata", f"NİP Veritabanı oluşturulurken hata meydana geldi:\n{str(e)}")
+        finally:
+            self.btn_create_db.setEnabled(True)
 
     # -----------------------------------------------------------------
-    # SEKME 2: NİP PLAN NÜFUSU, DONATI, KAMU-ÖZEL & DOP ANALİZİ
+    # SEKME 3: YOL PLATFORMU, BORDÜR VE KAVŞAK GEOMETRİSİ
+    # -----------------------------------------------------------------
+    def _create_tab_roads(self) -> QWidget:
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        layout.setContentsMargins(4, 4, 4, 4)
+        layout.setSpacing(8)
+
+        card_info = QFrame()
+        card_info.setObjectName("nipAccentCard")
+        info_lay = QVBoxLayout(card_info)
+        info_lay.setContentsMargins(10, 8, 10, 8)
+        info_lay.setSpacing(4)
+
+        t_lbl = QLabel("🛣️ Yol Platformu, Bordür ve Kavşak Geometrisi Modülü")
+        t_lbl.setStyleSheet("font-weight: 700; font-size: 10pt; color: #0f766e;")
+        info_lay.addWidget(t_lbl)
+
+        d_lbl = QLabel(
+            "Ulaşım aksı orta çizgilerinden yasal yol genişliklerine göre platform sınırları, "
+            "orta refüj ve kaldırım/bordür hatları üretir; kavşak yaklaşımlarını kırpar ve "
+            "dış sınırları otomatik poligonlaştırarak NİP imar adalarıyla eşleştirir."
+        )
+        d_lbl.setWordWrap(True)
+        d_lbl.setStyleSheet("color: #475569; font-size: 8.5pt;")
+        info_lay.addWidget(d_lbl)
+        layout.addWidget(card_info)
+
+        # 1. Bölüm: Yol Platformu & Bordür Üretici
+        box_plat = QGroupBox("1. Aşama: Yol Platformu, Refüj ve Bordür/Kaldırım Üretimi")
+        lay_plat = QVBoxLayout(box_plat)
+        lay_plat.setSpacing(6)
+
+        form_plat = QFormLayout()
+        form_plat.setSpacing(6)
+
+        self.cmb_road_layer = QgsMapLayerComboBox()
+        self.cmb_road_layer.setFilters(QgsMapLayerProxyModel.Filter.LineLayer)
+        form_plat.addRow("Yol Orta Çizgisi Katmanı:", self.cmb_road_layer)
+
+        self.cmb_road_width_field = QComboBox()
+        self.cmb_road_layer.layerChanged.connect(self._on_road_layer_changed)
+        form_plat.addRow("Yol Genişliği Alanı (Örn: GENISLIK):", self.cmb_road_width_field)
+
+        self.spn_default_road_width = QDoubleSpinBox()
+        self.spn_default_road_width.setRange(3.0, 100.0)
+        self.spn_default_road_width.setValue(12.0)
+        self.spn_default_road_width.setSuffix(" metre")
+        form_plat.addRow("Sabit / Varsayılan Genişlik:", self.spn_default_road_width)
+
+        self.spn_sidewalk_width = QDoubleSpinBox()
+        self.spn_sidewalk_width.setRange(0.0, 20.0)
+        self.spn_sidewalk_width.setValue(2.0)
+        self.spn_sidewalk_width.setSuffix(" metre")
+        form_plat.addRow("Kaldırım / Bordür Genişliği:", self.spn_sidewalk_width)
+
+        self.spn_median_width = QDoubleSpinBox()
+        self.spn_median_width.setRange(0.0, 20.0)
+        self.spn_median_width.setValue(0.0)
+        self.spn_median_width.setSuffix(" metre")
+        form_plat.addRow("Orta Refüj Genişliği (Varsa):", self.spn_median_width)
+
+        lay_plat.addLayout(form_plat)
+
+        self.btn_run_platform = QPushButton("  📐 Yol Platformu ve Kaldırım Çizgilerini Üret")
+        self.btn_run_platform.setObjectName("PrimaryButton")
+        self.btn_run_platform.setCursor(_POINTING_HAND)
+        self.btn_run_platform.clicked.connect(self._on_run_road_platform)
+        lay_plat.addWidget(self.btn_run_platform)
+        layout.addWidget(box_plat)
+
+        # 2. Bölüm: Kavşak Geometrisi & Yaklaşım Kırpma
+        box_kavsak = QGroupBox("2. Aşama: Kavşak Geometrisi ve Yaklaşım Kırpma (5m Trim)")
+        lay_kavsak = QVBoxLayout(box_kavsak)
+        lay_kavsak.setSpacing(6)
+
+        form_kavsak = QFormLayout()
+        form_kavsak.setSpacing(6)
+
+        self.cmb_kavsak_layer = QgsMapLayerComboBox()
+        self.cmb_kavsak_layer.setFilters(QgsMapLayerProxyModel.Filter.LineLayer)
+        form_kavsak.addRow("İşlenecek Platform Çizgileri:", self.cmb_kavsak_layer)
+
+        self.spn_kavsak_trim = QDoubleSpinBox()
+        self.spn_kavsak_trim.setRange(1.0, 50.0)
+        self.spn_kavsak_trim.setValue(5.0)
+        self.spn_kavsak_trim.setSuffix(" metre")
+        form_kavsak.addRow("Kavşak Kırpma Mesafesi:", self.spn_kavsak_trim)
+
+        lay_kavsak.addLayout(form_kavsak)
+
+        self.btn_run_kavsak = QPushButton("  ✂️ Kavşak Hatlarını Kırp ve Yaklaşımları Ayır")
+        self.btn_run_kavsak.setObjectName("SecondaryButton")
+        self.btn_run_kavsak.setCursor(_POINTING_HAND)
+        self.btn_run_kavsak.clicked.connect(self._on_run_kavsak_trim)
+        lay_kavsak.addWidget(self.btn_run_kavsak)
+        layout.addWidget(box_kavsak)
+
+        # 3. Bölüm: Yol Poligonlaştırma ve Plan Alanı Eşleştirme
+        box_poly = QGroupBox("3. Aşama: Yol Dış Çizgilerini Poligonlaştırma ve Fonksiyon Eşleştirme")
+        lay_poly = QVBoxLayout(box_poly)
+        lay_poly.setSpacing(6)
+
+        form_poly = QFormLayout()
+        form_poly.setSpacing(6)
+
+        self.cmb_poly_road_layer = QgsMapLayerComboBox()
+        self.cmb_poly_road_layer.setFilters(QgsMapLayerProxyModel.Filter.LineLayer)
+        form_poly.addRow("Kapanmış Yol Sınır Çizgileri:", self.cmb_poly_road_layer)
+
+        self.cmb_poly_plan_layer = QgsMapLayerComboBox()
+        self.cmb_poly_plan_layer.setFilters(QgsMapLayerProxyModel.Filter.PolygonLayer)
+        form_poly.addRow("NİP İmar Planı Fonksiyon Katmanı:", self.cmb_poly_plan_layer)
+
+        lay_poly.addLayout(form_poly)
+
+        self.btn_run_poly = QPushButton("  🔄 Yolları Poligonlaştır ve Plan Fonksiyonlarına Bağla")
+        self.btn_run_poly.setObjectName("AccentButton")
+        self.btn_run_poly.setCursor(_POINTING_HAND)
+        self.btn_run_poly.clicked.connect(self._on_run_road_polygonize)
+        lay_poly.addWidget(self.btn_run_poly)
+        layout.addWidget(box_poly)
+
+        layout.addStretch()
+
+        # Trigger initial field population
+        self._on_road_layer_changed()
+
+        return tab
+
+    def _on_road_layer_changed(self):
+        if not hasattr(self, "cmb_road_width_field"):
+            return
+        self.cmb_road_width_field.clear()
+        self.cmb_road_width_field.addItem("[Sabit / Varsayılan Değeri Kullan]", "")
+        layer = self.cmb_road_layer.currentLayer()
+        if layer and isinstance(layer, QgsVectorLayer):
+            for field in layer.fields():
+                self.cmb_road_width_field.addItem(field.name(), field.name())
+            for candidate in ["yolGenislik2", "genislik", "GENISLIK", "width", "WIDTH", "yol_genisligi"]:
+                idx = self.cmb_road_width_field.findText(candidate)
+                if idx >= 0:
+                    self.cmb_road_width_field.setCurrentIndex(idx)
+                    break
+
+    def _on_run_road_platform(self):
+        layer = self.cmb_road_layer.currentLayer()
+        if not layer or not isinstance(layer, QgsVectorLayer):
+            QMessageBox.warning(self, "Uyarı", "Lütfen geçerli bir yol orta çizgi katmanı seçin!")
+            return
+
+        width_field = self.cmb_road_width_field.currentData() or ""
+        default_width = self.spn_default_road_width.value()
+
+        params = {
+            'INPUT': layer,
+            'FIELD_GENISLIK': width_field if width_field else None,
+            'DEFAULT_GENISLIK': default_width,
+            'OUTPUT': 'TEMPORARY_OUTPUT'
+        }
+
+        try:
+            self.btn_run_platform.setEnabled(False)
+            res = processing.run("pln3113:nip_yol_platform_uretici", params)
+            out_layer = res.get('OUTPUT')
+            if out_layer:
+                if isinstance(out_layer, str):
+                    out_layer = QgsVectorLayer(out_layer, f"Yol Platformu ({layer.name()})", "ogr")
+                else:
+                    out_layer.setName(f"Yol Platformu ({layer.name()})")
+                QgsProject.instance().addMapLayer(out_layer)
+                self.cmb_kavsak_layer.setLayer(out_layer)
+                QMessageBox.information(
+                    self, "Başarılı",
+                    f"Yol platformu, refüj ve bordür çizgileri başarıyla üretildi!\n"
+                    f"Üretilen Katman: {out_layer.name()}\n"
+                    f"Öğe Sayısı: {out_layer.featureCount()}"
+                )
+        except Exception as e:
+            QMessageBox.critical(self, "Hata", f"Yol platformu üretilirken hata:\n{str(e)}")
+        finally:
+            self.btn_run_platform.setEnabled(True)
+
+    def _on_run_kavsak_trim(self):
+        layer = self.cmb_kavsak_layer.currentLayer()
+        if not layer or not isinstance(layer, QgsVectorLayer):
+            QMessageBox.warning(self, "Uyarı", "Lütfen geçerli bir yol platform katmanı seçin!")
+            return
+
+        radius = self.spn_kavsak_trim.value() * 4.0
+        split_dist = self.spn_kavsak_trim.value()
+
+        params = {
+            'INPUT': layer,
+            'RADIUS': radius,
+            'SPLIT_DIST': split_dist,
+            'TOLERANCE': 0.25,
+            'OUTPUT': 'TEMPORARY_OUTPUT'
+        }
+
+        try:
+            self.btn_run_kavsak.setEnabled(False)
+            res = processing.run("pln3113:nip_yol_kavsak_trim", params)
+            out_layer = res.get('OUTPUT')
+            if out_layer:
+                if isinstance(out_layer, str):
+                    out_layer = QgsVectorLayer(out_layer, f"Kavşak Trim ({layer.name()})", "ogr")
+                else:
+                    out_layer.setName(f"Kavşak Trim ({layer.name()})")
+                QgsProject.instance().addMapLayer(out_layer)
+                self.cmb_poly_road_layer.setLayer(out_layer)
+                QMessageBox.information(
+                    self, "Başarılı",
+                    f"Kavşak hatları kırpıldı ve yaklaşımlar parçalandı!\n"
+                    f"Üretilen Katman: {out_layer.name()}\n"
+                    f"Öğe Sayısı: {out_layer.featureCount()}"
+                )
+        except Exception as e:
+            QMessageBox.critical(self, "Hata", f"Kavşak kırpma işleminde hata:\n{str(e)}")
+        finally:
+            self.btn_run_kavsak.setEnabled(True)
+
+    def _on_run_road_polygonize(self):
+        road_layer = self.cmb_poly_road_layer.currentLayer()
+        if not road_layer or not isinstance(road_layer, QgsVectorLayer):
+            QMessageBox.warning(self, "Uyarı", "Lütfen kapanmış yol dış sınır çizgileri katmanını seçin!")
+            return
+
+        plan_layer = self.cmb_poly_plan_layer.currentLayer()
+        if not plan_layer or not isinstance(plan_layer, QgsVectorLayer):
+            QMessageBox.warning(self, "Uyarı", "Lütfen referans NİP plan kullanım poligonları katmanını seçin!")
+            return
+
+        params = {
+            'INPUT_LINES': road_layer,
+            'INPUT_ZONES': plan_layer,
+            'INCLUDE_MANUAL': True,
+            'OUTPUT': 'TEMPORARY_OUTPUT'
+        }
+
+        try:
+            self.btn_run_poly.setEnabled(False)
+            res = processing.run("pln3113:nip_yol_poligonlasma_esleme", params)
+            out_layer = res.get('OUTPUT')
+            if out_layer:
+                if isinstance(out_layer, str):
+                    out_layer = QgsVectorLayer(out_layer, f"Poligonlaşan Yollar/Adalar ({road_layer.name()})", "ogr")
+                else:
+                    out_layer.setName(f"Poligonlaşan Yollar/Adalar ({road_layer.name()})")
+                QgsProject.instance().addMapLayer(out_layer)
+                QMessageBox.information(
+                    self, "Başarılı",
+                    f"Yol sınırları poligonlaştırıldı ve plan fonksiyonları eşleştirildi!\n"
+                    f"Üretilen Poligon Katmanı: {out_layer.name()}\n"
+                    f"Poligon Sayısı: {out_layer.featureCount()}"
+                )
+        except Exception as e:
+            QMessageBox.critical(self, "Hata", f"Poligonlaştırma işleminde hata:\n{str(e)}")
+        finally:
+            self.btn_run_poly.setEnabled(True)
+
+    # -----------------------------------------------------------------
+    # SEKME 4: NİP PLAN NÜFUSU, DONATI, KAMU-ÖZEL & DOP ANALİZİ
     # -----------------------------------------------------------------
     def _create_tab_nip(self) -> QWidget:
         tab = QWidget()
@@ -2286,5 +2727,345 @@ tr:hover {{ background: #f1f5f9; }}
         self.last_field_out_layer.triggerRepaint()
         if self.iface and hasattr(self.iface, "layerTreeView") and self.iface.layerTreeView():
             self.iface.layerTreeView().refreshLayerSymbology(self.last_field_out_layer.id())
+
+    # -----------------------------------------------------------------
+    # SEKME 6: ULAŞIM AĞI, ÖN CEPHE, ERİŞİM ÇAPLARI VE OD MATRİSİ
+    # -----------------------------------------------------------------
+    def _create_tab_network(self) -> QWidget:
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        layout.setContentsMargins(4, 4, 4, 4)
+        layout.setSpacing(8)
+
+        card_info = QFrame()
+        card_info.setObjectName("nipAccentCard")
+        info_lay = QVBoxLayout(card_info)
+        info_lay.setContentsMargins(10, 8, 10, 8)
+        info_lay.setSpacing(4)
+
+        t_lbl = QLabel("🌐 Ulaşım Ağı, Ön Cephe, Erişim Çapları ve OD Analizleri")
+        t_lbl.setStyleSheet("font-weight: 700; font-size: 10pt; color: #0f766e;")
+        info_lay.addWidget(t_lbl)
+
+        d_lbl = QLabel(
+            "Saf Python ve QGIS Core topoloji motoru (sıfır QNEAT3/GRASS bağımlılığı) ile: "
+            "ada/binaların yola bakan ön cepheleri, MPYY donatı erişim havzaları ve yürüme servis yolları, "
+            "OD maliyet matrisleri, gerçek ağ rotaları ve yol eğimleri hesaplar."
+        )
+        d_lbl.setWordWrap(True)
+        d_lbl.setStyleSheet("color: #475569; font-size: 8.5pt;")
+        info_lay.addWidget(d_lbl)
+        layout.addWidget(card_info)
+
+        # 1. Ön Cephe ve Servis Noktası Bulucu
+        box_cephe = QGroupBox("1. Ada / Parsel / Bina Ön Cephe ve Servis Noktası Bulucu")
+        lay_cephe = QVBoxLayout(box_cephe)
+        lay_cephe.setSpacing(6)
+
+        form_cephe = QFormLayout()
+        form_cephe.setSpacing(6)
+
+        self.cmb_cephe_poly = QgsMapLayerComboBox()
+        self.cmb_cephe_poly.setFilters(QgsMapLayerProxyModel.Filter.PolygonLayer)
+        form_cephe.addRow("Ada / Parsel / Bina Katmanı:", self.cmb_cephe_poly)
+
+        self.cmb_cephe_road = QgsMapLayerComboBox()
+        self.cmb_cephe_road.setFilters(QgsMapLayerProxyModel.Filter.LineLayer)
+        form_cephe.addRow("Yol Ağı Katmanı:", self.cmb_cephe_road)
+
+        self.spn_cephe_dist = QDoubleSpinBox()
+        self.spn_cephe_dist.setRange(5.0, 500.0)
+        self.spn_cephe_dist.setValue(100.0)
+        self.spn_cephe_dist.setSuffix(" metre")
+        form_cephe.addRow("Maksimum Arama Mesafesi:", self.spn_cephe_dist)
+
+        lay_cephe.addLayout(form_cephe)
+
+        self.btn_run_cephe = QPushButton("  🏢 Ön Cephe Segmentlerini ve Servis Noktalarını Üret")
+        self.btn_run_cephe.setObjectName("PrimaryButton")
+        self.btn_run_cephe.setCursor(_POINTING_HAND)
+        self.btn_run_cephe.clicked.connect(self._on_run_on_cephe)
+        lay_cephe.addWidget(self.btn_run_cephe)
+        layout.addWidget(box_cephe)
+
+        # 2. MPYY Donatı Erişim Havzası ve Yürüme Çapları
+        box_erisme = QGroupBox("2. MPYY Kentsel Donatı Servis Alanı ve Erişim Çapları")
+        lay_erisme = QVBoxLayout(box_erisme)
+        lay_erisme.setSpacing(6)
+
+        form_erisme = QFormLayout()
+        form_erisme.setSpacing(6)
+
+        self.cmb_erisme_fac = QgsMapLayerComboBox()
+        self.cmb_erisme_fac.setFilters(QgsMapLayerProxyModel.Filter.PointLayer | QgsMapLayerProxyModel.Filter.PolygonLayer)
+        form_erisme.addRow("Donatı Katmanı (Okul, Sağlık, Park...):", self.cmb_erisme_fac)
+
+        self.cmb_erisme_road = QgsMapLayerComboBox()
+        self.cmb_erisme_road.setFilters(QgsMapLayerProxyModel.Filter.LineLayer)
+        form_erisme.addRow("Yol Ağı Katmanı:", self.cmb_erisme_road)
+
+        self.txt_erisme_distances = QLineEdit("250, 500, 1000")
+        form_erisme.addRow("Erişim Mesafeleri (m, virgülle):", self.txt_erisme_distances)
+
+        lay_erisme.addLayout(form_erisme)
+
+        self.btn_run_erisme = QPushButton("  🚶 Erişim Havzası Yol Ağını ve MPYY Tamponlarını Üret")
+        self.btn_run_erisme.setObjectName("SecondaryButton")
+        self.btn_run_erisme.setCursor(_POINTING_HAND)
+        self.btn_run_erisme.clicked.connect(self._on_run_erisme_havzasi)
+        lay_erisme.addWidget(self.btn_run_erisme)
+        layout.addWidget(box_erisme)
+
+        # 3. OD Maliyet Matrisi, Güzergah Rotaları ve Merkezilik
+        box_od = QGroupBox("3. Menşe-Hedef (OD) Matrisi, Ağ Rotaları, Eğim ve Merkezilik")
+        lay_od = QVBoxLayout(box_od)
+        lay_od.setSpacing(6)
+
+        form_od = QFormLayout()
+        form_od.setSpacing(6)
+
+        self.cmb_od_origins = QgsMapLayerComboBox()
+        self.cmb_od_origins.setFilters(QgsMapLayerProxyModel.Filter.PointLayer)
+        form_od.addRow("Menşe (Origins - Başlangıç / Ön Cephe):", self.cmb_od_origins)
+
+        self.cmb_od_destinations = QgsMapLayerComboBox()
+        self.cmb_od_destinations.setFilters(QgsMapLayerProxyModel.Filter.PointLayer)
+        form_od.addRow("Hedef (Destinations - Donatılar / Merkezler):", self.cmb_od_destinations)
+
+        self.cmb_od_road = QgsMapLayerComboBox()
+        self.cmb_od_road.setFilters(QgsMapLayerProxyModel.Filter.LineLayer)
+        form_od.addRow("Yol Ağı Katmanı:", self.cmb_od_road)
+
+        self.cmb_od_dem = QgsMapLayerComboBox()
+        self.cmb_od_dem.setFilters(QgsMapLayerProxyModel.Filter.RasterLayer)
+        form_od.addRow("Sayısal Yükseklik Modeli (DEM / Opsiyonel):", self.cmb_od_dem)
+
+        self.chk_od_routes = QCheckBox("Ağ üzerindeki gerçek yol güzergah rotalarını çizgi olarak üret")
+        self.chk_od_routes.setChecked(True)
+        form_od.addRow(self.chk_od_routes)
+
+        self.chk_od_desire = QCheckBox("Kuş uçuşu arzu hatlarını (Desire lines & Sapma Oranı) üret")
+        self.chk_od_desire.setChecked(True)
+        form_od.addRow(self.chk_od_desire)
+
+        self.chk_od_centrality = QCheckBox("Ağ merkezilik (Aradalık / Betweenness & Yakınlık / Closeness) analizi yap")
+        self.chk_od_centrality.setChecked(True)
+        form_od.addRow(self.chk_od_centrality)
+
+        lay_od.addLayout(form_od)
+
+        self.btn_run_od = QPushButton("  📊 OD Matrisi ve Ulaşım Ağı Analizini Çalıştır")
+        self.btn_run_od.setObjectName("AccentButton")
+        self.btn_run_od.setCursor(_POINTING_HAND)
+        self.btn_run_od.clicked.connect(self._on_run_od_merkezilik)
+        lay_od.addWidget(self.btn_run_od)
+        layout.addWidget(box_od)
+
+        layout.addStretch()
+        return tab
+
+    def _on_run_on_cephe(self):
+        poly_layer = self.cmb_cephe_poly.currentLayer()
+        road_layer = self.cmb_cephe_road.currentLayer()
+        if not poly_layer or not isinstance(poly_layer, QgsVectorLayer):
+            QMessageBox.warning(self, "Uyarı", "Lütfen geçerli bir ada/parsel/bina poligon katmanı seçin!")
+            return
+        if not road_layer or not isinstance(road_layer, QgsVectorLayer):
+            QMessageBox.warning(self, "Uyarı", "Lütfen geçerli bir yol ağı katmanı seçin!")
+            return
+
+        params = {
+            'INPUT_POLYGONS': poly_layer,
+            'INPUT_ROADS': road_layer,
+            'OUTPUT_LINES': 'TEMPORARY_OUTPUT',
+            'OUTPUT_POINTS': 'TEMPORARY_OUTPUT'
+        }
+
+        try:
+            self.btn_run_cephe.setEnabled(False)
+            res = processing.run("pln3113:on_cephe_ve_servis_noktasi_bulucu", params)
+            lines_layer = res.get('OUTPUT_LINES')
+            pts_layer = res.get('OUTPUT_POINTS')
+
+            if lines_layer:
+                if isinstance(lines_layer, str):
+                    lines_layer = QgsVectorLayer(lines_layer, f"Servis Bağlantı Çizgileri ({poly_layer.name()})", "ogr")
+                else:
+                    lines_layer.setName(f"Servis Bağlantı Çizgileri ({poly_layer.name()})")
+                QgsProject.instance().addMapLayer(lines_layer)
+
+            if pts_layer:
+                if isinstance(pts_layer, str):
+                    pts_layer = QgsVectorLayer(pts_layer, f"Ön Cephe Servis Noktaları - Origin ({poly_layer.name()})", "ogr")
+                else:
+                    pts_layer.setName(f"Ön Cephe Servis Noktaları - Origin ({poly_layer.name()})")
+                QgsProject.instance().addMapLayer(pts_layer)
+                self.cmb_od_origins.setLayer(pts_layer)
+
+            cnt_lines = lines_layer.featureCount() if lines_layer else 0
+            cnt_pts = pts_layer.featureCount() if pts_layer else 0
+            QMessageBox.information(
+                self, "Başarılı",
+                f"Ön cephe tespiti ve servis noktaları başarıyla üretildi!\n\n"
+                f"1. Servis Bağlantı Çizgileri: {cnt_lines} adet\n"
+                f"2. Servis Noktaları (Origin): {cnt_pts} adet\n\n"
+                f"Noktalar OD Matrisi menşeler bölümüne otomatik aktarıldı."
+            )
+        except Exception as e:
+            QMessageBox.critical(self, "Hata", f"Ön cephe analizi sırasında hata:\n{str(e)}")
+        finally:
+            self.btn_run_cephe.setEnabled(True)
+
+    def _on_run_erisme_havzasi(self):
+        fac_layer = self.cmb_erisme_fac.currentLayer()
+        road_layer = self.cmb_erisme_road.currentLayer()
+        if not fac_layer or not isinstance(fac_layer, QgsVectorLayer):
+            QMessageBox.warning(self, "Uyarı", "Lütfen geçerli bir donatı/hizmet katmanı seçin!")
+            return
+        if not road_layer or not isinstance(road_layer, QgsVectorLayer):
+            QMessageBox.warning(self, "Uyarı", "Lütfen geçerli bir yol ağı katmanı seçin!")
+            return
+
+        raw_dists = self.txt_erisme_distances.text().strip()
+        dist_list = []
+        for p in raw_dists.split(","):
+            try:
+                val = float(p.strip())
+                if val > 0:
+                    dist_list.append(val)
+            except ValueError:
+                continue
+
+        if not dist_list:
+            dist_list = [500.0]
+
+        try:
+            self.btn_run_erisme.setEnabled(False)
+            for d in dist_list:
+                params = {
+                    'INPUT_FACILITIES': fac_layer,
+                    'INPUT_ROADS': road_layer,
+                    'DISTANCE': d,
+                    'CALCULATE_NETWORK': True,
+                    'CALCULATE_BUFFER': True,
+                    'OUTPUT_SERVICE_ROADS': 'TEMPORARY_OUTPUT',
+                    'OUTPUT_SERVICE_POLYGONS': 'TEMPORARY_OUTPUT',
+                    'OUTPUT_MPYY_BUFFER': 'TEMPORARY_OUTPUT'
+                }
+                res = processing.run("pln3113:nip_erisme_ve_mpyy_etki_capi", params)
+                roads_out = res.get('OUTPUT_SERVICE_ROADS')
+                poly_out = res.get('OUTPUT_SERVICE_POLYGONS')
+                buf_out = res.get('OUTPUT_MPYY_BUFFER')
+
+                if buf_out:
+                    if isinstance(buf_out, str):
+                        buf_out = QgsVectorLayer(buf_out, f"MPYY Tamponu ({int(d)}m)", "ogr")
+                    else:
+                        buf_out.setName(f"MPYY Tamponu ({int(d)}m)")
+                    QgsProject.instance().addMapLayer(buf_out)
+
+                if poly_out:
+                    if isinstance(poly_out, str):
+                        poly_out = QgsVectorLayer(poly_out, f"Erişim Havza Poligonu ({int(d)}m)", "ogr")
+                    else:
+                        poly_out.setName(f"Erişim Havza Poligonu ({int(d)}m)")
+                    QgsProject.instance().addMapLayer(poly_out)
+
+                if roads_out:
+                    if isinstance(roads_out, str):
+                        roads_out = QgsVectorLayer(roads_out, f"Servis Yol Ağı ({int(d)}m)", "ogr")
+                    else:
+                        roads_out.setName(f"Servis Yol Ağı ({int(d)}m)")
+                    QgsProject.instance().addMapLayer(roads_out)
+
+            QMessageBox.information(
+                self, "Başarılı",
+                f"Erişim havzası ve MPYY etki çapları üretildi!\n"
+                f"Hesaplanan Mesafeler: {', '.join(f'{int(d)}m' for d in dist_list)}"
+            )
+        except Exception as e:
+            QMessageBox.critical(self, "Hata", f"Erişim havzası analizi sırasında hata:\n{str(e)}")
+        finally:
+            self.btn_run_erisme.setEnabled(True)
+
+    def _on_run_od_merkezilik(self):
+        orig_layer = self.cmb_od_origins.currentLayer()
+        dest_layer = self.cmb_od_destinations.currentLayer()
+        road_layer = self.cmb_od_road.currentLayer()
+        dem_layer = self.cmb_od_dem.currentLayer()
+
+        if not orig_layer or not isinstance(orig_layer, QgsVectorLayer):
+            QMessageBox.warning(self, "Uyarı", "Lütfen geçerli bir başlangıç (Origin) katmanı seçin!")
+            return
+        if not dest_layer or not isinstance(dest_layer, QgsVectorLayer):
+            QMessageBox.warning(self, "Uyarı", "Lütfen geçerli bir hedef (Destination) katmanı seçin!")
+            return
+        if not road_layer or not isinstance(road_layer, QgsVectorLayer):
+            QMessageBox.warning(self, "Uyarı", "Lütfen geçerli bir yol ağı katmanı seçin!")
+            return
+
+        params = {
+            'INPUT_ORIGINS': orig_layer,
+            'INPUT_DESTINATIONS': dest_layer,
+            'INPUT_ROADS': road_layer,
+            'INPUT_DEM': dem_layer if dem_layer else None,
+            'ROUTE_MODE': 0,
+            'OUTPUT_ROUTES': 'TEMPORARY_OUTPUT',
+            'OUTPUT_DESIRE': 'TEMPORARY_OUTPUT' if self.chk_od_desire.isChecked() else None,
+            'OUTPUT_CENTRALITY': 'TEMPORARY_OUTPUT' if self.chk_od_centrality.isChecked() else None,
+            'OUTPUT_SLOPE': 'TEMPORARY_OUTPUT' if dem_layer else None
+        }
+
+        try:
+            self.btn_run_od.setEnabled(False)
+            res = processing.run("pln3113:nip_od_merkezilik_egim", params)
+
+            routes_out = res.get('OUTPUT_ROUTES')
+            desire_out = res.get('OUTPUT_DESIRE')
+            cent_out = res.get('OUTPUT_CENTRALITY')
+            slope_out = res.get('OUTPUT_SLOPE')
+
+            if routes_out:
+                if isinstance(routes_out, str):
+                    routes_out = QgsVectorLayer(routes_out, f"Ağ Rotaları ({orig_layer.name()} -> {dest_layer.name()})", "ogr")
+                else:
+                    routes_out.setName(f"Ağ Rotaları ({orig_layer.name()} -> {dest_layer.name()})")
+                QgsProject.instance().addMapLayer(routes_out)
+
+            if desire_out:
+                if isinstance(desire_out, str):
+                    desire_out = QgsVectorLayer(desire_out, f"Kuşuçuşu İstek Hatları ({orig_layer.name()})", "ogr")
+                else:
+                    desire_out.setName(f"Kuşuçuşu İstek Hatları ({orig_layer.name()})")
+                QgsProject.instance().addMapLayer(desire_out)
+
+            if cent_out:
+                if isinstance(cent_out, str):
+                    cent_out = QgsVectorLayer(cent_out, "Ağ Merkezilikleri (Betweenness/Closeness)", "ogr")
+                else:
+                    cent_out.setName("Ağ Merkezilikleri (Betweenness/Closeness)")
+                QgsProject.instance().addMapLayer(cent_out)
+
+            if slope_out:
+                if isinstance(slope_out, str):
+                    slope_out = QgsVectorLayer(slope_out, "Yol Eğim ve Kot Analizi", "ogr")
+                else:
+                    slope_out.setName("Yol Eğim ve Kot Analizi")
+                QgsProject.instance().addMapLayer(slope_out)
+
+            cnt_routes = routes_out.featureCount() if routes_out else 0
+            cnt_desire = desire_out.featureCount() if desire_out else 0
+            QMessageBox.information(
+                self, "Başarılı",
+                f"OD Matrisi ve Ulaşım Ağı Analizi tamamlandı!\n\n"
+                f"• Ağ Rota Çizgileri: {cnt_routes} adet\n"
+                f"• Kuşuçuşu / İstek Çizgileri: {cnt_desire} adet\n"
+                f"• Merkezilik / Eğim Katmanları harita tuvaline eklendi."
+            )
+        except Exception as e:
+            QMessageBox.critical(self, "Hata", f"OD Matrisi analizi sırasında hata:\n{str(e)}")
+        finally:
+            self.btn_run_od.setEnabled(True)
+
 
 
