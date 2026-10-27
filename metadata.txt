@@ -2,16 +2,19 @@
 name=PLN3113 NİP ve Kentsel Analiz Stüdyosu
 qgisMinimumVersion=3.22
 qgisMaximumVersion=4.99
-description=[TR ONLY] 1/5000 Master Plan (NIP) population, MPYY standards, DOP/land readjustment, urban morphology, and network analytics studio designed for Turkish urban planning studios.
+description=Turkish-language studio for 1/5000 master plans (Nazım İmar Planı) in Turkey: population and MPYY amenity standards, DOP land readjustment, urban morphology, space syntax and accessibility.
 version=1.1.4
 author=Geophilo
 email=yusuf.eminoglu@deu.edu.tr
-about=PLN3113 NİP ve Kentsel Analiz Stüdyosu, Türkiye Mekânsal Planlar Yapım Yönetmeliği (MPYY) normları, 3194 sayılı İmar Kanunu md. 18 parselasyon/DOP ilkeleri ve PlanX kentsel analitik motoruyla güçlendirilmiş entegre bir 1/5000 Nazım İmar Planı (NİP) analiz ve modelleme paketidir. Öncelikli olarak PLN3113 Şehir Planlama Projesi III stüdyosu için tasarlanmış olmakla birlikte, Türkiye'deki tüm Şehir ve Bölge Planlama bölümlerinde 1/5000 NİP, analitik etüt ve kentsel tasarım stüdyoları yürüten lisans/lisansüstü öğrencileri ile kentsel araştırmacılar için evrensel uyumluluk sunar. Eklenti; (1) Topolojik geometri temizliği, poligon geçerlilik onarımı ve SHA-256 hash tabanlı mükerrer parsel ayıklama; (2) Resmi MPYY 1.1.7 şablonlu veya yerel genişletilmiş ilişkisel GeoPackage (GPKG) planlama veritabanı kurulumu ve 1-tıkla MPGM standartlarında vektörel lejant/QML semboloji eşleme; (3) Yol hiyerarşisi, bordür/kaldırım ofsetleme, otomatik fillet yaylı kavşak geometrisi ve aks kapatma/poligonlaştırma; (4) Brüt plan nüfusu, MPYY Ek-2 sosyal/teknik donatı asgari kişi başı m² yeterlilik bilançosu, dinamik DOP içi/nDOP mülkiyet dengesi ve İller Bankası/matematiksel projeksiyon modelleri; (5) Kadastro adası ve bina ayak izlerinden türetilen TAKS (GSI), KAKS/Emsal (FSI), kat adedi (L), açık alan (OSR), PlanX morfoloji grafı ile yapı nizamı (Ayrık/Bitişik/Blok - A4) ve Spacematrix doku tipolojisi; (6) Gömülü Dijkstra ve Space Syntax motoruyla NACH/NAIN eksensel entegrasyon, primal merkezilik (Closeness/Betweenness), yol eğimi, bina ön cephe servis noktası bulucu, OD arzu hatları ve rotalama, çok kriterli dinamik yürüme izokronları (Concave Hull pedshed havzaları), 2SFCA iki aşamalı yüzen donatı erişilebilirlik modeli ve A/B senaryo farkı analizi bileşenlerini tek bir sezgisel çalışma alanında bir araya getirir.
+about=PLN3113 NİP ve Kentsel Analiz Stüdyosu, 1/5000 Nazım İmar Planı çalışmasının analiz ve hesap yükünü tek bir panelde toplar. MPYY normlarına, 3194 sayılı İmar Kanunu 18. maddeye ve PlanX kentsel analitik motoruna dayanır; şehir planlama stüdyoları, öğrenciler ve araştırmacılar için hazırlanmıştır.
+    Altı çalışma alanı: geometri temizliği, geçersiz poligon onarımı ve mükerrer parsel ayıklama; MPYY 1.1.7 şablonlu GeoPackage plan veritabanı ve tek tıkla resmî lejant; yol hiyerarşisi, bordür ve kaldırım ofsetleri, yaylı kavşaklar ve poligonlaştırma; brüt plan nüfusu, Ek-2 donatı yeterlilik bilançosu, DOP/nDOP mülkiyet dengesi ve nüfus projeksiyonları; TAKS, KAKS/emsal, kat adedi, açık alan oranı, yapı nizamı ve Spacematrix doku tipolojisi; Space Syntax NACH/NAIN, merkezilik, OD arzu hatları, yürüme izokronları, 2SFCA donatı erişilebilirliği ve A/B senaryo farkı.
+    15 Processing aracı model tasarımcısında zincirlenebilir. Arayüz Türkçedir.
+    Kılavuz: https://geophilo.com/pln3113_nip/manual.html
 repository=https://github.com/YusufEminoglu/pln3113_nip
 tracker=https://github.com/YusufEminoglu/pln3113_nip/issues
-homepage=https://github.com/YusufEminoglu/pln3113_nip
+homepage=https://geophilo.com/pln3113_nip/
 category=Vector
-tags=urban-planning,master-plan,nazim-imar-plani,nip,mpyy,turkey,spatial-analytics,urban-morphology,spacematrix,taks,kaks,gsi,fsi,dop,land-readjustment,social-infrastructure,demography,population-projection,space-syntax,centrality,isochrones,concave-hull,pedshed,2sfca,facility-adequacy,accessibility,od-matrix,road-network,intersection-fillet,cad-gis,deu,sbp,pln3113,only-tr
+tags=urban-planning,master-plan,nazim-imar-plani,nip,mpyy,turkey,spatial-analytics,urban-morphology,spacematrix,taks,kaks,gsi,fsi,dop,land-readjustment,social-infrastructure,demography,population-projection,space-syntax,centrality,isochrones,concave-hull,pedshed,2sfca,facility-adequacy,accessibility,od-matrix,road-network,intersection-fillet,cad-gis,pln3113,turkish,geophilo
 experimental=False
 deprecated=False
 hasProcessingProvider=yes
