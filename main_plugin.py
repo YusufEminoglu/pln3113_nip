@@ -64,11 +64,10 @@ class NipEklentiPlugin:
 
     def open_guide(self):
         """Metodoloji rehberini açar."""
-        guide_path = os.path.join(PLUGIN_DIR, "docs", "teorik_rehber.html")
-        if os.path.exists(guide_path):
-            from qgis.PyQt.QtCore import QUrl
-            from qgis.PyQt.QtGui import QDesktopServices
-            QDesktopServices.openUrl(QUrl.fromLocalFile(guide_path))
+        # Kılavuz ve teorik rehber geophilo.com'da tek sayfada yayımlanır.
+        from qgis.PyQt.QtCore import QUrl
+        from qgis.PyQt.QtGui import QDesktopServices
+        QDesktopServices.openUrl(QUrl("https://geophilo.com/pln3113_nip/#teorik"))
 
     def unload(self):
         """Eklenti kapatılırken temizlik yapar."""

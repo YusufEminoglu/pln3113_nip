@@ -285,11 +285,8 @@ class TireNipDockWidget(QDockWidget):
 
     def _open_theoretical_guide(self):
         """A'dan Z'ye teorik metodoloji el kitabını kullanıcının varsayılan tarayıcısında açar."""
-        guide_path = os.path.join(PLUGIN_DIR, "docs", "teorik_rehber.html")
-        if os.path.exists(guide_path):
-            QDesktopServices.openUrl(QUrl.fromLocalFile(guide_path))
-        else:
-            QMessageBox.warning(self, "Uyarı", f"Metodoloji rehberi dosyası bulunamadı:\n{guide_path}")
+        # Kılavuz ve teorik rehber geophilo.com'da tek sayfada yayımlanır.
+        QDesktopServices.openUrl(QUrl("https://geophilo.com/pln3113_nip/#teorik"))
 
     def _create_tab_guide(self) -> QWidget:
         """Metodoloji, Resmî Mevzuat ve El Kitabı sayfası."""

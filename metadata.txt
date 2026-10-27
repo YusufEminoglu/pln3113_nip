@@ -9,7 +9,7 @@ email=yusuf.eminoglu@deu.edu.tr
 about=PLN3113 NİP ve Kentsel Analiz Stüdyosu, 1/5000 Nazım İmar Planı çalışmasının analiz ve hesap yükünü tek bir panelde toplar. MPYY normlarına, 3194 sayılı İmar Kanunu 18. maddeye ve PlanX kentsel analitik motoruna dayanır; şehir planlama stüdyoları, öğrenciler ve araştırmacılar için hazırlanmıştır.
     Altı çalışma alanı: geometri temizliği, geçersiz poligon onarımı ve mükerrer parsel ayıklama; MPYY 1.1.7 şablonlu GeoPackage plan veritabanı ve tek tıkla resmî lejant; yol hiyerarşisi, bordür ve kaldırım ofsetleri, yaylı kavşaklar ve poligonlaştırma; brüt plan nüfusu, Ek-2 donatı yeterlilik bilançosu, DOP/nDOP mülkiyet dengesi ve nüfus projeksiyonları; TAKS, KAKS/emsal, kat adedi, açık alan oranı, yapı nizamı ve Spacematrix doku tipolojisi; Space Syntax NACH/NAIN, merkezilik, OD arzu hatları, yürüme izokronları, 2SFCA donatı erişilebilirliği ve A/B senaryo farkı.
     15 Processing aracı model tasarımcısında zincirlenebilir. Arayüz Türkçedir.
-    Kılavuz: https://geophilo.com/pln3113_nip/manual.html
+    Kılavuz: https://geophilo.com/pln3113_nip/
 repository=https://github.com/YusufEminoglu/pln3113_nip
 tracker=https://github.com/YusufEminoglu/pln3113_nip/issues
 homepage=https://geophilo.com/pln3113_nip/
