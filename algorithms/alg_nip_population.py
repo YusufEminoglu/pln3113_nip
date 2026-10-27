@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 """2. Tire NİP Nüfus, Donatı, Kamu-Özel, DOP ve Ulaşım Analizi Processing Algoritması.
 
-DEÜ Mimarlık Fakültesi Şehir ve Bölge Planlama Bölümü
 PLN3113 - Tire NİP Analiz Stüdyosu
 """
 from __future__ import annotations

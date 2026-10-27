@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 """2. Kavşak Temizleme, Trim ve Yaklaşım Parçalama Algoritması.
 
-DEÜ Mimarlık Fakültesi Şehir ve Bölge Planlama Bölümü
 PLN3113 - Tire NİP Analiz Stüdyosu
 """
 from __future__ import annotations

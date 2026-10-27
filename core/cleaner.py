@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 """Geometri Temizleme ve Çift (Duplike) Poligon Ayıklama Motoru.
 
-DEÜ Mimarlık Fakültesi Şehir ve Bölge Planlama Bölümü
 PLN3113 - tire_nip
 """
 from __future__ import annotations

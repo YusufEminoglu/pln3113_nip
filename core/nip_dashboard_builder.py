@@ -5,9 +5,8 @@ Mekânsal Planlar Yapım Yönetmeliği (MPYY), 3194 sayılı İmar Kanunu Md. 18
 ve PAİY Md. 9 standartlarını içeren; Plotly.js + Leaflet.js tabanlı,
 yayın kalitesinde zengin interaktif analiz dashboard raporu üretir.
 
-DEÜ Mimarlık Fakültesi Şehir ve Bölge Planlama Bölümü
 PLN3113 - tire_nip
-Geliştirici: Arş. Gör. Yusuf Eminoğlu
+Geliştirici: Geophilo
 """
 from __future__ import annotations
 
@@ -295,7 +294,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helve
 <body>
 
 <div class="header">
-  <h1>🏛️ Dokuz Eylül Üniversitesi | PLN3113 1/5000 NİP & DOP Analiz Dashboard</h1>
+  <h1>🏛️ PLN3113 1/5000 NİP & DOP Analiz Dashboard</h1>
   <div class="subtitle">3194 sayılı İmar Kanunu Md. 18 (DOP) · MPYY Ek-2 Kentsel Donatı Standartları · PAİY Md. 9 Açık-Yeşil Analizi · Rapor Tarihi: <span id="lbl_tarih"></span></div>
 </div>
 
@@ -436,8 +435,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helve
   </div>
 
   <div class="footer">
-    Dokuz Eylül Üniversitesi Mimarlık Fakültesi Şehir ve Bölge Planlama Bölümü | PLN3113 Şehir Planlama Projesi III<br/>
-    Hazırlayan: Arş. Gör. Yusuf Eminoğlu | PlanX QGIS Eklenti Ekosistemi
+    PLN3113 Şehir Planlama Projesi III<br/>
+    Hazırlayan: Geophilo | PlanX QGIS Eklenti Ekosistemi
   </div>
 </div>
 

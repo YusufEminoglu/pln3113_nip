@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 """PlanX Gömülü Ulaşım ve Ağ Analitik Motoru (PLN3113 NİP Entegrasyonu).
 
-DEÜ Mimarlık Fakültesi Şehir ve Bölge Planlama Bölümü
 PLN3113 - Tire NİP Analiz Stüdyosu
 
 Saf NumPy çekirdeği ve opsiyonel SciPy hızlandırma yolu.

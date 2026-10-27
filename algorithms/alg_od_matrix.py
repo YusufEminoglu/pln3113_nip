@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 """Menşe-Hedef (OD) Maliyet Matrisi, Rotalama ve Engel Analizi (PlanX Motoru Entegrasyonu).
 
-DEÜ Mimarlık Fakültesi Şehir ve Bölge Planlama Bölümü
 PLN3113 - Tire NİP Analiz Stüdyosu
 
 Konut mahalleleri (orijin) ile MİA, sanayi ve hastane/otogar (destinasyon) ilişkisi.

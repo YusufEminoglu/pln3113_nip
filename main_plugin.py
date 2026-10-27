@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 """nip_eklenti_01 main plugin entry point.
 
-DEÜ Mimarlık Fakültesi Şehir ve Bölge Planlama Bölümü
 PLN3113 - Tire NİP Analiz Stüdyosu
 """
 from __future__ import annotations

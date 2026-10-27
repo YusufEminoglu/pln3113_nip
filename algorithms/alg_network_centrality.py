@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 """Primal Ağ Merkeziliği (Network Centrality - PlanX Motoru Entegrasyonu).
 
-DEÜ Mimarlık Fakültesi Şehir ve Bölge Planlama Bölümü
 PLN3113 - Tire NİP Analiz Stüdyosu
 
 Yarıçaplar R = 800 m ve 5000 m (veya global).

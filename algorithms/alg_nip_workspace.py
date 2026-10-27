@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 """1/5000 Nazım İmar Planı (NİP) Çizim Veritabanı ve Şablonu Oluşturma Algoritması.
 
-DEÜ Mimarlık Fakültesi Şehir ve Bölge Planlama Bölümü
 PLN3113 - Tire NİP Analiz Stüdyosu
 """
 from __future__ import annotations

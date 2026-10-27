@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 """Palette-aware visual styling and stylesheet for PLN3113 NİP Analiz Stüdyosu.
 
-DEÜ Mimarlık Fakültesi Şehir ve Bölge Planlama Bölümü
 PLN3113 - Tire NİP Analiz Stüdyosu
 """
 from __future__ import annotations
@@ -43,7 +42,7 @@ def studio_colors(palette: QPalette | None = None) -> dict[str, QColor]:
     text = palette.color(QPalette.ColorRole.WindowText)
     dark = window.lightness() < 128
 
-    # Signature DEÜ ŞBP Emerald/Teal accent
+    # Signature Emerald/Teal accent
     accent = QColor("#14b8a6" if dark else "#0f766e")
     accent_hover = QColor("#2dd4bf" if dark else "#115e59")
     accent_secondary = QColor("#38bdf8" if dark else "#0284c7")

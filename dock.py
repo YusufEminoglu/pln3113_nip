@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 """PLN3113 NİP ve Kentsel Analiz DockWidget Arayüzü.
 
-DEÜ Mimarlık Fakültesi Şehir ve Bölge Planlama Bölümü
 PLN3113 - pln3113_nip
 """
 from __future__ import annotations
@@ -213,7 +212,7 @@ class TireNipDockWidget(QDockWidget):
         title_row.addStretch()
         title_box.addLayout(title_row)
 
-        lbl_sub = QLabel("Dokuz Eylül Üniversitesi | PLN3113 Şehir Planlama Projesi III")
+        lbl_sub = QLabel("PLN3113 Şehir Planlama Projesi III")
         lbl_sub.setObjectName("nipHeaderSubtitle")
         title_box.addWidget(lbl_sub)
         header_layout.addLayout(title_box)
@@ -305,13 +304,13 @@ class TireNipDockWidget(QDockWidget):
         intro_lay.setContentsMargins(10, 8, 10, 8)
         intro_lay.setSpacing(6)
 
-        t_lbl = QLabel("📚 DEÜ ŞBP PLN3113 NİP Metodoloji El Kitabı")
+        t_lbl = QLabel("📚 PLN3113 NİP Metodoloji El Kitabı")
         t_lbl.setStyleSheet("font-weight: 700; font-size: 10pt;")
         intro_lay.addWidget(t_lbl)
 
         d_lbl = QLabel(
             "Mekânsal Planlar Yapım Yönetmeliği (MPYY), 3194 sayılı İmar Kanunu Madde 18 (DOP) "
-            "ve DEÜ Şehir ve Bölge Planlama Bölümü PLN3113 Stüdyo standartlarını içeren "
+            "ve PLN3113 Stüdyo standartlarını içeren "
             "kapsamlı referans ve teorik hesap kütüphanesi."
         )
         d_lbl.setWordWrap(True)

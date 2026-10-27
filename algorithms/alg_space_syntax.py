@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 """Space Syntax: Segment Açısal Analizi (PlanX Motoru Entegrasyonu).
 
-DEÜ Mimarlık Fakültesi Şehir ve Bölge Planlama Bölümü
 PLN3113 - Tire NİP Analiz Stüdyosu
 
 Yarıçaplar R = 400, 800, 1200 m ve n (global).

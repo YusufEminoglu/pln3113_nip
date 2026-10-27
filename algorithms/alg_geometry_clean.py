@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 """1. Geometri ve Duplike Temizleme Processing Algoritması.
 
-DEÜ Mimarlık Fakültesi Şehir ve Bölge Planlama Bölümü
 PLN3113 - nip_eklenti_01
 """
 from __future__ import annotations

@@ -2,9 +2,9 @@
 
 > [!NOTE]
 > **[TR ONLY] Universal Turkish Master Plan (NİP) Studio Toolset:**  
-> Bu eklenti Türkçe dilinde ve Türkiye mekânsal planlama mevzuatı/uygulamaları için geliştirilmiştir. Dokuz Eylül Üniversitesi Mimarlık Fakültesi Şehir ve Bölge Planlama Bölümü (DEÜ ŞBP) **PLN3113 Şehir Planlama Projesi III** stüdyosu başta olmak üzere; Türkiye'deki tüm üniversitelerin Şehir ve Bölge Planlama bölümlerinde 1/5000 Nazım İmar Planı, analitik etüt, kentsel morfoloji ve ulaşım ağı çalışmaları yürüten lisans/lisansüstü öğrencileri ile şehir plancıları için evrensel uyumlu bir stüdyo laboratuvarıdır.
+> Bu eklenti Türkçe dilinde ve Türkiye mekânsal planlama mevzuatı/uygulamaları için geliştirilmiştir. **PLN3113 Şehir Planlama Projesi III** stüdyosu başta olmak üzere; Türkiye'deki tüm üniversitelerin Şehir ve Bölge Planlama bölümlerinde 1/5000 Nazım İmar Planı, analitik etüt, kentsel morfoloji ve ulaşım ağı çalışmaları yürüten lisans/lisansüstü öğrencileri ile şehir plancıları için evrensel uyumlu bir stüdyo laboratuvarıdır.
 
-**Geliştirici:** Arş. Gör. Yusuf Eminoğlu (Dokuz Eylül Üniversitesi, Şehir ve Bölge Planlama Bölümü)  
+**Geliştirici:** Geophilo  
 **Akademik Profil:** [AVESIS](https://avesis.deu.edu.tr/yusuf.eminoglu) | [GitHub](https://github.com/YusufEminoglu)  
 **Lisans:** GPL-2.0-or-later  
 **Kaynak Kod:** [https://github.com/YusufEminoglu/pln3113_nip](https://github.com/YusufEminoglu/pln3113_nip)

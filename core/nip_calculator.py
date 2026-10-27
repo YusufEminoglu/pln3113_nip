@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 """Tire 1/5000 NİP Nüfus, Donatı, Kamu-Özel, DOP ve Ulaşım Hesaplama Motoru.
 
-DEÜ Mimarlık Fakültesi Şehir ve Bölge Planlama Bölümü
 PLN3113 - Tire NİP Analiz Stüdyosu
 """
 from __future__ import annotations

@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 """PLN3113 Saf Python & PyQGIS Ulaşım ve Ağ Analiz Motoru (QNEAT ve Dış Eklenti Bağımsız).
 
-DEÜ Mimarlık Fakültesi Şehir ve Bölge Planlama Bölümü
 PLN3113 - Tire NİP Analiz Stüdyosu
 """
 from __future__ import annotations

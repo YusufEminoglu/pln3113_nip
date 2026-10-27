@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 """PLN3113 Otomatik Kartografik ve Tematik Stil Yöneticisi (Symbology Manager).
 
-DEÜ Mimarlık Fakültesi Şehir ve Bölge Planlama Bölümü
 PLN3113 - Tire NİP Analiz Stüdyosu
 
 Bu modül, NİP analiz çıktılarının (Yol platformu, kavşaklar, ön cephe bağlantıları,

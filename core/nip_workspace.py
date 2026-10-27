@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """1/5000 Nazım İmar Planı (NİP) MPYY 1.1.7 Çizim Veritabanı ve Şablonu Üretici Motoru.
 
-Dokuz Eylül Üniversitesi Şehir ve Bölge Planlama Bölümü PLN3113 NİP Stüdyosu için
+PLN3113 NİP Stüdyosu için
 Çevre, Şehircilik ve İklim Değişikliği Bakanlığı resmî Mekânsal Planlar Yapım
 Yönetmeliği (MPYY) 1.1.7 XSD şemasına (nip.V.1.1.7.xsd) %100 uyumlu boş NİP çizim
 veritabanını (GeoPackage), e-Plan SLD stillerini, Ek-1e detay kataloğu hiyerarşisini

@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 """Erişilebilirlik ve MPYY Hizmet Etki Çapı Havzaları Algoritması.
 
-DEÜ Mimarlık Fakültesi Şehir ve Bölge Planlama Bölümü
 PLN3113 - Tire NİP Analiz Stüdyosu
 
 Yol ağı üzerinden Network Service Area (Isochrone / Convex Hull) ve

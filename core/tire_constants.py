@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 """Tire NİP ve Kentsel Analiz Modülü: Standartlar, Yoğunluklar ve Parametreler.
 
-DEÜ Mimarlık Fakültesi Şehir ve Bölge Planlama Bölümü
 PLN3113 Şehir Planlama Projesi III - Tire Stüdyosu
 """
 from __future__ import annotations
