@@ -176,12 +176,24 @@ class TestCohort(unittest.TestCase):
         d = co.load_defaults()
         self.assertEqual(len(d["sx_male"]), 17)
         self.assertEqual(len(d["sx_female"]), 17)
-        self.assertAlmostEqual(co.tfr(d["asfr"]), 1.51, places=6)
+        # TÜİK Doğum İstatistikleri 2025, "Yaşa özel doğurganlık hızları" 2025 satırı (‰):
+        # 9,15 53,25 95,86 79,59 36,70 8,45 0,71 -> TDH = 5 x 0,283707 = 1,418535 (TÜİK: 1,4185)
+        self.assertEqual(d["asfr"], [0.009151, 0.053249, 0.095859, 0.079586, 0.036697, 0.008451, 0.000714])
+        self.assertAlmostEqual(co.tfr(d["asfr"]), 1.418535, places=6)
+        # doğumda cinsiyet oranı: 2025 erkek 459.928 / kız 435.446 doğum x 100 = 105,62
+        self.assertEqual(d["srb"], 105.62)
         self.assertAlmostEqual(sum(d["migration_profile"]), 1.0, places=6)
         self.assertTrue(all(0 < s <= 1 for s in d["sx_male"] + d["sx_female"]))
-        # kadın yaşama oranları her yaşta erkeğinkinden yüksek (model tablo tutarlılığı)
+        # TÜİK Hayat Tabloları 2023-2025: kadın yaşama oranları her yaşta erkeğinkinden yüksek
         self.assertTrue(all(f >= m for m, f in zip(d["sx_male"], d["sx_female"])))
-        self.assertIn("TÜİK", d["sources"]["sx"])
+        # T(x) = l(x)·e(x) ile: erkek 5L5/5L0 = 0,997344; kadın 0,997561; 80+ kalma T85/T80
+        self.assertEqual((d["sx_male"][0], d["sx_female"][0]), (0.997344, 0.997561))
+        self.assertEqual((d["sx_male"][16], d["sx_female"][16]), (0.45301, 0.513959))
+        self.assertEqual((d["birth_survival_male"], d["birth_survival_female"]), (0.989395, 0.990946))
+        for key in ("sx", "asfr", "srb"):
+            self.assertIn("TÜİK", d["sources"][key])
+        self.assertIn("58232", d["sources"]["sx"])
+        self.assertIn("58018", d["sources"]["asfr"])
 
     def test_ageing_without_events(self):
         base = {"year": 2025, "male": [100.0] * 17, "female": [100.0] * 17}
@@ -292,7 +304,7 @@ class TestCohort(unittest.TestCase):
         base = {"year": 2025, "male": [3000.0] * 17, "female": [3000.0] * 17}
         r = co.project_cohort(base, {}, 2045)
         self.assertEqual(r["years"], [2025, 2030, 2035, 2040, 2045])
-        self.assertLess(r["totals"][2045], r["totals"][2025])     # TDH 1.51 < 2.1
+        self.assertLess(r["totals"][2045], r["totals"][2025])     # TDH 1.42 < 2.1
 
 
 class TestAllocation(unittest.TestCase):

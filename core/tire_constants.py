@@ -155,10 +155,13 @@ _TUCBS_RAW_MAPPING = {
     "parkoyunalani": ("Park ve Oyun Alanı", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)", "YESIL_ALAN", False, 0.0, 0.0, 0.5, 3.0),
     "park ve oyun alanı": ("Park ve Oyun Alanı", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)", "YESIL_ALAN", False, 0.0, 0.0, 0.5, 3.0),
     "park ve rekreasyon alanı": ("Park ve Rekreasyon Alanı", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)", "YESIL_ALAN", False, 0.0, 0.0, 1.0, 4.0),
-    "pasifyesilalan": ("Pasif Yeşil Alan / Refüj", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)", "YESIL_ALAN", False, 0.0, 0.0, 0.0, 0.0),
-    "pasif yeşil alan / refüj": ("Pasif Yeşil Alan / Refüj", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)", "YESIL_ALAN", False, 0.0, 0.0, 0.0, 0.0),
-    # Spor alanları Ek-2'de ayrı bir donatıdır; açık ve yeşil alan standardına sayılmaz
-    # (planx_mpyy_studio crosswalk: SPOR_ALANI -> SOSYAL ALT YAPI ALANLARI).
+    # Pasif yeşil / refüj EK-2 açık-yeşil alan listesinde (Açıklama 9) yoktur: standarda sayılmaz.
+    "pasifyesilalan": ("Pasif Yeşil Alan / Refüj", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)", None, False, 0.0, 0.0, 0.0, 0.0),
+    "pasif yeşil alan / refüj": ("Pasif Yeşil Alan / Refüj", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)", None, False, 0.0, 0.0, 0.0, 0.0),
+    # MPYY EK-2 Açıklama 9: SEMT SPOR ALANI açık ve yeşil alan standardına (10 m²/kişi)
+    # dahildir. Genel "spor alanı" / spor kompleksi (açık veya kapalı, EK-1ç gösterimi)
+    # için EK-2'de kişi başı standart satırı yoktur; bilançoya sayılmaz.
+    "semtsporalani": ("Semt Spor Alanı", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)", "YESIL_ALAN", False, 0.0, 0.0, 1.0, 8.0),
     "sporkompleksialani": ("Spor Kompleksi / Tesis", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)", None, False, 0.0, 0.0, 2.0, 4.0),
     "spor kompleksi / tesis": ("Spor Kompleksi / Tesis", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)", None, False, 0.0, 0.0, 2.0, 4.0),
 
@@ -184,8 +187,9 @@ _TUCBS_RAW_MAPPING = {
     "resmi kurum / kamu hizmet alanı": ("Resmi Kurum / Kamu Hizmet Alanı", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)", None, True, 45.0, 0.50, 8.0, 5.0),
 
     # 13. Teknik Altyapı ve Genel Otopark
-    "genelotopark": ("Genel Otopark Alanı", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)", "TEKNIK_ALTYAPI", True, 500.0, 0.05, 15.0, 2.0),
-    "genel otopark alanı": ("Genel Otopark Alanı", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)", "TEKNIK_ALTYAPI", True, 500.0, 0.05, 15.0, 2.0),
+    # EK-2 teknik altyapı standardı "yol ve otopark hariç"tir: otopark standarda sayılmaz.
+    "genelotopark": ("Genel Otopark Alanı", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)", None, True, 500.0, 0.05, 15.0, 2.0),
+    "genel otopark alanı": ("Genel Otopark Alanı", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)", None, True, 500.0, 0.05, 15.0, 2.0),
     "enerjiuretimalani": ("Teknik Altyapı / Enerji", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)", "TEKNIK_ALTYAPI", False, 0.0, 0.0, 0.5, 0.1),
     "teknik altyapı / enerji": ("Teknik Altyapı / Enerji", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)", "TEKNIK_ALTYAPI", False, 0.0, 0.0, 0.5, 0.1),
 
@@ -265,9 +269,12 @@ def get_tucbs_info(fonk_str: str) -> dict | None:
             item = ("Eğitim Alanı", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)", "EGITIM", True, 70.0, 0.35, 5.0, 10.0)
         elif "saglik" in ck or "asm" in ck or "hastane" in ck:
             item = ("Sağlık Alanı", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)", "SAGLIK", True, 60.0, 0.45, 10.0, 8.0)
+        elif "semtspor" in ck:
+            item = ("Semt Spor Alanı", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)", "YESIL_ALAN", False, 0.0, 0.0, 1.0, 8.0)
         elif "spor" in ck:
             item = ("Spor Alanı", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)", None, False, 0.0, 0.0, 2.0, 4.0)
-        elif "park" in ck or "yesil" in ck or "rekreasyon" in ck:
+        elif (("park" in ck and "otopark" not in ck)
+              or "yesil" in ck or "rekreasyon" in ck):
             item = ("Park ve Yeşil Alan", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)", "YESIL_ALAN", False, 0.0, 0.0, 0.5, 3.0)
         elif "ibadet" in ck or "cami" in ck:
             item = ("İbadet Alanı", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)", "IBADET", False, 0.0, 0.0, 1.0, 3.0)
@@ -275,17 +282,22 @@ def get_tucbs_info(fonk_str: str) -> dict | None:
             item = ("Sosyal ve Kültürel Tesis", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)", "SOSYAL_KULTUREL", True, 60.0, 0.40, 3.0, 5.0)
         elif "tarim" in ck or "zeytin" in ck or "mera" in ck or "orman" in ck or "asker" in ck or "demiryol" in ck or "mezarlik" in ck:
             item = ("DOP Dışı Alan", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP DIŞI", "DOP DIŞI (HARİÇ)", None, False, 0.0, 0.0, 0.0, 0.0)
-        elif "otopark" in ck or "enerji" in ck or "trafo" in ck:
-            item = ("Teknik Altyapı / Otopark", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)", "TEKNIK_ALTYAPI", True, 500.0, 0.05, 15.0, 2.0)
+        elif "otopark" in ck:
+            item = ("Otopark Alanı", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)", None, True, 500.0, 0.05, 15.0, 2.0)
+        elif "enerji" in ck or "trafo" in ck:
+            item = ("Teknik Altyapı / Enerji", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)", "TEKNIK_ALTYAPI", True, 500.0, 0.05, 15.0, 2.0)
         elif "belediye" in ck or "bha" in ck or "resmi" in ck or "kamu" in ck:
             item = ("Belediye / Kamu Hizmet Alanı", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)", None, True, 45.0, 0.50, 8.0, 5.0)
         else:
             return None
 
-    # Özel (private) sağlık/eğitim vb. tesisler kamu donatı standardına (Ek-2)
-    # sayılmaz ve DOP'ta kamu kesintisi değil özel tahsistir.
+    # "ÖZEL" tesisler DOP'ta kamu kesintisi değil özel tahsistir (3194 md. 18 kesintisi
+    # yalnız kamu hizmet alanları içindir). EK-2 Açıklama 8: ÖZEL kreş+anaokulu, eğitim,
+    # sağlık, kültürel ve sosyal tesis alanları kişi başı asgari standardın İÇİNDE sayılır;
+    # diğer donatı gruplarında (yeşil alan, ibadet, teknik altyapı) özel alan sayılmaz.
     if "ozel" in ck and item[4] == "DOP İÇİ":
-        item = item[:5] + ("DOP İÇİ - ÖZEL (TAHSİS)", None) + item[7:]
+        donati = item[6] if item[6] in EK2_OZEL_SAYILAN_GRUPLAR else None
+        item = item[:5] + ("DOP İÇİ - ÖZEL (TAHSİS)", donati) + item[7:]
 
     return {
         "std_fonksiyon": item[0],
@@ -393,42 +405,105 @@ def resolve_nip_density(fonk_str: str) -> tuple[float | None, float | None, str]
 # =====================================================================
 # 3. MEKÂNSAL PLANLAR YAPIM YÖNETMELİĞİ (MPYY EK-2) DONATI GRUPLARI
 # =====================================================================
-# Kaynak: Mekânsal Planlar Yapım Yönetmeliği Ek-2 — doğrulanmalı.
-# Aşağıdaki m²/kişi değerleri resmi yönetmelik metnine karşı eklenti sahibi
-# tarafından doğrulanmadıkça değiştirilmemelidir (planx_mpyy_studio ile farklıdır).
-# Yalnız KAMU donatıları sayılır: "ÖZEL ..." tesisler ve spor alanları bu tabloda yoktur.
+# Kaynak: Mekânsal Planlar Yapım Yönetmeliği (RG 14.06.2014/29030), md. 11/1 ve
+# EK-2 "Farklı nüfus gruplarında asgari sosyal ve teknik altyapı alanlarına ilişkin
+# standartlar ve asgari alan büyüklükleri tablosu" (Değişik: RG 17.05.2017/30069;
+# 2022, 2023, 2024 ve 22.01.2026/33145 değişiklikleri EK-2'yi değiştirmedi).
+# Resmî metin: https://www.mevzuat.gov.tr/mevzuat?MevzuatNo=19788&MevzuatTur=7&MevzuatTertip=5
+# EK-2 dosyası (EK-2.xlsx): https://www.mevzuat.gov.tr/MevzuatMetin/yonetmelik/7.5.19788-ek.zip
+# (erişim 2026-11-04).
+#
+# Nüfus grupları (EK-2 sütunları): 0-75.000 | 75.001-150.000 | 150.001-500.000 |
+# 501.000+ (tablodaki yazımla; 500.001-500.999 arası en üst gruba alınır).
+# Açıklama 1: grup, ilçe projeksiyon nüfusuna göre seçilir.
+# Grup toplamları (m²/kişi), EK-2 satırlarından:
+#   Eğitim  = anaokulu (0,5|0,5|0,6|0,6) + ilkokul 2 + ortaokul 2 + lise 2
+#             (lise 2 m²/kişi; yatılı/meslek lisesi, özel eğitim ve halk eğitim satırları
+#             aynı birleşik hücrededir, ayrı kişi başı değer yoktur)
+#   Açık ve yeşil alan = 10 (ilçe planlaması; çocuk bahçesi, oyun alanı, park, meydan,
+#             semt spor alanı, botanik parkı, mesire yeri, rekreasyon — Açıklama 9).
+#             İl bütünü planlamasında +5 (hayvanat bahçesi, kent ormanı, ağaçlandırılacak
+#             alan, fuar, hipodrom; Açıklama 10) — NİP ölçeğinde UYGULANMAZ.
+#   Sağlık  = aile sağlık merkezi satırı 1,5|1,5|1,5|1,6
+#   Sosyal ve kültürel tesis = 0,75|1|1,25|1,5
+#   İbadet  = küçük ibadet yeri satırı 0,5|0,5|0,75|0,75
+#   Teknik altyapı (YOL VE OTOPARK HARİÇ) = 1|1,25|1,5|2
+# Kurallar: semt spor alanı açık-yeşil alan standardına dahildir (Açıklama 9); adında
+# "ÖZEL" geçen kreş+anaokulu, eğitim, sağlık, kültürel ve sosyal tesis alanları kişi
+# başı asgari standardın içinde sayılır (Açıklama 8); otopark teknik altyapı
+# standardına sayılmaz (tablo satırı "Yol ve Otopark hariç").
+EK2_NUFUS_GRUPLARI = (
+    (75000, "0-75.000"),
+    (150000, "75.001-150.000"),
+    (500000, "150.001-500.000"),
+    (None, "501.000+"),
+)
+
 MPYY_DONATI_STANDARTLARI = {
     "EGITIM": {
         "adi": "Eğitim Tesisleri Alanı",
-        "standart_m2_kisi": 6.5,
+        "kademeler": (6.5, 6.5, 6.6, 6.6),
+        "ek2_satiri": "Eğitim tesisleri alanı: anaokulu + ilkokul + ortaokul + lise",
         "anahtarlar": ["EĞİTİM", "EGITIM", "OKUL", "LİSE", "İLKOKUL", "ORTAOKUL", "ANAOKULU"]
     },
     "SAGLIK": {
         "adi": "Sağlık Tesisleri Alanı",
-        "standart_m2_kisi": 1.5,
+        "kademeler": (1.5, 1.5, 1.5, 1.6),
+        "ek2_satiri": "Sağlık tesisleri alanı (aile sağlık merkezi satırı)",
         "anahtarlar": ["SAĞLIK", "SAGLIK", "HASTANE", "AİLE SAĞLIĞI", "POLİKLİNİK"]
     },
     "SOSYAL_KULTUREL": {
         "adi": "Sosyal ve Kültürel Tesisler",
-        "standart_m2_kisi": 1.0,
-        "anahtarlar": ["SOSYAL TESİS", "KÜLTÜREL TESİS", "KÜLTÜR MERKEZİ", "KREŞ", "YURT", "SOSYAL ALTYAPI"]
+        "kademeler": (0.75, 1.0, 1.25, 1.5),
+        "ek2_satiri": "Sosyal ve kültürel tesisler alanı",
+        "anahtarlar": ["SOSYAL TESİS", "KÜLTÜREL TESİS", "KÜLTÜR MERKEZİ", "YURT", "SOSYAL ALTYAPI",
+                       "SOSYAL VE KÜLTÜREL", "KREŞ", "KRES"]  # kreş: MPYY md. 5/1-j sosyal tesis
     },
     "YESIL_ALAN": {
-        "adi": "Açık ve Yeşil Alanlar (Park/Rekreasyon)",
-        "standart_m2_kisi": 10.0,
-        "anahtarlar": ["PARK VE YEŞİL", "PARK VE YESIL", "PARK ALANI", "MİLLET BAHÇESİ", "MILLET BAHCESI", "MESİRE", "MESIRE", "PASİF YEŞİL", "PASIF YESIL", "REKREASYON"]
+        "adi": "Açık ve Yeşil Alanlar (Park, Çocuk Bahçesi, Meydan, Semt Spor)",
+        "kademeler": (10.0, 10.0, 10.0, 10.0),
+        "ek2_satiri": "Açık ve yeşil alanlar, ilçe sınırları dahilinde (Açıklama 9)",
+        "anahtarlar": ["PARK VE YEŞİL", "PARK VE YESIL", "PARK ALANI", "MİLLET BAHÇESİ", "MILLET BAHCESI",
+                       "MESİRE", "MESIRE", "REKREASYON", "ÇOCUK BAHÇESİ", "COCUK BAHCESI",
+                       "OYUN ALANI", "MEYDAN", "BOTANİK", "BOTANIK", "SEMT SPOR"]
     },
     "TEKNIK_ALTYAPI": {
-        "adi": "Teknik Altyapı Alanları",
-        "standart_m2_kisi": 1.25,
+        "adi": "Teknik Altyapı Alanları (Yol ve Otopark Hariç)",
+        "kademeler": (1.0, 1.25, 1.5, 2.0),
+        "ek2_satiri": "Teknik altyapı (yol ve otopark hariç)",
         "anahtarlar": ["TEKNİK ALTYAPI", "TEKNIK ALTYAPI", "TRAFO", "ARITMA", "TERFİ", "İÇME SUYU TESİSİ", "ICME SUYU"]
     },
     "IBADET": {
         "adi": "İbadet Alanları",
-        "standart_m2_kisi": 0.5,
+        "kademeler": (0.5, 0.5, 0.75, 0.75),
+        "ek2_satiri": "İbadet yeri (küçük ibadet yeri satırı)",
         "anahtarlar": ["İBADET", "IBADET", "CAMİ", "CAMI", "MESCİT", "MESCIT"]
     }
 }
+
+# Açıklama 8: "ÖZEL" ibaresiyle bu gruplardaki tesisler standardın içinde sayılır.
+EK2_OZEL_SAYILAN_GRUPLAR = ("EGITIM", "SAGLIK", "SOSYAL_KULTUREL")
+# Açıklama 9: açık-yeşil alan standardında kamuya ait, DOP'a tabi çocuk bahçesi, oyun
+# alanı, park, meydan ve semt spor alanlarının payı %75'in altına düşürülemez.
+EK2_YESIL_KAMU_DOP_ASGARI_YUZDE = 75.0
+
+
+def ek2_nufus_grubu(nufus: float) -> int:
+    """EK-2 nüfus grubu indeksi (0-3): 0-75.000, 75.001-150.000, 150.001-500.000, 501.000+."""
+    n = max(0.0, float(nufus or 0.0))
+    for i, (ust, _etiket) in enumerate(EK2_NUFUS_GRUPLARI):
+        if ust is None or n <= ust:
+            return i
+    return len(EK2_NUFUS_GRUPLARI) - 1
+
+
+def ek2_nufus_grubu_etiketi(nufus: float) -> str:
+    return EK2_NUFUS_GRUPLARI[ek2_nufus_grubu(nufus)][1]
+
+
+def ek2_standart(kategori: str, nufus: float) -> float:
+    """Kategori için ilgili nüfus grubundaki EK-2 asgari standardı (m²/kişi)."""
+    return MPYY_DONATI_STANDARTLARI[kategori]["kademeler"][ek2_nufus_grubu(nufus)]
 
 # ---------------------------------------------------------------------
 # Saf (QGIS'siz) hesap çekirdekleri — NipCalculatorEngine bunları kullanır
@@ -477,22 +552,26 @@ def identify_facility_category(fonk_str: str) -> str | None:
         return tucbs["donati"]
 
     upper = norm_tr(fonk_str)
-    # Özel mülkiyetteki tesisler (ÖZEL SAĞLIK, ÖZEL EĞİTİM...) kamu standardına sayılmaz
-    if "OZEL" in upper:
+    ozel = "OZEL" in upper
+    # Otopark (EK-2 teknik altyapı "yol ve otopark hariç") ve makine parkı sayılmaz
+    if "OTOPARK" in upper or "MAKINE PARKI" in upper:
         return None
-    # Spor alanları açık-yeşil alan standardına sayılmaz (ayrı donatı)
+    # EK-2 Açıklama 9: semt spor alanı açık-yeşil alan standardındadır; genel spor
+    # alanı / spor kompleksi için EK-2'de kişi başı standart yoktur.
+    if "SEMT SPOR" in upper:
+        return None if ozel else "YESIL_ALAN"
     if "SPOR" in upper:
         return None
-    # Otopark ve makine parkını yeşil alandan kesinlikle koru
-    if "OTOPARK" in upper or "MAKINE PARKI" in upper:
-        return "TEKNIK_ALTYAPI" if "OTOPARK" in upper else None
 
     for cat_id, info in MPYY_DONATI_STANDARTLARI.items():
         if any(norm_tr(k) in upper for k in info["anahtarlar"]):
+            # EK-2 Açıklama 8: ÖZEL eğitim/sağlık/sosyal/kültürel tesis standarda sayılır
+            if ozel and cat_id not in EK2_OZEL_SAYILAN_GRUPLAR:
+                return None
             return cat_id
-    
+
     # Yalın 'PARK' kelimesi kontrolü
-    if "PARK" in upper and "OTOPARK" not in upper and "MAKINE" not in upper:
+    if "PARK" in upper and "MAKINE" not in upper and not ozel:
         return "YESIL_ALAN"
 
     return None

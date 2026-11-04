@@ -54,11 +54,11 @@ yaparak" — better than the original. The plugin stays Turkish-language.
 5. Value tests for every number above; honest Turkish docs with attribution:
    "Nüfus projeksiyonu, dağıtım ve kırılganlık özellikleri Kent Öngörü
    v1.0.0 (Berkay Memiş, GPL-2.0-or-later) temel alınarak yeniden yazıldı;
-   pay/payda yöntemi PLN3113 stüdyosundan."
+   pay/payda yöntemi UNDRR ve OECD bileşik gösterge kaynaklarına dayanır."
 
 Owner follow-up (not decidable here): verify the Ek-2 values against the
-official regulation text; confirm the full name of "Burcu hoca" for the
-pay/payda attribution.
+official regulation text. The pay/payda method follows UNDRR and OECD composite-indicator
+practice (no person is credited).
 
 ## 3. Contracts
 - C1 (NIP-PROJ): `core/projection.py` `project_trend(years, populations,

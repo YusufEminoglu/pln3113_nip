@@ -86,9 +86,11 @@ class KohortProjeksiyonuAlgorithm(OngoruBaseAlgorithm):
             "Başlangıç nüfusu: 17 erkek ve 17 kadın değeri (virgülle), ya da yaş grubu / erkek / "
             "kadın alanları olan bir tablo, ya da 6 geniş grup değeri (E 0-14, E 15-64, E 65+, "
             "K 0-14, K 15-64, K 65+; grup içi dağılım model hayat tablosundan, yaklaşık).\n\n"
-            "Varsayılan değerler DÜZENLENEBİLİR yer tutuculardır, resmî TÜİK tablosu değildir:\n"
+            "Varsayılan değerler (Türkiye geneli; DÜZENLENEBİLİR, il/ilçe verisi varsa değiştirin):\n"
             f"- Sx: {d['sources']['sx']}\n"
+            f"- Doğumdan 0-4'e yaşama: {d['sources']['dogum_yasama']}\n"
             f"- ASFR: {d['sources']['asfr']}\n"
+            f"- Doğumda cinsiyet oranı: {d['sources']['srb']}\n"
             f"- Göç profili: {d['sources']['goc_profili']}\n\n"
             "Çıktılar: yaş piramidi tablosu (her adım ve hedef yıl) ve gösterge tablosu "
             "(bağımlılık oranları, yaşlanma endeksi, medyan yaş, doğum, net göç).\n\n" + ATTRIBUTION
@@ -131,7 +133,7 @@ class KohortProjeksiyonuAlgorithm(OngoruBaseAlgorithm):
             QgsProcessingParameterString(self.SX_KADIN, "Kadın Sx, 17 değer (boş = varsayılan)",
                                          "", optional=True),
             QgsProcessingParameterNumber(self.CINSIYET_ORANI, "Doğumda cinsiyet oranı (100 kıza "
-                                         "erkek)", NUM_DOUBLE, 105.0, False, 50.0, 200.0),
+                                         "erkek)", NUM_DOUBLE, co.load_defaults()["srb"], False, 50.0, 200.0),
         ]
         for p in adv:
             p.setFlags(p.flags() | FLAG_ADVANCED)

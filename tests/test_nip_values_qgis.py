@@ -254,9 +254,67 @@ class TestEstimatedDop(unittest.TestCase):
         # yeşil: 10000 m² / 121 kişi = 82,64 m²/kişi; gerekli 1210 -> fark 8790
         self.assertAlmostEqual(ek2["YESIL_ALAN"]["kb_alt"], 82.64, delta=0.01)
         self.assertAlmostEqual(ek2["YESIL_ALAN"]["fark_alt"], 8790.0, delta=1.0)
+        # 65.000 kişi -> MPYY EK-2 "0-75.000" grubu; park kamuya ait ve DOP'a tabi: pay %100
+        self.assertEqual(s["ek2_nufus_grubu"], "0-75.000")
+        self.assertEqual(ek2["SOSYAL_KULTUREL"]["standart_m2"], 0.75)
+        self.assertEqual(ek2["TEKNIK_ALTYAPI"]["standart_m2"], 1.0)
+        self.assertEqual(ek2["YESIL_ALAN"]["kamu_dop_payi_yuzde"], 100.0)
         # kıyas: varsayılan Türkiye geneli -> Tire referansı ve +26000 yok
         self.assertEqual(len(s["kiyaslama"]), 1)
         self.assertNotIn("26", s["kiyaslama"][0]["ilce"])
+
+    def test_ek2_population_group_thresholds(self):
+        """MPYY EK-2 nüfus grupları: standart ilçe projeksiyon nüfusunun grubundan alınır."""
+        lyr = _blocks()
+        da = QgsDistanceArea()
+        da.setSourceCrs(lyr.crs(), QgsCoordinateTransformContext())
+        da.setEllipsoid("EPSG:7019")
+        feats = list(lyr.getFeatures())
+        # 200.000 kişi -> "150.001-500.000": eğitim 0,6+2+2+2 = 6,6; sosyal 1,25; teknik 1,5;
+        # ibadet 0,75; eğitim alanı yok -> fark = -6,6 x 200.000 = -1.320.000 m²
+        _items, s = E.calculate(feats, lyr.fields(), "fonk", 200000, da)
+        ek2 = {r["kategori_id"]: r for r in s["ek2_rapor"]}
+        self.assertEqual(s["ek2_nufus_grubu"], "150.001-500.000")
+        self.assertEqual(ek2["EGITIM"]["standart_m2"], 6.6)
+        self.assertEqual(ek2["EGITIM"]["fark_proj"], -1320000.0)
+        self.assertEqual(ek2["SOSYAL_KULTUREL"]["gerekli_proj"], 250000.0)
+        self.assertEqual(ek2["TEKNIK_ALTYAPI"]["gerekli_proj"], 300000.0)
+        self.assertEqual(ek2["IBADET"]["gerekli_proj"], 150000.0)
+        # ilçe projeksiyon nüfusu ayrıca verilirse grup ondan seçilir: 80.000 -> 75.001-150.000
+        # sağlık 1,5 x 65.000 = 97.500; sosyal 1,0 x 65.000 = 65.000; teknik 1,25 x 65.000 = 81.250
+        _items, s2 = E.calculate(feats, lyr.fields(), "fonk", 65000, da, ek2_nufus=80000)
+        ek2b = {r["kategori_id"]: r for r in s2["ek2_rapor"]}
+        self.assertEqual(s2["ek2_nufus_grubu"], "75.001-150.000")
+        self.assertEqual(ek2b["SAGLIK"]["gerekli_proj"], 97500.0)
+        self.assertEqual(ek2b["SOSYAL_KULTUREL"]["gerekli_proj"], 65000.0)
+        self.assertEqual(ek2b["TEKNIK_ALTYAPI"]["gerekli_proj"], 81250.0)
+        # 600.000 kişi -> "501.000+": sağlık 1,6; teknik 2,0
+        _items, s3 = E.calculate(feats, lyr.fields(), "fonk", 600000, da)
+        ek2c = {r["kategori_id"]: r for r in s3["ek2_rapor"]}
+        self.assertEqual(s3["ek2_nufus_grubu"], "501.000+")
+        self.assertEqual(ek2c["SAGLIK"]["gerekli_proj"], 960000.0)
+        self.assertEqual(ek2c["TEKNIK_ALTYAPI"]["gerekli_proj"], 1200000.0)
+
+    def test_ek2_semt_spor_and_ozel_rules(self):
+        """EK-2 Açıklama 8-9: semt spor alanı yeşil alana, ÖZEL sağlık sağlık standardına sayılır;
+        ÖZEL sağlık DOP'ta yine özel tahsistir; otopark teknik altyapıya sayılmaz."""
+        lyr = _poly_layer("EPSG:5253", [
+            (_rect(X0, Y0, 100, 100), KONUT, 1),
+            (_rect(X0 + 200, Y0, 100, 100), "Semt Spor Alanı", 2),
+            (_rect(X0 + 400, Y0, 100, 100), "Özel Sağlık Alanı", 3),
+            (_rect(X0 + 600, Y0, 100, 100), "Genel Otopark Alanı", 4),
+        ], "adalar2")
+        da = QgsDistanceArea()
+        da.setSourceCrs(lyr.crs(), QgsCoordinateTransformContext())
+        da.setEllipsoid("EPSG:7019")
+        _items, s = E.calculate(list(lyr.getFeatures()), lyr.fields(), "fonk", 65000, da)
+        ek2 = {r["kategori_id"]: r for r in s["ek2_rapor"]}
+        self.assertAlmostEqual(ek2["YESIL_ALAN"]["toplam_m2"], 10000.0, delta=2.0)
+        self.assertAlmostEqual(ek2["SAGLIK"]["toplam_m2"], 10000.0, delta=2.0)
+        self.assertAlmostEqual(ek2["SAGLIK"]["ozel_m2"], 10000.0, delta=2.0)
+        self.assertEqual(ek2["TEKNIK_ALTYAPI"]["toplam_m2"], 0.0)
+        self.assertAlmostEqual(s["dop_ozet"]["toplam_ozel_tahsis_m2"], 20000.0, delta=4.0)
+        self.assertTrue(any("Açıklama 8" in u for u in s["uyarilar"]))
 
     def test_algorithm_labels_estimate(self):
         ok, L, fb, _ = _run_population({"INPUT": _blocks()})

@@ -181,32 +181,69 @@ class TestNipValuesPure(unittest.TestCase):
         self.assertNotIn("UYGUN", tahmini)
 
     def test_ek2_standartlari_ve_alanlar(self):
-        from pln3113_nip.core.tire_constants import MPYY_DONATI_STANDARTLARI as S, ek2_degerlendir
-        # Mevcut değerler (yönetmeliğe karşı doğrulanmalı; burada değişmeleri yakalanır)
-        beklenen = {"EGITIM": 6.5, "SAGLIK": 1.5, "SOSYAL_KULTUREL": 1.0,
-                    "YESIL_ALAN": 10.0, "TEKNIK_ALTYAPI": 1.25, "IBADET": 0.5}
-        self.assertEqual({k: v["standart_m2_kisi"] for k, v in S.items()}, beklenen)
+        from pln3113_nip.core.tire_constants import MPYY_DONATI_STANDARTLARI as S, ek2_degerlendir, ek2_standart
+        # MPYY EK-2 (RG 17.05.2017/30069) nüfus gruplarına göre m²/kişi:
+        # 0-75.000 | 75.001-150.000 | 150.001-500.000 | 501.000+
+        beklenen = {"EGITIM": (6.5, 6.5, 6.6, 6.6),          # anaokulu 0,5/0,6 + 2 + 2 + 2
+                    "SAGLIK": (1.5, 1.5, 1.5, 1.6),
+                    "SOSYAL_KULTUREL": (0.75, 1.0, 1.25, 1.5),
+                    "YESIL_ALAN": (10.0, 10.0, 10.0, 10.0),  # ilçe planlaması (Açıklama 9)
+                    "TEKNIK_ALTYAPI": (1.0, 1.25, 1.5, 2.0),  # yol ve otopark hariç
+                    "IBADET": (0.5, 0.5, 0.75, 0.75)}
+        self.assertEqual({k: tuple(v["kademeler"]) for k, v in S.items()}, beklenen)
         # 10.000 kişi için eğitim: gerekli 65.000 m²; 50.000 m² mevcut -> 15.000 m² açık
-        r = ek2_degerlendir(50000.0, S["EGITIM"]["standart_m2_kisi"], 10000)
+        r = ek2_degerlendir(50000.0, ek2_standart("EGITIM", 10000), 10000)
         self.assertEqual(r["gerekli_m2"], 65000.0)
         self.assertEqual(r["fark_m2"], -15000.0)
         self.assertEqual(r["kisi_basi_m2"], 5.0)
         self.assertEqual(r["durum"], "YETERSİZ")
         # 121 kişi için 1 ha yeşil alan: gerekli 1210 m², kişi başı 82,64 m²
-        y = ek2_degerlendir(10000.0, S["YESIL_ALAN"]["standart_m2_kisi"], 121)
+        y = ek2_degerlendir(10000.0, ek2_standart("YESIL_ALAN", 121), 121)
         self.assertEqual((y["gerekli_m2"], y["fark_m2"], y["kisi_basi_m2"], y["durum"]),
                          (1210.0, 8790.0, 82.64, "YETERLİ"))
+        # 200.000 kişi: eğitim 6,6 -> 1.320.000 m²; teknik altyapı 1,5 -> 300.000 m²
+        self.assertEqual(ek2_degerlendir(0.0, ek2_standart("EGITIM", 200000), 200000)["gerekli_m2"],
+                         1320000.0)
+        self.assertEqual(ek2_degerlendir(0.0, ek2_standart("TEKNIK_ALTYAPI", 200000), 200000)["gerekli_m2"],
+                         300000.0)
 
-    def test_spor_ve_ozel_saglik_kamu_standardi_degil(self):
+    def test_ek2_nufus_grubu_esikleri(self):
+        from pln3113_nip.core.tire_constants import ek2_nufus_grubu, ek2_nufus_grubu_etiketi, ek2_standart
+        self.assertEqual([ek2_nufus_grubu(n) for n in
+                          (0, 75000, 75001, 150000, 150001, 500000, 500001, 501000, 3000000)],
+                         [0, 0, 1, 1, 2, 2, 3, 3, 3])
+        self.assertEqual(ek2_nufus_grubu_etiketi(87571), "75.001-150.000")   # Tire 2025
+        self.assertEqual(ek2_standart("SOSYAL_KULTUREL", 75000), 0.75)
+        self.assertEqual(ek2_standart("SOSYAL_KULTUREL", 75001), 1.0)
+        self.assertEqual(ek2_standart("IBADET", 150001), 0.75)
+        self.assertEqual(ek2_standart("SAGLIK", 501000), 1.6)
+
+    def test_ek2_spor_ozel_otopark_kurallari(self):
         from pln3113_nip.core.tire_constants import get_tucbs_info
+        # Açıklama 9: semt spor alanı açık-yeşil alan standardındadır
+        self.assertEqual(identify_facility_category("Semt Spor Alanı"), "YESIL_ALAN")
+        self.assertEqual(identify_facility_category("SEMT SPOR ALANI 5000"), "YESIL_ALAN")
+        # genel spor alanı / spor kompleksi için EK-2'de kişi başı standart yoktur
         self.assertIsNone(identify_facility_category("Spor Alanı"))
-        self.assertIsNone(identify_facility_category("Semt Spor Alanı"))
         self.assertIsNone(identify_facility_category("sporKompleksiAlani"))
-        self.assertIsNone(identify_facility_category("Özel Sağlık Alanı"))
+        # Açıklama 9 listesi: çocuk bahçesi, meydan; pasif yeşil/refüj listede yok
+        self.assertEqual(identify_facility_category("Çocuk Bahçesi"), "YESIL_ALAN")
+        self.assertEqual(identify_facility_category("Meydan"), "YESIL_ALAN")
+        self.assertIsNone(identify_facility_category("Pasif Yeşil Alan / Refüj"))
+        # Açıklama 8: ÖZEL eğitim/sağlık/sosyal/kültürel tesis standarda sayılır
+        self.assertEqual(identify_facility_category("Özel Sağlık Alanı"), "SAGLIK")
+        self.assertEqual(identify_facility_category("Özel Eğitim Alanı"), "EGITIM")
+        self.assertEqual(identify_facility_category("Özel Sosyal Tesis Alanı"), "SOSYAL_KULTUREL")
+        self.assertIsNone(identify_facility_category("Özel Park"))
         self.assertEqual(identify_facility_category("Sağlık Alanı"), "SAGLIK")
         self.assertEqual(identify_facility_category("Park ve Yeşil Alan"), "YESIL_ALAN")
-        # Özel sağlık DOP'ta özel tahsistir (kamu kesintisi değil)
-        self.assertEqual(get_tucbs_info("Özel Sağlık Alanı")["dop_turu"], "DOP İÇİ - ÖZEL (TAHSİS)")
+        # teknik altyapı standardı yol ve otopark hariçtir
+        self.assertIsNone(identify_facility_category("Genel Otopark Alanı"))
+        self.assertIsNone(identify_facility_category("Otopark"))
+        self.assertEqual(identify_facility_category("Trafo Alanı"), "TEKNIK_ALTYAPI")
+        # ÖZEL sağlık DOP'ta özel tahsistir (kamu kesintisi değil), EK-2'de sağlıktır
+        oz = get_tucbs_info("Özel Sağlık Alanı")
+        self.assertEqual((oz["dop_turu"], oz["donati"]), ("DOP İÇİ - ÖZEL (TAHSİS)", "SAGLIK"))
         self.assertEqual(get_tucbs_info("Sağlık Alanı")["dop_turu"], "DOP İÇİ - KAMU (KESİNTİ)")
 
     def test_tire_yalniz_ornek_onayar(self):

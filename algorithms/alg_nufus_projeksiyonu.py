@@ -35,8 +35,19 @@ from ..core import projection as pj
 GROUP = "07. Nüfus Projeksiyonu, Dağıtım ve Kırılganlık"
 GROUP_ID = "07_nufus_projeksiyon_kirilganlik"
 ATTRIBUTION = ("Nüfus projeksiyonu, dağıtım ve kırılganlık özellikleri Kent Öngörü v1.0.0 "
-               "(Berkay Memiş, GPL-2.0-or-later) temel alınarak yeniden yazıldı; pay/payda "
-               "yöntemi PLN3113 stüdyosundan.")
+               "(Berkay Memiş, GPL-2.0-or-later) temel alınarak yeniden yazıldı.")
+# Kırılganlık endeksinin (pay/payda) yöntem dayanağı: standart risk/kırılganlık ve
+# bileşik gösterge uygulaması; yöntem için bir kişiye atıf yapılmaz.
+YONTEM_KAYNAKLARI = (
+    "Yöntem dayanağı: kırılganlığı artıran etkenlerin (maruziyet, hassasiyet) azaltıcı "
+    "etkenlere (uyum kapasitesi) oranı olarak kurulan standart risk/kırılganlık endeksi. "
+    "UNDRR terminolojisi afet riskini tehlike, maruziyet, kırılganlık ve kapasitenin "
+    "fonksiyonu olarak tanımlar (BM Genel Kurulu A/71/644, 2016; 71/276 sayılı karar, 2017; "
+    "Sendai Afet Riskinin Azaltılması Çerçevesi 2015-2030; UNISDR, Words into Action "
+    "Guidelines: National Disaster Risk Assessment, 2017). Puanlama, min-max "
+    "normalleştirme, ağırlıklandırma ve birleştirme: OECD/JRC (2008), Handbook on "
+    "Constructing Composite Indicators: Methodology and User Guide, OECD Publishing, "
+    "Paris, doi:10.1787/9789264043466-en.")
 
 if Qgis.versionInt() >= 33800:
     from qgis.PyQt.QtCore import QMetaType

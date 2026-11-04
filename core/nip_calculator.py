@@ -32,6 +32,9 @@ from .tire_constants import (
     dop_orani_hesapla,
     dop_uygunluk_metni,
     ek2_degerlendir,
+    ek2_nufus_grubu_etiketi,
+    ek2_standart,
+    EK2_YESIL_KAMU_DOP_ASGARI_YUZDE,
 )
 
 # Projede elipsoit tanımlı değilken ("NONE") QgsDistanceArea düzlemsel ölçer;
@@ -171,7 +174,8 @@ class NipCalculatorEngine:
         kirsal_nufus: int = 0,
         kiyas_referanslari: dict | None = None,
         tahmini_yol_payi: float = VARSAYILAN_TAHMINI_YOL_PAYI,
-        feedback=None
+        feedback=None,
+        ek2_nufus: int | None = None
     ) -> tuple[list[dict], dict]:
         """Tüm öznitelikleri, Kamu-Özel dengesini, DOP ve kent karakter tablolarını üretir.
 
@@ -179,6 +183,8 @@ class NipCalculatorEngine:
         kiyas_referanslari: tarihsel nüfus kıyas satırları (varsayılan yok; Tire örneği
             için tire_constants.NUFUS_KIYAS_ONAYARLARI["tire"]).
         tahmini_yol_payi: plan onama sınırı yokken yol alanı tahmini (adalar toplamına oran).
+        ek2_nufus: MPYY EK-2 nüfus grubunu belirleyen ilçe projeksiyon nüfusu (EK-2
+            Açıklama 1). Verilmezse projeksiyon_nufus kullanılır.
         feedback: iptal denetimi; iptal edilirse HesapIptalEdildi yükseltilir.
         """
         rules_config = rules_config or {}
@@ -441,6 +447,8 @@ class NipCalculatorEngine:
 
         # 4. Donatı Alanları için Kişi Başı Metrekareler
         donati_stats = {cat: 0.0 for cat in MPYY_DONATI_STANDARTLARI}
+        donati_ozel_m2 = {cat: 0.0 for cat in MPYY_DONATI_STANDARTLARI}
+        yesil_kamu_dop_m2 = 0.0
         stats_fonksiyonlar = {}
 
         for item in parsed_items:
@@ -450,6 +458,10 @@ class NipCalculatorEngine:
 
             if cat:
                 donati_stats[cat] += item["alan_m2"]
+                if "ÖZEL" in item["dop_turu"]:
+                    donati_ozel_m2[cat] += item["alan_m2"]
+                elif cat == "YESIL_ALAN" and "KAMU" in item["dop_turu"]:
+                    yesil_kamu_dop_m2 += item["alan_m2"]
                 item["km2_alt_nufus"] = round((item["alan_ha"] * 10000.0) / max(1, toplam_alt_nufus), 4)
                 item["km2_ust_nufus"] = round((item["alan_ha"] * 10000.0) / max(1, toplam_ust_nufus), 4)
             else:
@@ -577,11 +589,14 @@ class NipCalculatorEngine:
             })
 
         # 8. MPYY Ek-2 Yeterlilik Tablosu
+        # Standart, EK-2 Açıklama 1 uyarınca ilçe projeksiyon nüfusunun grubundan alınır.
+        ek2_grup_nufusu = projeksiyon_nufus if ek2_nufus is None else ek2_nufus
+        ek2_grup = ek2_nufus_grubu_etiketi(ek2_grup_nufusu)
         ek2_rapor = []
         for cat_id, info in MPYY_DONATI_STANDARTLARI.items():
             toplam_m2 = donati_stats.get(cat_id, 0.0)
-            std = info["standart_m2_kisi"]
-            
+            std = ek2_standart(cat_id, ek2_grup_nufusu)
+
             e_alt = ek2_degerlendir(toplam_m2, std, toplam_alt_nufus)
             e_ust = ek2_degerlendir(toplam_m2, std, toplam_ust_nufus)
             e_proj = ek2_degerlendir(toplam_m2, std, projeksiyon_nufus)
@@ -591,6 +606,8 @@ class NipCalculatorEngine:
                 "kategori_adi": info["adi"],
                 "toplam_m2": round(toplam_m2, 2),
                 "standart_m2": std,
+                "nufus_grubu": ek2_grup,
+                "ozel_m2": round(donati_ozel_m2.get(cat_id, 0.0), 2),
                 "kb_alt": e_alt["kisi_basi_m2"],
                 "kb_ust": e_ust["kisi_basi_m2"],
                 "kb_proj": e_proj["kisi_basi_m2"],
@@ -604,6 +621,24 @@ class NipCalculatorEngine:
                 "fark_ust": e_ust["fark_m2"],
                 "fark_proj": e_proj["fark_m2"]
             })
+
+        yesil_toplam = donati_stats.get("YESIL_ALAN", 0.0)
+        yesil_kamu_payi = round(yesil_kamu_dop_m2 / yesil_toplam * 100.0, 2) if yesil_toplam > 0 else None
+        for r in ek2_rapor:
+            if r["kategori_id"] == "YESIL_ALAN":
+                r["kamu_dop_payi_yuzde"] = yesil_kamu_payi
+        if yesil_kamu_payi is not None and yesil_kamu_payi < EK2_YESIL_KAMU_DOP_ASGARI_YUZDE:
+            uyarilar.append(
+                f"Açık ve yeşil alanlarda kamuya ait, DOP'a tabi alanların payı %{yesil_kamu_payi:.1f}; "
+                f"MPYY EK-2 Açıklama 9'a göre bu pay %{EK2_YESIL_KAMU_DOP_ASGARI_YUZDE:.0f}'in altına düşürülemez.")
+        ozel_sayilan = sum(donati_ozel_m2.values())
+        if ozel_sayilan > 0:
+            ozel_metni = f"{ozel_sayilan:,.0f}".replace(",", ".")
+            uyarilar.append(
+                f"Adında 'ÖZEL' geçen eğitim/sağlık/sosyal/kültürel tesisler "
+                f"({ozel_metni} m²) MPYY EK-2 Açıklama 8 uyarınca kişi başı "
+                "standarda sayıldı; bu sayım kamu-özel oranının ilgili Bakanlıkça belirlenmiş olmasına "
+                "bağlıdır. DOP hesabında bu alanlar özel tahsistir.")
 
         # 9. Nüfus Kıyaslama Raporu (referanslar ve kırsal nüfus parametredir)
         kiyaslama = []
@@ -660,6 +695,8 @@ class NipCalculatorEngine:
             "fonksiyon_dagilim": fonksiyon_dagilim_list,
             "kent_karakter": kent_karakter_list,
             "ek2_rapor": ek2_rapor,
+            "ek2_nufus_grubu": ek2_grup,
+            "ek2_grup_nufusu": ek2_grup_nufusu,
             "kiyaslama": kiyaslama,
             "kirsal_nufus": kirsal,
             "elenen_ada": elenen,

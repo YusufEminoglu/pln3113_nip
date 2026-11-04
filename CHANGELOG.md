@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.2] - 2026-11-04
+
+Bu sürüm Ek-2 donatı bilançosunun sonuçlarını değiştirir. 1.2.x ile üretilmiş Ek-2 tablolarını yeniden hesaplayın.
+
+### Düzeltildi
+- Ek-2 değerleri Mekânsal Planlar Yapım Yönetmeliği (RG 14.06.2014/29030) md. 11 ve EK-2 tablosunun (Değişik: RG 17.05.2017/30069) mevzuat.gov.tr'deki resmî metniyle karşılaştırıldı ve nüfus gruplarına bağlandı. Standart, ilçe projeksiyon nüfusunun grubundan alınır (EK-2 Açıklama 1; 0-75.000, 75.001-150.000, 150.001-500.000, 501.000+): eğitim 6,5 / 6,5 / 6,6 / 6,6; sağlık 1,5 / 1,5 / 1,5 / 1,6; sosyal ve kültürel 0,75 / 1 / 1,25 / 1,5 (önceden her nüfusta 1,0); açık ve yeşil alan 10; teknik altyapı 1 / 1,25 / 1,5 / 2 (önceden her nüfusta 1,25); ibadet 0,5 / 0,5 / 0,75 / 0,75 m²/kişi. Önceki sabit değerler yalnız 75.001-150.000 grubuna denk geliyordu.
+- Semt spor alanı artık açık ve yeşil alan standardına sayılır (EK-2 Açıklama 9). Genel spor alanı, spor kompleksi ve pasif yeşil/refüj için EK-2'de kişi başı satır yoktur; bilançoya girmez.
+- Adında "ÖZEL" geçen eğitim, sağlık, sosyal ve kültürel tesisler kişi başı standarda sayılır (EK-2 Açıklama 8); DOP hesabında bu alanlar yine özel tahsistir. Sayıldıklarında uyarı verilir ve Ek-2 tablosunda özel alan ayrıca gösterilir.
+- Otopark teknik altyapı standardına sayılmaz (EK-2: "yol ve otopark hariç"). Yalın "Otopark" fonksiyonu yanlışlıkla park/yeşil alan olarak tanınıyordu.
+- Açık ve yeşil alanlarda kamuya ait, DOP'a tabi alanların payı %75'in altına düştüğünde uyarı verilir (EK-2 Açıklama 9).
+- NİP hesap motoruna isteğe bağlı ilçe projeksiyon nüfusu (`ek2_nufus`) eklendi; verilmezse projeksiyon nüfusu kullanılır. Ek-2 raporu nüfus grubunu yazar.
+
+### Değişti
+- Kohort aracının varsayılan değerleri resmî TÜİK tablolarından hesaplandı (Türkiye geneli): Sx ve doğumdan 0-4'e yaşama oranı "Hayat Tabloları, 2023-2025" bülteninin (no. 58232) "Cinsiyete göre Türkiye tek yaş hayat tablosu" tablosundan; yaşa özel doğurganlık hızları "Doğum İstatistikleri, 2025" bülteninin (no. 58018) "Yaşa özel doğurganlık hızları" tablosundan (TDH 1,42); doğumda cinsiyet oranı aynı bültenin "Cinsiyet ve aya göre doğumlar" tablosundan (105,62). Kaynak, tablo adı, yıl ve adres `core/data/kohort_varsayilan.json` içindedir. Göç yaş profili model değeri olarak kaldı.
+- Kırılganlık endeksinin pay/payda yöntemi için kaynak gösterildi: UNDRR terminolojisi (afet riski tehlike, maruziyet, kırılganlık ve kapasitenin fonksiyonu; BM Genel Kurulu A/71/644, 2016; Sendai Çerçevesi 2015-2030) ve OECD/JRC (2008) "Handbook on Constructing Composite Indicators: Methodology and User Guide". Yöntem için kişi ya da stüdyo atfı kaldırıldı; Kent Öngörü v1.0.0 (Berkay Memiş, GPL-2.0-or-later) atfı yeniden yazılan özellikler için sürüyor.
+
 ## [1.2.1] - 2026-11-04
 
 ### Değişti
@@ -51,7 +67,7 @@ Bu sürüm, Space Syntax ve nüfus hesaplarında sonuçları değiştiren düzel
 - "Üstel" projeksiyon yöntemi kaldırıldı: iki gözlem noktasında geometrik yöntemle aynı sonucu verir.
 - Processing araç sayısı 15'ten 19'a çıktı.
 - Nüfus, DOP, Ek-2, projeksiyon ve Space Syntax değerleri için sayısal sınamalar eklendi.
-- Nüfus projeksiyonu, dağıtım ve kırılganlık özellikleri Kent Öngörü v1.0.0 (Berkay Memiş, GPL-2.0-or-later) temel alınarak yeniden yazıldı; pay/payda yöntemi PLN3113 stüdyosundan.
+- Nüfus projeksiyonu, dağıtım ve kırılganlık özellikleri Kent Öngörü v1.0.0 (Berkay Memiş, GPL-2.0-or-later) temel alınarak yeniden yazıldı.
 
 ## [1.1.6] - 2026-10-28
 

@@ -1,26 +1,115 @@
 {
-  "_aciklama": "Kohort-bileşen projeksiyonu için DÜZENLENEBİLİR VARSAYILAN değerler. Bunlar resmî TÜİK tablosu değildir; yerel çalışmada TÜİK'in güncel hayat tablosu ve yaşa özel doğurganlık hızlarıyla değiştirilmelidir.",
-  "yas_gruplari": ["0-4", "5-9", "10-14", "15-19", "20-24", "25-29", "30-34", "35-39", "40-44", "45-49", "50-54", "55-59", "60-64", "65-69", "70-74", "75-79", "80+"],
+  "_aciklama": "Kohort-bileşen projeksiyonu için DÜZENLENEBİLİR VARSAYILAN değerler. Sx, doğumdan 0-4'e yaşama oranı, ASFR ve doğumda cinsiyet oranı resmî TÜİK tablolarından hesaplanmıştır (Türkiye geneli; kaynak, tablo adı, yıl ve adres her blokta). Göç yaş profili model değeridir. Yerel çalışmada il/ilçe verisi varsa değiştirin.",
+  "yas_gruplari": [
+    "0-4",
+    "5-9",
+    "10-14",
+    "15-19",
+    "20-24",
+    "25-29",
+    "30-34",
+    "35-39",
+    "40-44",
+    "45-49",
+    "50-54",
+    "55-59",
+    "60-64",
+    "65-69",
+    "70-74",
+    "75-79",
+    "80+"
+  ],
   "sx": {
-    "_kaynak": "Gompertz-Makeham model hayat tablosu (mu(x) = 0.0002 + b*exp(0.1x)), b değeri doğumda beklenen yaşam süresi TÜİK Hayat Tabloları 2017-2019 düzeyine (erkek 75.9, kadın 81.3 yıl) ve bebek ölüm hızı yaklaşık binde 9.6 / 8.6 düzeyine ayarlanarak üretildi. Sx[i] = 5L(i+1)/5L(i) (i = 0..14); Sx[15] = T80/T75 (75-79 -> 80+); Sx[16] = T85/T80 (80+ grubunda kalma). Pandemi yılları (2020-2022) bilerek kullanılmadı.",
-    "erkek": [0.99862, 0.998655, 0.998431, 0.998062, 0.997453, 0.996451, 0.9948, 0.992086, 0.987628, 0.980326, 0.968415, 0.949121, 0.918221, 0.869648, 0.795582, 0.552184, 0.441976],
-    "kadin": [0.998727, 0.9988, 0.998671, 0.998457, 0.998104, 0.997523, 0.996566, 0.99499, 0.992398, 0.988141, 0.981165, 0.96978, 0.951324, 0.921727, 0.875103, 0.646894, 0.561269]
+    "_kaynak": "TÜİK, Hayat Tabloları, 2023-2025 (haber bülteni no. 58232, 29 Temmuz 2026), istatistiksel tablo \"Cinsiyete göre Türkiye tek yaş hayat tablosu, 2013-2025\", 2023-2025 dönemi, erkek ve kadın l(x) ve e(x) sütunları; https://veriportali.tuik.gov.tr/tr/press/58232 (erişim 2026-11-04). Hesap: T(x) = l(x)·e(x); 5Lx = T(x) − T(x+5); Sx[i] = 5L(5i+5)/5L(5i) (i = 0..14); Sx[15] = T80/T75 (75-79 -> 80+); Sx[16] = T85/T80 (80+ grubunda kalma).",
+    "tablo": "Cinsiyete göre Türkiye tek yaş hayat tablosu, 2013-2025",
+    "donem": "2023-2025",
+    "url": "https://veriportali.tuik.gov.tr/tr/press/58232",
+    "erkek": [
+      0.997344,
+      0.998058,
+      0.997012,
+      0.995421,
+      0.995119,
+      0.995105,
+      0.994526,
+      0.992917,
+      0.989425,
+      0.982744,
+      0.970664,
+      0.951139,
+      0.920484,
+      0.875369,
+      0.808833,
+      0.56275,
+      0.45301
+    ],
+    "kadin": [
+      0.997561,
+      0.998257,
+      0.997916,
+      0.997728,
+      0.997713,
+      0.997527,
+      0.996962,
+      0.995842,
+      0.993771,
+      0.990506,
+      0.985146,
+      0.97608,
+      0.960686,
+      0.932945,
+      0.882395,
+      0.618412,
+      0.513959
+    ]
   },
   "dogum_yasama": {
-    "_kaynak": "Doğumdan 0-4 yaş grubuna yaşama oranı = 5L0 / (5 l0), aynı model hayat tablosundan (a0 = 0.1).",
-    "erkek": 0.990225,
-    "kadin": 0.991226
+    "_kaynak": "Doğumdan 0-4 yaş grubuna yaşama oranı = 5L0 / (5·l0), aynı TÜİK hayat tablosundan (2023-2025; doğuşta beklenen yaşam süresi erkek 75,87, kadın 81,14 yıl).",
+    "erkek": 0.989395,
+    "kadin": 0.990946
   },
   "asfr": {
-    "_kaynak": "Yaşa özel doğurganlık hızı (kadın başına, yıllık; 15-19 ... 45-49). Yaş deseni Türkiye'nin 2020'ler desenine yakın bir yer tutucudur; toplamı TÜİK 2023 toplam doğurganlık hızı 1.51 düzeyine ölçeklendi (TDH = 5 x toplam = 1.51).",
-    "degerler": [0.010, 0.055, 0.095, 0.085, 0.045, 0.011, 0.001]
+    "_kaynak": "TÜİK, Doğum İstatistikleri, 2025 (haber bülteni no. 58018, 21 Mayıs 2026), istatistiksel tablo \"Yaşa özel doğurganlık hızları, 2001-2025\", 2025 satırı (binde değerler 1000'e bölündü; kadın başına yıllık; 15-19 ... 45-49). Toplam doğurganlık hızı 5 x toplam = 1,42 (TÜİK: 1,4185); https://veriportali.tuik.gov.tr/tr/press/58018 (erişim 2026-11-04).",
+    "tablo": "Yaşa özel doğurganlık hızları, 2001-2025",
+    "yil": 2025,
+    "url": "https://veriportali.tuik.gov.tr/tr/press/58018",
+    "degerler": [
+      0.009151,
+      0.053249,
+      0.095859,
+      0.079586,
+      0.036697,
+      0.008451,
+      0.000714
+    ]
   },
   "dogumda_cinsiyet_orani": {
-    "_kaynak": "100 kız doğuma karşı erkek doğum; biyolojik olağan değer yaklaşık 105.",
-    "deger": 105.0
+    "_kaynak": "100 kız doğuma karşı erkek doğum. TÜİK, Doğum İstatistikleri, 2025 (bülten no. 58018), istatistiksel tablo \"Cinsiyet ve aya göre doğumlar, 2001-2026\", 2025 satırı: erkek 459.928, kız 435.446 doğum -> 459928 / 435446 x 100 = 105,62; https://veriportali.tuik.gov.tr/tr/press/58018 (erişim 2026-11-04).",
+    "tablo": "Cinsiyet ve aya göre doğumlar, 2001-2026",
+    "yil": 2025,
+    "url": "https://veriportali.tuik.gov.tr/tr/press/58018",
+    "deger": 105.62
   },
   "goc_profili": {
-    "_kaynak": "Net göçün yaş dağılımı: Rogers-Castro biçimli model profil (genç yetişkin tepe noktası 20-34 yaş ve onlara eşlik eden çocuklar). Toplamı 1. Yerel göç istatistiği varsa değiştirin.",
-    "degerler": [0.075, 0.055, 0.045, 0.075, 0.135, 0.140, 0.115, 0.090, 0.070, 0.055, 0.045, 0.035, 0.025, 0.015, 0.010, 0.008, 0.007]
+    "_kaynak": "MODEL DEĞER (resmî tablo değildir): net göçün yaş dağılımı için Rogers-Castro biçimli model profil (genç yetişkin tepe noktası 20-34 yaş ve onlara eşlik eden çocuklar). Toplamı 1. Yerel göç istatistiği varsa değiştirin.",
+    "degerler": [
+      0.075,
+      0.055,
+      0.045,
+      0.075,
+      0.135,
+      0.14,
+      0.115,
+      0.09,
+      0.07,
+      0.055,
+      0.045,
+      0.035,
+      0.025,
+      0.015,
+      0.01,
+      0.008,
+      0.007
+    ]
   }
 }

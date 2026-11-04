@@ -32,7 +32,7 @@ METHOD_LABELS = {
     "kapasite": "Kapasite sınırlı (taşan pay yeniden dağıtılır)",
 }
 
-# PLN3113 stüdyosunda kullanılan bölge payı ön ayarı (düzenlenebilir).
+# Örnek bölge payı ön ayarı (Tire örneği; kendi planlama bölgelerinize göre düzenleyin).
 STUDIO_ZONE_SHARES = {
     "Kentsel gelişme aksı": 0.75,
     "Kırsal / çevre yerleşim": 0.20,

@@ -1558,15 +1558,23 @@ class TireNipDockWidget(QDockWidget):
     def _ek2_reference_html(self) -> str:
         """Rehber sayfası için Ek-2 değerleri — hesapta kullanılan tablodan okunur."""
         try:
+            from .core.tire_constants import EK2_NUFUS_GRUPLARI as groups
             from .core.tire_constants import MPYY_DONATI_STANDARTLARI as table
-            rows = [(v.get("adi", k), float(v.get("standart_m2_kisi", 0.0))) for k, v in table.items()]
-        except (ImportError, AttributeError, TypeError, ValueError):
-            rows = []
-        if not rows:
+            rows = [(v.get("adi", k), [float(x) for x in v["kademeler"]]) for k, v in table.items()]
+            labels = [str(label) for _upper, label in groups]
+        except (ImportError, AttributeError, KeyError, TypeError, ValueError):
+            rows, labels = [], []
+        if not rows or not labels:
             return "Ek-2 standart tablosu bu kurulumda okunamadı."
-        items = "<br>".join(f"• <b>{html.escape(str(name))}:</b> {_tr_num(value, 2)} m²/kişi" for name, value in rows)
-        total = sum(value for _name, value in rows)
-        return f"{items}<br>➡️ <i>Toplam: <b>{_tr_num(total, 2)} m²/kişi</b> (eklentinin hesapta kullandığı değerler)</i>"
+        items = "<br>".join(
+            f"• <b>{html.escape(str(name))}:</b> " + " | ".join(_tr_num(v, 2) for v in values) + " m²/kişi"
+            for name, values in rows)
+        totals = " | ".join(_tr_num(sum(values[i] for _n, values in rows), 2) for i in range(len(labels)))
+        return (f"<i>Nüfus grupları: {html.escape(' | '.join(labels))} (ilçe projeksiyon nüfusu)</i><br>"
+                f"{items}<br>➡️ <i>Toplam: <b>{totals} m²/kişi</b>. Kaynak: MPYY (RG 14.06.2014/29030) "
+                "md. 11 ve EK-2 tablosu (Değişik: RG 17.05.2017/30069); teknik altyapı yol ve otopark "
+                "hariçtir; semt spor alanı açık-yeşil alana, ÖZEL eğitim/sağlık/sosyal/kültürel tesisler "
+                "standarda dahildir (EK-2 Açıklama 8-9).</i>")
 
     def _create_tab_nip(self) -> QWidget:
         tab = QWidget()

@@ -20,9 +20,11 @@ noktasındaki TDH'ye göre ASFR ölçeklenir.
 Hedef yıl 5'in katı adımda değilse, iki komşu adım arasında her yaş grubu
 geometrik (bir uç sıfırsa doğrusal) enterpole edilir.
 
-Varsayılan Sx / ASFR / göç profili ``core/data/kohort_varsayilan.json``
-dosyasındadır; kaynak notları dosyanın içindedir ve hepsi düzenlenebilir
-yer tutuculardır (resmî TÜİK tablosu değildir).
+Varsayılan Sx / ASFR / doğumda cinsiyet oranı / göç profili
+``core/data/kohort_varsayilan.json`` dosyasındadır. Sx ve doğumdan 0-4'e yaşama
+oranı TÜİK Hayat Tabloları 2023-2025'ten, ASFR ve cinsiyet oranı TÜİK Doğum
+İstatistikleri 2025'ten hesaplanmıştır (Türkiye geneli; kaynak notları dosyada);
+göç yaş profili model değeridir. Hepsi düzenlenebilir.
 """
 from __future__ import annotations
 
@@ -66,6 +68,7 @@ def load_defaults():
                 "sx": raw["sx"]["_kaynak"],
                 "dogum_yasama": raw["dogum_yasama"]["_kaynak"],
                 "asfr": raw["asfr"]["_kaynak"],
+                "srb": raw["dogumda_cinsiyet_orani"]["_kaynak"],
                 "goc_profili": raw["goc_profili"]["_kaynak"],
             },
         })

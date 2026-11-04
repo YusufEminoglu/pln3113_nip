@@ -28,6 +28,7 @@ from ..core import vulnerability as vu
 from ..core.tire_constants import norm_tr
 from .alg_nufus_projeksiyonu import (
     ATTRIBUTION,
+    YONTEM_KAYNAKLARI,
     FAST_INSERT,
     FIELD_ANY,
     FIELD_NUMERIC,
@@ -535,8 +536,9 @@ class KirilganlikEndeksiAlgorithm(OngoruBaseAlgorithm):
             "kategori:<alan>|pay:<alan>:<sözcükler>, yol:ort:<alan>|pay:<alan>:<sözcükler>|"
             "esikalti:<alan>:<değer>|esikustu:<alan>:<değer>. Puanlama: '<=100:5; <500:3; *:1', "
             "'yığma,taş=4; betonarme=2; *=3', 'dilim', 'dilim ters', 'esit', 'yuvarla'.\n\n"
-            "Ön ayarlar (PLN3113 Tire stüdyo eşikleri; başka yerleşimde gözden geçirin, metni "
-            "kopyalayıp özel endeks olarak düzenleyebilirsiniz):\n" + presets + "\n" + ATTRIBUTION
+            "Ön ayarlar (Tire örneği eşikleri; başka yerleşimde gözden geçirin, metni "
+            "kopyalayıp özel endeks olarak düzenleyebilirsiniz):\n" + presets + "\n"
+            + YONTEM_KAYNAKLARI + "\n\n" + ATTRIBUTION
         )
 
     def initAlgorithm(self, config=None):
@@ -761,6 +763,7 @@ class KirilganlikEndeksiAlgorithm(OngoruBaseAlgorithm):
         if comp is not None:
             sections.append(("Bileşik endeks ağırlıkları", ["Endeks", "Ağırlık"],
                              [[c, f"{w:.3f}"] for c, w in comp["weights"].items()]))
-        text = vu.html_report("Kırılganlık endeksi raporu", sections, warnings, ATTRIBUTION)
+        text = vu.html_report("Kırılganlık endeksi raporu", sections, warnings,
+                              YONTEM_KAYNAKLARI + " " + ATTRIBUTION)
         with open(path, "w", encoding="utf-8") as fh:
             fh.write(text)
