@@ -45,25 +45,25 @@ if Qgis.versionInt() >= 33800:
 else:  # QGIS 3.28 - 3.36
     _TYPES = {"double": QVariant.Double, "int": QVariant.Int, "string": QVariant.String}
 
-NO_GEOMETRY = Qgis.WkbType.NoGeometry if hasattr(Qgis, "WkbType") else QgsWkbTypes.NoGeometry
+NO_GEOMETRY = Qgis.WkbType.NoGeometry if hasattr(Qgis, "WkbType") else QgsWkbTypes.Type.NoGeometry
 FAST_INSERT = QgsFeatureSink.Flag.FastInsert
 if hasattr(Qgis, "ProcessingFieldParameterDataType"):
     FIELD_NUMERIC = Qgis.ProcessingFieldParameterDataType.Numeric
     FIELD_ANY = Qgis.ProcessingFieldParameterDataType.Any
 else:
-    FIELD_NUMERIC = QgsProcessingParameterField.Numeric
-    FIELD_ANY = QgsProcessingParameterField.Any
+    FIELD_NUMERIC = QgsProcessingParameterField.DataType.Numeric
+    FIELD_ANY = QgsProcessingParameterField.DataType.Any
 if hasattr(Qgis, "ProcessingNumberParameterType"):
     NUM_DOUBLE = Qgis.ProcessingNumberParameterType.Double
     NUM_INT = Qgis.ProcessingNumberParameterType.Integer
 else:
-    NUM_DOUBLE = QgsProcessingParameterNumber.Double
-    NUM_INT = QgsProcessingParameterNumber.Integer
+    NUM_DOUBLE = QgsProcessingParameterNumber.Type.Double
+    NUM_INT = QgsProcessingParameterNumber.Type.Integer
 if hasattr(Qgis, "ProcessingParameterFlag"):
     FLAG_ADVANCED = Qgis.ProcessingParameterFlag.Advanced
 else:
     from qgis.core import QgsProcessingParameterDefinition
-    FLAG_ADVANCED = QgsProcessingParameterDefinition.FlagAdvanced
+    FLAG_ADVANCED = QgsProcessingParameterDefinition.Flag.FlagAdvanced
 TYPE_VECTOR_ANY = QgsProcessing.SourceType.TypeVector
 
 

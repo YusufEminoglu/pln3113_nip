@@ -94,7 +94,7 @@ def metre_birimli_mi(crs) -> bool:
         metre = Qgis.DistanceUnit.Meters
     except AttributeError:  # QGIS < 3.30
         from qgis.core import QgsUnitTypes
-        metre = QgsUnitTypes.DistanceMeters
+        metre = QgsUnitTypes.DistanceUnit.DistanceMeters
     return crs.mapUnits() == metre
 
 

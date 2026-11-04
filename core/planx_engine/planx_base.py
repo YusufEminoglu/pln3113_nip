@@ -28,10 +28,10 @@ from qgis.core import (
 
 from . import graphs
 
-DOUBLE = QVariant.Type.Double if hasattr(QVariant, 'Type') else QVariant.Double
-INT = QVariant.Type.Int if hasattr(QVariant, 'Type') else QVariant.Int
-LONG = QVariant.Type.LongLong if hasattr(QVariant, 'Type') else QVariant.LongLong
-STRING = QVariant.Type.String if hasattr(QVariant, 'Type') else QVariant.String
+DOUBLE = QVariant.Double
+INT = QVariant.Int
+LONG = QVariant.LongLong
+STRING = QVariant.String
 
 GROUP_NETWORK = "05. Ulaşım ve Network Analizleri"
 GROUP_STANDARDS = "04. NİP Nüfus, Donatı ve DOP Analizi"

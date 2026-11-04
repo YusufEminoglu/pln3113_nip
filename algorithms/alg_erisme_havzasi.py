@@ -325,12 +325,12 @@ class ErismeHavzasiAlgorithm(QgsProcessingAlgorithm):
             if need_polys:
                 feedback.pushInfo("Ağ servis hatlarından gerçek yürüme erişim havzası poligonları türetiliyor...")
                 fields = QgsFields()
-                fields.append(QgsField("start", QVariant.Type.String if hasattr(QVariant, 'Type') else QVariant.String))
-                fields.append(QgsField("mesafe_m", QVariant.Type.Double if hasattr(QVariant, 'Type') else QVariant.Double))
-                fields.append(QgsField("ag_alan_ha", QVariant.Type.Double if hasattr(QVariant, 'Type') else QVariant.Double))
-                fields.append(QgsField("mpyy_alan_ha", QVariant.Type.Double if hasattr(QVariant, 'Type') else QVariant.Double))
-                fields.append(QgsField("pedshed_orani", QVariant.Type.Double if hasattr(QVariant, 'Type') else QVariant.Double))
-                fields.append(QgsField("ag_yol_uzunluk_m", QVariant.Type.Double if hasattr(QVariant, 'Type') else QVariant.Double))
+                fields.append(QgsField("start", QVariant.String))
+                fields.append(QgsField("mesafe_m", QVariant.Double))
+                fields.append(QgsField("ag_alan_ha", QVariant.Double))
+                fields.append(QgsField("mpyy_alan_ha", QVariant.Double))
+                fields.append(QgsField("pedshed_orani", QVariant.Double))
+                fields.append(QgsField("ag_yol_uzunluk_m", QVariant.Double))
 
                 temp_hulls_layer = QgsVectorLayer(f"Polygon?crs={roads_crs.authid()}", "temp_hulls", "memory")
                 dp = temp_hulls_layer.dataProvider()

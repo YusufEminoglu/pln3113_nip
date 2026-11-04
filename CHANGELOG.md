@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.1] - 2026-11-04
+
+### Değişti
+- Qt6 / QGIS 4 uyumluluğu: Qt ve QGIS enum değerleri hem QGIS 3.28+ hem QGIS 4'ün kabul ettiği kapsamlı biçimde yazıldı (örneğin `QgsUnitTypes.DistanceUnit.DistanceMeters`), QGIS 4'te bulunmayan `QVariant.Type` dalları kaldırıldı; davranış değişmedi.
+
 ## [1.2.0] - 2026-11-04
 
 Bu sürüm, Space Syntax ve nüfus hesaplarında sonuçları değiştiren düzeltmeler içerir. 1.1.6 ile üretilmiş NAIN, NACH, senaryo farkı ve nüfus çıktılarını yeniden hesaplayın.

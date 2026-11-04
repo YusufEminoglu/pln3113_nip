@@ -66,7 +66,7 @@ RASTER_ROLES = {"dem": "DEM", "dem_goreli": "DEM", "egim": "EGIM", "lst": "LST"}
 def _meters(crs):
     if hasattr(Qgis, "DistanceUnit"):
         return crs.mapUnits() == Qgis.DistanceUnit.Meters
-    return crs.mapUnits() == QgsUnitTypes.DistanceMeters
+    return crs.mapUnits() == QgsUnitTypes.DistanceUnit.DistanceMeters
 
 
 def _find_field(fields, hints):

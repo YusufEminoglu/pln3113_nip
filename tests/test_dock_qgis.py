@@ -196,12 +196,12 @@ class BoxRecorder:
                 return QMessageBox.StandardButton.Ok
             return staticmethod(show)
 
-        def exec_(box, *_a, **_k):
+        def fake_exec(box, *_a, **_k):
             recorder.shown.append(("box", box.text()))
             return 0
 
-        QMessageBox.exec = exec_
-        QMessageBox.exec_ = exec_
+        QMessageBox.exec = fake_exec
+        QMessageBox.exec_ = fake_exec
         for kind in ("critical", "warning", "information", "question"):
             setattr(QMessageBox, kind, static(kind))
 

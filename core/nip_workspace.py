@@ -126,7 +126,7 @@ def _png_bytes(path: Path) -> bytes:
         return path.read_bytes()
     bytes_arr = QByteArray()
     buf = QBuffer(bytes_arr)
-    buf.open(QIODevice.OpenModeFlag.WriteOnly if hasattr(QIODevice, "OpenModeFlag") else QIODevice.WriteOnly)
+    buf.open(QIODevice.OpenModeFlag.WriteOnly)
     image.save(buf, "PNG")
     return bytes(bytes_arr)
 
