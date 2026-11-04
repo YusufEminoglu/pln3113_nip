@@ -39,6 +39,15 @@ TIRE_POPULATION_BENCHMARKS = {
     }
 }
 
+# Tire yalnızca bir ÖRNEK ön ayardır. Araç Türkiye genelinde çalışır; varsayılan
+# kıyas referansı boştur ve kırsal nüfus eki 0'dır (kullanıcı kendi değerini girer).
+TIRE_KIRSAL_NUFUS_ORNEK = 26000  # Tire örneği: kırsal mahalleler (TÜİK 2015-2025 ~25-26 bin)
+
+NUFUS_KIYAS_ONAYARLARI = {
+    "yok": {},
+    "tire": TIRE_POPULATION_BENCHMARKS,
+}
+
 def norm_tr(text: str) -> str:
     """Türkçe karakterleri ve boşlukları tek bir standart forma sokar."""
     if not text:
@@ -148,8 +157,10 @@ _TUCBS_RAW_MAPPING = {
     "park ve rekreasyon alanı": ("Park ve Rekreasyon Alanı", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)", "YESIL_ALAN", False, 0.0, 0.0, 1.0, 4.0),
     "pasifyesilalan": ("Pasif Yeşil Alan / Refüj", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)", "YESIL_ALAN", False, 0.0, 0.0, 0.0, 0.0),
     "pasif yeşil alan / refüj": ("Pasif Yeşil Alan / Refüj", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)", "YESIL_ALAN", False, 0.0, 0.0, 0.0, 0.0),
-    "sporkompleksialani": ("Spor Kompleksi / Tesis", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)", "YESIL_ALAN", False, 0.0, 0.0, 2.0, 4.0),
-    "spor kompleksi / tesis": ("Spor Kompleksi / Tesis", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)", "YESIL_ALAN", False, 0.0, 0.0, 2.0, 4.0),
+    # Spor alanları Ek-2'de ayrı bir donatıdır; açık ve yeşil alan standardına sayılmaz
+    # (planx_mpyy_studio crosswalk: SPOR_ALANI -> SOSYAL ALT YAPI ALANLARI).
+    "sporkompleksialani": ("Spor Kompleksi / Tesis", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)", None, False, 0.0, 0.0, 2.0, 4.0),
+    "spor kompleksi / tesis": ("Spor Kompleksi / Tesis", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)", None, False, 0.0, 0.0, 2.0, 4.0),
 
     # 10. Kamu Donatıları - İbadet Alanları
     "ibadetalani": ("İbadet Alanı", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)", "IBADET", False, 0.0, 0.0, 1.0, 3.0),
@@ -254,7 +265,9 @@ def get_tucbs_info(fonk_str: str) -> dict | None:
             item = ("Eğitim Alanı", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)", "EGITIM", True, 70.0, 0.35, 5.0, 10.0)
         elif "saglik" in ck or "asm" in ck or "hastane" in ck:
             item = ("Sağlık Alanı", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)", "SAGLIK", True, 60.0, 0.45, 10.0, 8.0)
-        elif "park" in ck or "yesil" in ck or "rekreasyon" in ck or "spor" in ck:
+        elif "spor" in ck:
+            item = ("Spor Alanı", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)", None, False, 0.0, 0.0, 2.0, 4.0)
+        elif "park" in ck or "yesil" in ck or "rekreasyon" in ck:
             item = ("Park ve Yeşil Alan", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)", "YESIL_ALAN", False, 0.0, 0.0, 0.5, 3.0)
         elif "ibadet" in ck or "cami" in ck:
             item = ("İbadet Alanı", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)", "IBADET", False, 0.0, 0.0, 1.0, 3.0)
@@ -268,6 +281,11 @@ def get_tucbs_info(fonk_str: str) -> dict | None:
             item = ("Belediye / Kamu Hizmet Alanı", 0.0, 0.0, "DONATI_VEYA_CALISMA", "DOP İÇİ", "DOP İÇİ - KAMU (KESİNTİ)", None, True, 45.0, 0.50, 8.0, 5.0)
         else:
             return None
+
+    # Özel (private) sağlık/eğitim vb. tesisler kamu donatı standardına (Ek-2)
+    # sayılmaz ve DOP'ta kamu kesintisi değil özel tahsistir.
+    if "ozel" in ck and item[4] == "DOP İÇİ":
+        item = item[:5] + ("DOP İÇİ - ÖZEL (TAHSİS)", None) + item[7:]
 
     return {
         "std_fonksiyon": item[0],
@@ -375,6 +393,10 @@ def resolve_nip_density(fonk_str: str) -> tuple[float | None, float | None, str]
 # =====================================================================
 # 3. MEKÂNSAL PLANLAR YAPIM YÖNETMELİĞİ (MPYY EK-2) DONATI GRUPLARI
 # =====================================================================
+# Kaynak: Mekânsal Planlar Yapım Yönetmeliği Ek-2 — doğrulanmalı.
+# Aşağıdaki m²/kişi değerleri resmi yönetmelik metnine karşı eklenti sahibi
+# tarafından doğrulanmadıkça değiştirilmemelidir (planx_mpyy_studio ile farklıdır).
+# Yalnız KAMU donatıları sayılır: "ÖZEL ..." tesisler ve spor alanları bu tabloda yoktur.
 MPYY_DONATI_STANDARTLARI = {
     "EGITIM": {
         "adi": "Eğitim Tesisleri Alanı",
@@ -384,7 +406,7 @@ MPYY_DONATI_STANDARTLARI = {
     "SAGLIK": {
         "adi": "Sağlık Tesisleri Alanı",
         "standart_m2_kisi": 1.5,
-        "anahtarlar": ["SAĞLIK", "SAGLIK", "HASTANE", "AİLE SAĞLIĞI", "POLİKLİNİK", "ÖZEL SAĞLIK"]
+        "anahtarlar": ["SAĞLIK", "SAGLIK", "HASTANE", "AİLE SAĞLIĞI", "POLİKLİNİK"]
     },
     "SOSYAL_KULTUREL": {
         "adi": "Sosyal ve Kültürel Tesisler",
@@ -394,7 +416,7 @@ MPYY_DONATI_STANDARTLARI = {
     "YESIL_ALAN": {
         "adi": "Açık ve Yeşil Alanlar (Park/Rekreasyon)",
         "standart_m2_kisi": 10.0,
-        "anahtarlar": ["PARK VE YEŞİL", "PARK VE YESIL", "PARK ALANI", "MİLLET BAHÇESİ", "MILLET BAHCESI", "MESİRE", "MESIRE", "SEMT SPOR", "SPOR ALANI", "PASİF YEŞİL", "PASIF YESIL", "REKREASYON"]
+        "anahtarlar": ["PARK VE YEŞİL", "PARK VE YESIL", "PARK ALANI", "MİLLET BAHÇESİ", "MILLET BAHCESI", "MESİRE", "MESIRE", "PASİF YEŞİL", "PASIF YESIL", "REKREASYON"]
     },
     "TEKNIK_ALTYAPI": {
         "adi": "Teknik Altyapı Alanları",
@@ -408,6 +430,42 @@ MPYY_DONATI_STANDARTLARI = {
     }
 }
 
+# ---------------------------------------------------------------------
+# Saf (QGIS'siz) hesap çekirdekleri — NipCalculatorEngine bunları kullanır
+# ---------------------------------------------------------------------
+DOP_YASAL_SINIR_YUZDE = 45.0
+DOP_TAHMINI_UYGUNLUK = "TAHMİNİ — yasal değerlendirme için plan onama sınırı gerekli"
+
+
+def ada_nufusu(alan_ha: float, alt_snr: float, ust_snr: float) -> tuple[float, float]:
+    """Brüt yoğunluk (kişi/ha) x alan (ha) = ada nüfusu (alt, üst)."""
+    return alan_ha * alt_snr, alan_ha * ust_snr
+
+
+def dop_orani_hesapla(kamu_poligon_m2: float, yol_m2: float, dop_esas_alan_m2: float) -> float:
+    """DOP oranı (%) = (kamu donatı poligonları + yol) / düzenleme sahası (DOP esas alan) x 100."""
+    return round(((kamu_poligon_m2 + yol_m2) / max(1.0, dop_esas_alan_m2)) * 100.0, 2)
+
+
+def dop_uygunluk_metni(dop_orani: float, sinir_var: bool) -> str:
+    """Yasal hüküm yalnız gerçek plan onama sınırıyla verilir; aksi halde 'TAHMİNİ'."""
+    if not sinir_var:
+        return DOP_TAHMINI_UYGUNLUK
+    return "YASAL SINIRDA (UYGUN)" if dop_orani <= DOP_YASAL_SINIR_YUZDE else "YASAL SINIRI AŞIYOR"
+
+
+def ek2_degerlendir(toplam_m2: float, standart_m2_kisi: float, nufus: float) -> dict:
+    """Ek-2 yeterliliği: gerekli = nüfus x standart; fark = mevcut - gerekli."""
+    gerekli = round(nufus * standart_m2_kisi, 1)
+    fark = round(toplam_m2 - gerekli, 1)
+    return {
+        "gerekli_m2": gerekli,
+        "fark_m2": fark,
+        "kisi_basi_m2": round(toplam_m2 / max(1, nufus), 2),
+        "durum": "YETERLİ" if fark >= 0 else "YETERSİZ",
+    }
+
+
 def identify_facility_category(fonk_str: str) -> str | None:
     """Verilen fonksiyonun hangi MPYY Ek-2 donatı grubuna girdiğini döndürür."""
     if not fonk_str:
@@ -419,6 +477,12 @@ def identify_facility_category(fonk_str: str) -> str | None:
         return tucbs["donati"]
 
     upper = norm_tr(fonk_str)
+    # Özel mülkiyetteki tesisler (ÖZEL SAĞLIK, ÖZEL EĞİTİM...) kamu standardına sayılmaz
+    if "OZEL" in upper:
+        return None
+    # Spor alanları açık-yeşil alan standardına sayılmaz (ayrı donatı)
+    if "SPOR" in upper:
+        return None
     # Otopark ve makine parkını yeşil alandan kesinlikle koru
     if "OTOPARK" in upper or "MAKINE PARKI" in upper:
         return "TEKNIK_ALTYAPI" if "OTOPARK" in upper else None

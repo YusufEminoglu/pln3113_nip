@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Lifecycle smoke test for tire_nip."""
+"""Lifecycle smoke test for pln3113_nip."""
 from __future__ import annotations
 
 import configparser
@@ -438,7 +438,7 @@ def test_network_engine_topological_routing():
 _GLOBAL_PROVIDER = None
 
 
-def test_all_15_processing_algorithms_registered():
+def test_all_19_processing_algorithms_registered():
     global _GLOBAL_PROVIDER
     from pln3113_nip.provider import NipProvider
     if _GLOBAL_PROVIDER is None:
@@ -463,12 +463,21 @@ def test_all_15_processing_algorithms_registered():
         "nip_hizmet_izokron",
         "nip_2sfca_yeterlilik",
         "nip_scenario_compare",
+        # 1.2.0: Kent Öngörü özellikleri (yeniden yazıldı)
+        "nufus_projeksiyonu",
+        "kohort_projeksiyonu",
+        "mahalle_dagitimi",
+        "kirilganlik_endeksi",
     }
     missing = expected_algs - alg_names
+    registry_ids = {a.id() for a in QgsApplication.processingRegistry().algorithms()}
+    new_ids = {f"{_GLOBAL_PROVIDER.id()}:{n}" for n in
+               ("nufus_projeksiyonu", "kohort_projeksiyonu", "mahalle_dagitimi", "kirilganlik_endeksi")}
+    unregistered = new_ids - registry_ids
     return _ok(
-        "processing provider registers all 15 algorithms across 6 hierarchical groups",
-        len(missing) == 0,
-        f"registered={len(algs)} missing={missing}"
+        "processing provider registers all 19 algorithms (incl. projection, cohort, allocation, vulnerability)",
+        len(missing) == 0 and not unregistered and len(algs) >= 19,
+        f"registered={len(algs)} missing={missing} not_in_registry={unregistered}"
     )
 
 
@@ -628,7 +637,7 @@ def run_all(iface):
         test_boundary_filter_and_clipping(),
         test_nip_workspace_generation(),
         test_network_engine_topological_routing(),
-        test_all_15_processing_algorithms_registered(),
+        test_all_19_processing_algorithms_registered(),
         test_planx_network_suite(),
     ]
     passed = sum(1 for r in results if r)

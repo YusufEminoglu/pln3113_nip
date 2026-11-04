@@ -1,5 +1,53 @@
 # Changelog
 
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [1.2.0] - 2026-11-04
+
+Bu sürüm, Space Syntax ve nüfus hesaplarında sonuçları değiştiren düzeltmeler içerir. 1.1.6 ile üretilmiş NAIN, NACH, senaryo farkı ve nüfus çıktılarını yeniden hesaplayın.
+
+### Eklendi
+- Processing araç kutusunda yeni grup: "07. Nüfus Projeksiyonu, Dağıtım ve Kırılganlık". Dört aracın hepsi paneldeki Nüfus sayfasından da açılabilir.
+- **Nüfus projeksiyonu** (`pln3113:nufus_projeksiyonu`): aritmetik, geometrik, İller Bankası, en küçük kareler (doğrusal regresyon), 2. derece polinom ve lojistik yöntemler; her yöntem için R² ve geriye dönük sınama hatası; sonuçlar özet tablo ve yıllık seri tablosu olarak yazılır.
+- İller Bankası yönteminde yıllık artış hızı varsayılan olarak %1-%3 aralığına çekilir ve çekildiğinde uyarı verilir. Lojistik yöntemde K verilmezse hatayı en küçükleyen K aranır, arama sınırına dayanırsa uyarı verilir; Pearl-Reed üç nokta biçimi isteğe bağlıdır.
+- Paneldeki Nüfus sayfasında projeksiyon hesaplanabilir ve sonuç NİP hedef nüfus kutusuna (50 milyona kadar) aktarılabilir; hedef nüfusu elle girmek de mümkündür.
+- **Kohort-bileşen projeksiyonu** (`pln3113:kohort_projeksiyonu`): 17 beş yaşlık grup, iki cinsiyet, beşer yıllık adımlar; doğumlar 0-4 yaş grubuna doğumdan 0-4'e yaşama oranıyla aktarılır; beşlik adıma düşmeyen hedef yıllar için ara değer hesaplanır.
+- Kohort aracının varsayılan Sx, ASFR ve göç yaş profili kaynak notlarıyla birlikte `core/data/kohort_varsayilan.json` dosyasındadır. Bunlar resmî TÜİK tablosu değil, model yer tutucularıdır (Sx: TÜİK doğumda beklenen yaşam süresine, erkek 75,9 ve kadın 81,3 yıl, ayarlanmış Gompertz-Makeham tablosu; ASFR: toplam doğurganlık hızı 1,51'e ölçeklenmiş desen) ve resmî tablolarla değiştirilmelidir.
+- Kohort aracında net göç yıllık oran ya da yıllık kişi sayısı olarak girilir ve yaş profiline göre dağıtılır; çıktılar yaş piramidi tablosu ile bağımlılık oranları, yaşlanma endeksi, medyan yaş, doğum ve net göçü içeren gösterge tablosudur.
+- **Ekonomik taban göçü**: nüfus projeksiyonu aracında yeni istihdam, "çalışan başına nüfus" katsayısıyla (varsayılan 2,7 kişi/çalışan) göç eden nüfusa çevrilir ve her yöntemin sonucuna eklenir.
+- **Mahalle dağıtımı** (`pln3113:mahalle_dagitimi`): hedef nüfusun mahallelere oransal, planlama bölgesi payına göre ya da kapasite sınırlı (kapasitesi dolan mahallenin fazla payı diğer mahallelere yeniden dağıtılır) biçimde dağıtılması; en büyük kalan yöntemiyle tam sayıya yuvarlama toplamı korur; sonuç anahtar alanla katmana bağlanır.
+- **Kırılganlık endeksi** (`pln3113:kirilganlik_endeksi`): göstergeler 1-5 puanlanır; kırılganlığı artıran göstergeler pay, uyum kapasitesini gösterenler paydada yer alır (pay/payda yöntemi). Deprem (K_D), sel ve taşkın (K_Y) ve aşırı sıcak (K_S) için hazır endeksler ile özel endeks (K_O) tanımlanabilir; bileşik endeksin varsayılan ağırlıkları K_D 0,40, K_Y 0,35, K_S 0,25 ve K_O 0,25'tir.
+- Kırılganlık aracında kategori değerleri mevcut Türkçe ad eşleştirmesiyle (`norm_tr`) eşleşir; değeri olmayan gösterge 1 (çarpımda etkisiz) puan alır ve bölgenin eksik gösterge sayısına yazılır; nüfus göstergesi yoğunlukla (kişi/ha) puanlanır; sel endeksinde düşük göreli yükseklik ve düşük eğim kırılganlığı artıracak yönde puanlanır.
+- Kırılganlık sınıfları Jenks (doğal kırılma), eşit sayılı (quantile), eşit aralıklı ya da geometrik aralıklı olarak ayrılabilir; sonuç anahtar alanla katmana bağlanır ve HTML raporundaki metinler kaçışlanır.
+
+### Düzeltildi
+- Space Syntax motoru PlanX 4.23.0 sürümüne güncellendi: NAIN artık NC^1.2/(TD+2) ile hesaplanır ve seçim (choice) yönlü segment uçları üzerinden sayılır, böylece çıkmaz sokak segmentleri seçim değeri almaz. A/B senaryo karşılaştırmasının eşikleri yeni ölçeğe göre yeniden belirlendi (|ΔNACH| 0,077, |ΔNAIN| 0,047, yeni yol NACH 0,734 ve NAIN 0,391).
+- Space Syntax yarıçapları yer metresi olarak uygulanır.
+- Space Syntax ve NİP nüfus araçları iptal edildiğinde yarım kalmış sonuç yazmaz.
+- Ağ analizlerinde NULL, sıfır ya da negatif maliyet değeri uzunlukla değiştirilmez; işlem durur.
+- NİP nüfus aracında plan sınırı ya da yol katmanı adalardan farklı bir koordinat sisteminde olduğunda ada katmanının koordinat sistemine dönüştürülür; daha önce bu durumda tüm adalar elenebiliyor ya da yol uzunlukları yanlış birimde hesaplanıyordu.
+- NİP nüfus aracında alanlar her zaman elipsoid üzerinde m² olarak ölçülür: proje elipsoidi "Yok" ise koordinat sisteminin elipsoidi, o da yoksa WGS 84 elipsoidi (EPSG:7030) kullanılır.
+- Hesaptan çıkarılan adaların sayısı (boş geometri, sıfır alan, plan sınırı dışı) ve fonksiyonu boş adalar uyarı olarak bildirilir. 2SFCA aracında nüfusu boş (NULL) talep noktaları 0 kişi, kapasitesi boş donatılar varsayılan kapasiteyle hesaba girer ve sayıları uyarı olarak verilir.
+- Ağ analizleri, erişim havzası ve saha/bina analizi fit (feet) birimli projeksiyonları da reddeder; metre birimli projeksiyon gerekir.
+- Plan sınırı verilmeden yasal DOP değerlendirmesi ("yasal sınırı aşıyor") yapılmaz; sınırsız hesap "TAHMİNİ DOP ORANI" olarak etiketlenir. Tahmini yol payı (varsayılan 0,18) parametre olarak değiştirilebilir.
+- DOP için %45 değeri panelde hedef olarak değil "yasal tavan" olarak gösterilir.
+- Erişim havzası aracında içbükey zarf (concave hull) seçeneği çalışmıyordu, her zaman dışbükey zarfa düşüyordu; artık seçilen zarf üretilir.
+- OD matrisi rotaları ters yöndeki kenarlarda doğru yönde çizilir (önceden zikzak çiziyordu).
+- Ek-2 bilançosunda spor alanları yeşil alan standardına, adında "ÖZEL" geçen tesisler (ör. özel sağlık) kamu donatı standardına sayılmaz; bu tesisler DOP hesabında da kamu donatısı değil özel tahsis olarak değerlendirilir, bu yüzden ÖZEL tesis içeren planlarda DOP oranı 1.1.6'ya göre düşebilir. Ek-2 değerleri değişmedi; yürürlükteki yönetmelik metniyle karşılaştırarak kullanın.
+- Tire'ye özgü sabitler (kırsal nüfus eki, nüfus kıyaslama değerleri, "Tire NİP" adları) koddan çıkarıldı; kırsal nüfus eki ve kıyaslama ön ayarı parametre olarak girilir, Tire yalnızca örnek ön ayar olarak kalır.
+- İnteraktif NİP & DOP raporunda katman ve fonksiyon adları HTML'e kaçışlanarak yazılır; panel, raporun plotly, Leaflet ve OpenStreetMap karolarını herkese açık sunuculardan yüklediğini belirtir.
+
+### Değişti
+- Panel ve menü adlarında PLN3113 adı kullanılır.
+- Panel daraltıldı (en az genişlik yaklaşık 205 piksel; 340 piksel genişlikte hiçbir sayfa yatay kaydırma çubuğu istemez) ve renkler QGIS temasından alınır. QGIS'in varsayılan, Night Mapping ve Blend of Gray temalarında ölçülen metin kontrastı en az 5:1'dir.
+- "Üstel" projeksiyon yöntemi kaldırıldı: iki gözlem noktasında geometrik yöntemle aynı sonucu verir.
+- Processing araç sayısı 15'ten 19'a çıktı.
+- Nüfus, DOP, Ek-2, projeksiyon ve Space Syntax değerleri için sayısal sınamalar eklendi.
+- Nüfus projeksiyonu, dağıtım ve kırılganlık özellikleri Kent Öngörü v1.0.0 (Berkay Memiş, GPL-2.0-or-later) temel alınarak yeniden yazıldı; pay/payda yöntemi PLN3113 stüdyosundan.
+
 ## [1.1.6] - 2026-10-28
 
 - Help opens the online guide on geophilo.com instead of a copy bundled in the plugin package; the plugin no longer ships documentation HTML.
@@ -8,10 +56,19 @@
 
 - Hub listing text rewritten; author Geophilo; university affiliation removed; documentation links use the standard geophilo.com pages (manual.html, guide/); manual HTML no longer ships in the plugin package.
 
-All notable changes to this project will be documented in this file.
+## [1.1.4] - 2026-10-18
+### Değişti
+- GitHub depo adı ve tüm kaynak bağlantıları paket/klasör adıyla aynı olacak şekilde `YusufEminoglu/pln3113_nip` olarak güncellendi.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.1.3] - 2026-10-18
+### Değişti
+- Metodoloji kılavuzu genişletildi: modüller ve analitik araçlar adım adım anlatıldı, çıktı sütunları için sözlük eklendi.
+- Açıklama, etiketler ve README Türkiye'deki tüm şehir ve bölge planlama stüdyoları için genelleştirildi.
+
+## [1.1.2] - 2026-10-18
+### Düzeltildi
+- Yürüme izokronlarında lejant ve renk skalası kullanıcının girdiği mesafe aralıklarıyla (örn. 200, 400, 600 m) birebir eşleşir.
+- İçbükey gövde (Concave Hull) tek doğrultuda dizilmiş noktalarda bozuk geometri üretmez; büyük poligonlar küçükleri örtmeyecek sırayla çizilir.
 
 ## [1.1.1] - 2026-10-18
 ### Fixed

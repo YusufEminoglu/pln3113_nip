@@ -1,11 +1,13 @@
 # -*- coding: utf-8 -*-
-"""Tire 1/5000 NİP Nüfus, Donatı, Kamu-Özel, DOP ve Ulaşım Hesaplama Motoru.
+"""1/5000 NİP Nüfus, Donatı, Kamu-Özel, DOP ve Ulaşım Hesaplama Motoru.
 
-PLN3113 - Tire NİP Analiz Stüdyosu
+PLN3113 - NİP Analiz Stüdyosu (Türkiye geneli; Tire yalnız örnek ön ayardır)
 """
 from __future__ import annotations
 
 from qgis.core import (
+    QgsCoordinateTransform,
+    QgsCsException,
     QgsDistanceArea,
     QgsFeature,
     QgsFields,
@@ -16,7 +18,6 @@ from qgis.core import (
 )
 
 from .tire_constants import (
-    TIRE_POPULATION_BENCHMARKS,
     resolve_nip_density,
     identify_facility_category,
     MPYY_DONATI_STANDARTLARI,
@@ -25,8 +26,128 @@ from .tire_constants import (
     norm_tr,
     get_tucbs_info,
     OZEL_TAHSIS_ANAHTARLAR,
-    DOP_DISI_ANAHTARLAR
+    DOP_DISI_ANAHTARLAR,
+    DOP_YASAL_SINIR_YUZDE,
+    ada_nufusu,
+    dop_orani_hesapla,
+    dop_uygunluk_metni,
+    ek2_degerlendir,
 )
+
+# Projede elipsoit tanımlı değilken ("NONE") QgsDistanceArea düzlemsel ölçer;
+# coğrafi veride alanlar derece² olur (TRAPS §5.8/§5.13). Sabit elipsoit kullanılır.
+ELIPSOIT_YER_TUTUCULARI = ("", "NONE", "UNDEFINED")
+VARSAYILAN_ELIPSOIT = "EPSG:7030"  # WGS 84 elipsoidi
+VARSAYILAN_TAHMINI_YOL_PAYI = 0.18
+DOP_YASAL_SINIR = DOP_YASAL_SINIR_YUZDE
+
+
+class HesapIptalEdildi(Exception):
+    """Kullanıcı işlemi iptal etti; hiçbir çıktı yazılmamalıdır."""
+
+
+def build_distance_area(crs, transform_context, project_ellipsoid=None):
+    """Kaynak KRS için her zaman elipsoit üzerinde ölçen bir QgsDistanceArea döndürür.
+
+    Sıra: projenin elipsoidi (tanımlıysa) -> KRS'nin kendi elipsoidi -> EPSG:7030.
+    Dönüş: (QgsDistanceArea, kullanılan_elipsoit, sabit_elipsoit_kullanildi_mi)
+    """
+    da = QgsDistanceArea()
+    da.setSourceCrs(crs, transform_context)
+    adaylar = [project_ellipsoid or "", crs.ellipsoidAcronym() if crs.isValid() else ""]
+    for ell in adaylar:
+        ell = (ell or "").strip()
+        if ell.upper() in ELIPSOIT_YER_TUTUCULARI:
+            continue
+        da.setEllipsoid(ell)
+        if da.willUseEllipsoid():
+            return da, ell, False
+    da.setEllipsoid(VARSAYILAN_ELIPSOIT)
+    return da, VARSAYILAN_ELIPSOIT, True
+
+
+def ensure_ellipsoidal(distance_area, transform_context=None):
+    """Elipsoit kullanmayan bir QgsDistanceArea'yı KRS elipsoidi / EPSG:7030 ile değiştirir.
+
+    Dönüş: (QgsDistanceArea, uyarı_metni_veya_None)
+    """
+    if distance_area is None or distance_area.willUseEllipsoid():
+        return distance_area, None
+    crs = distance_area.sourceCrs()
+    if transform_context is None:
+        from qgis.core import QgsProject
+        transform_context = QgsProject.instance().transformContext()
+    da, ell, _ = build_distance_area(crs, transform_context)
+    uyari = None
+    if crs.isValid() and crs.isGeographic():
+        uyari = ("Proje elipsoidi tanımsız ('NONE'): coğrafi veride alanlar derece² olacaktı; "
+                 f"alanlar {ell} elipsoidi üzerinde m² olarak ölçüldü.")
+    return da, uyari
+
+
+def metre_birimli_mi(crs) -> bool:
+    """KRS'nin harita birimi metre mi? (coğrafi ve feet KRS'ler False)."""
+    if crs is None or not crs.isValid() or crs.isGeographic():
+        return False
+    try:
+        from qgis.core import Qgis
+        metre = Qgis.DistanceUnit.Meters
+    except AttributeError:  # QGIS < 3.30
+        from qgis.core import QgsUnitTypes
+        metre = QgsUnitTypes.DistanceMeters
+    return crs.mapUnits() == metre
+
+
+def transform_layer_geometries(layer, target_crs, transform_context):
+    """Katman geometrilerini hedef KRS'ye dönüştürür. Dönüş: (geometriler, başarısız_sayısı)."""
+    xform = None
+    if layer.crs().isValid() and target_crs.isValid() and layer.crs() != target_crs:
+        xform = QgsCoordinateTransform(layer.crs(), target_crs, transform_context)
+    geoms, basarisiz = [], 0
+    for f in layer.getFeatures():
+        g = f.geometry()
+        if g is None or g.isEmpty():
+            continue
+        g = QgsGeometry(g)
+        if xform is not None:
+            try:
+                g.transform(xform)
+            except QgsCsException:
+                basarisiz += 1
+                continue
+        geoms.append(g)
+    return geoms, basarisiz
+
+
+def prepare_boundary_and_roads(target_crs, transform_context, distance_area,
+                               sinir_layer=None, yol_layer=None):
+    """Plan onama sınırını ve yol akslarını ada katmanının KRS'sine taşır (dock da kullanabilir).
+
+    Dönüş: (sinir_geom_veya_None, yol_uzunlugu_m, uyarılar)
+    """
+    uyarilar = []
+    sinir_geom = None
+    if sinir_layer is not None:
+        geoms, bas = transform_layer_geometries(sinir_layer, target_crs, transform_context)
+        if bas:
+            uyarilar.append(f"Plan onama sınırının {bas} geometrisi ada KRS'sine dönüştürülemedi ve atlandı.")
+        if geoms:
+            sinir_geom = QgsGeometry.unaryUnion(geoms)
+        if sinir_layer.crs() != target_crs:
+            uyarilar.append(
+                f"Plan onama sınırı {sinir_layer.crs().authid()} -> {target_crs.authid()} KRS'sine dönüştürüldü.")
+    yol_uzunlugu_m = 0.0
+    if yol_layer is not None:
+        geoms, bas = transform_layer_geometries(yol_layer, target_crs, transform_context)
+        if bas:
+            uyarilar.append(f"Yol katmanının {bas} geometrisi ada KRS'sine dönüştürülemedi ve atlandı.")
+        for g in geoms:
+            yol_uzunlugu_m += distance_area.measureLength(g) if distance_area else g.length()
+        if yol_layer.crs() != target_crs:
+            uyarilar.append(
+                f"Yol aksları {yol_layer.crs().authid()} -> {target_crs.authid()} KRS'sine dönüştürüldü.")
+    return sinir_geom, yol_uzunlugu_m, uyarilar
+
 
 class NipCalculatorEngine:
     """NİP Plan ve Fiziki Mevcut Durum adalarında nüfus, donatı, Kamu-Özel dengesi, DOP ve ulaşım hesaplamalarını yürütür."""
@@ -46,10 +167,26 @@ class NipCalculatorEngine:
         rules_config: dict | None = None,
         secondary_fonk_col: str = "",
         analysis_mode: str = "nip",
-        sinir_modu: str = "clip"
+        sinir_modu: str = "clip",
+        kirsal_nufus: int = 0,
+        kiyas_referanslari: dict | None = None,
+        tahmini_yol_payi: float = VARSAYILAN_TAHMINI_YOL_PAYI,
+        feedback=None
     ) -> tuple[list[dict], dict]:
-        """Tüm öznitelikleri, Kamu-Özel dengesini, DOP ve kent karakter tablolarını üretir."""
+        """Tüm öznitelikleri, Kamu-Özel dengesini, DOP ve kent karakter tablolarını üretir.
+
+        kirsal_nufus: NİP nüfusuna eklenen kırsal nüfus (varsayılan 0, Türkiye geneli).
+        kiyas_referanslari: tarihsel nüfus kıyas satırları (varsayılan yok; Tire örneği
+            için tire_constants.NUFUS_KIYAS_ONAYARLARI["tire"]).
+        tahmini_yol_payi: plan onama sınırı yokken yol alanı tahmini (adalar toplamına oran).
+        feedback: iptal denetimi; iptal edilirse HesapIptalEdildi yükseltilir.
+        """
         rules_config = rules_config or {}
+        uyarilar = []
+        distance_area, el_uyari = ensure_ellipsoidal(distance_area)
+        if el_uyari:
+            uyarilar.append(el_uyari)
+        elenen = {"bos_geometri": 0, "sifir_alan": 0, "sinir_disi": 0, "fonksiyonu_bos": 0}
         dop_rules = rules_config.get("dop", {})
         emp_rules = rules_config.get("employment", {})
         trip_rules = rules_config.get("trips", {})
@@ -79,9 +216,15 @@ class NipCalculatorEngine:
         idx_sec = source_fields.indexOf(secondary_fonk_col) if secondary_fonk_col else -1
         idx_grup = source_fields.indexOf("grup_no") if "grup_no" in source_fields.names() else -1
 
+        def _alan(g):
+            return distance_area.measureArea(g) if distance_area else g.area()
+
         for feat in features:
+            if feedback is not None and feedback.isCanceled():
+                raise HesapIptalEdildi()
             geom = feat.geometry()
             if not geom or geom.isEmpty():
+                elenen["bos_geometri"] += 1
                 continue
 
             # 1.0 Plan Onama Sınırı Filtreleme ve Kırpma / Kesişim Yönetimi
@@ -100,7 +243,7 @@ class NipCalculatorEngine:
                             not clipped 
                             or clipped.isEmpty() 
                             or clipped.type() != QgsWkbTypes.GeometryType.PolygonGeometry 
-                            or clipped.area() <= 0.001
+                            or _alan(clipped) <= 0.001
                         ):
                             sinir_stats["sinir_disi_elenen"] += 1
                             continue
@@ -128,15 +271,11 @@ class NipCalculatorEngine:
 
             sinir_stats["isleme_alinan"] += 1
 
-            # Alan hesapla
-            if distance_area:
-                alan_m2 = distance_area.measureArea(geom)
-                if alan_m2 <= 0.001:
-                    alan_m2 = geom.area()
-            else:
-                alan_m2 = geom.area()
+            # Alan hesapla (elipsoit üzerinde m²; derece² geri dönüşü yok)
+            alan_m2 = _alan(geom)
 
             if alan_m2 <= 0.001:
+                elenen["sifir_alan"] += 1
                 continue
 
             alan_ha = alan_m2 / 10000.0
@@ -153,6 +292,11 @@ class NipCalculatorEngine:
                 grup_val = str(feat[idx_grup]).strip()
                 if "OSB" in grup_val.upper():
                     fonk_val = "Organize Sanayi Bölgesi (OSB)"
+
+            if fonk_val.upper() == "NULL":
+                fonk_val = ""
+            if not fonk_val:
+                elenen["fonksiyonu_bos"] += 1
 
             tucbs = get_tucbs_info(fonk_val)
             alt_snr, ust_snr, kategori = resolve_nip_density(fonk_val)
@@ -247,8 +391,7 @@ class NipCalculatorEngine:
 
         for item in parsed_items:
             toplam_plan_alani_ha += item["alan_ha"]
-            alt_nufus = item["alan_ha"] * item["alt_snr"]
-            ust_nufus = item["alan_ha"] * item["ust_snr"]
+            alt_nufus, ust_nufus = ada_nufusu(item["alan_ha"], item["alt_snr"], item["ust_snr"])
             item["alt_nufus"] = round(alt_nufus, 1)
             item["ust_nufus"] = round(ust_nufus, 1)
 
@@ -339,7 +482,7 @@ class NipCalculatorEngine:
             toplam_plan_alani_m2 = adalar_toplam_m2
             toplam_plan_alani_ha = adalar_toplam_ha
             # Sınır verilmediğinde varsayılan tahmini yol payı (%18 standart planlama payı)
-            hesaplanan_yol_m2 = max(0.0, adalar_toplam_m2 * 0.18)
+            hesaplanan_yol_m2 = max(0.0, adalar_toplam_m2 * float(tahmini_yol_payi))
             sinir_kullanildi = False
 
         hesaplanan_yol_ha = round(hesaplanan_yol_m2 / 10000.0, 2)
@@ -362,7 +505,7 @@ class NipCalculatorEngine:
         toplam_kamu_poligon_m2 = sum(it["alan_m2"] for it in parsed_items if "KAMU" in it["dop_turu"])
 
         toplam_kamu_kesinti_m2 = toplam_kamu_poligon_m2 + hesaplanan_yol_m2
-        dop_orani = round((toplam_kamu_kesinti_m2 / max(1.0, dop_esas_alan_m2)) * 100.0, 2)
+        dop_orani = dop_orani_hesapla(toplam_kamu_poligon_m2, hesaplanan_yol_m2, dop_esas_alan_m2)
         kamu_ozel_orani = round((toplam_kamu_kesinti_m2 / max(1.0, toplam_ozel_tahsis_m2)) * 100.0, 2)
 
         dop_ozet = {
@@ -386,9 +529,18 @@ class NipCalculatorEngine:
             "ortalama_yol_genisligi_m": ortalama_yol_genisligi_m,
             "dop_orani": dop_orani,
             "kamu_ozel_orani": kamu_ozel_orani,
-            "yasal_sinir": 45.0,
-            "dop_uygunluk": "YASAL SINIRDA (UYGUN)" if dop_orani <= 45.0 else "YASAL SINIRI AŞIYOR"
+            "yasal_sinir": DOP_YASAL_SINIR,
+            # Sınır yokken yol alanı varsayılan bir paydır: yasal hüküm verilmez.
+            "tahmini": not sinir_kullanildi,
+            "tahmini_yol_payi": None if sinir_kullanildi else float(tahmini_yol_payi),
+            "dop_uygunluk": dop_uygunluk_metni(dop_orani, sinir_kullanildi)
         }
+        if not sinir_kullanildi:
+            uyarilar.append(
+                "Plan onama sınırı verilmedi: yol alanı adalar toplamının "
+                f"%{float(tahmini_yol_payi) * 100:.0f}'i olarak TAHMİN edildi; DOP oranı tahminidir "
+                f"ve yasal sınır (%{DOP_YASAL_SINIR:.0f}) değerlendirmesi yapılmadı."
+            )
 
         # 6. Fonksiyon Dağılım Tablosu
         fonksiyon_dagilim_list = []
@@ -430,50 +582,66 @@ class NipCalculatorEngine:
             toplam_m2 = donati_stats.get(cat_id, 0.0)
             std = info["standart_m2_kisi"]
             
-            kb_alt = round(toplam_m2 / max(1, toplam_alt_nufus), 2)
-            kb_ust = round(toplam_m2 / max(1, toplam_ust_nufus), 2)
-            kb_proj = round(toplam_m2 / max(1, projeksiyon_nufus), 2)
-
-            gerekli_alt = round(toplam_alt_nufus * std, 1)
-            gerekli_ust = round(toplam_ust_nufus * std, 1)
-            gerekli_proj = round(projeksiyon_nufus * std, 1)
-
-            fark_alt = round(toplam_m2 - gerekli_alt, 1)
-            fark_ust = round(toplam_m2 - gerekli_ust, 1)
-            fark_proj = round(toplam_m2 - gerekli_proj, 1)
+            e_alt = ek2_degerlendir(toplam_m2, std, toplam_alt_nufus)
+            e_ust = ek2_degerlendir(toplam_m2, std, toplam_ust_nufus)
+            e_proj = ek2_degerlendir(toplam_m2, std, projeksiyon_nufus)
 
             ek2_rapor.append({
                 "kategori_id": cat_id,
                 "kategori_adi": info["adi"],
                 "toplam_m2": round(toplam_m2, 2),
                 "standart_m2": std,
-                "kb_alt": kb_alt,
-                "kb_ust": kb_ust,
-                "kb_proj": kb_proj,
-                "durum_alt": "YETERLİ" if fark_alt >= 0 else "YETERSİZ",
-                "durum_ust": "YETERLİ" if fark_ust >= 0 else "YETERSİZ",
-                "durum_proj": "YETERLİ" if fark_proj >= 0 else "YETERSİZ",
-                "fark_alt": fark_alt,
-                "fark_ust": fark_ust,
-                "fark_proj": fark_proj
+                "kb_alt": e_alt["kisi_basi_m2"],
+                "kb_ust": e_ust["kisi_basi_m2"],
+                "kb_proj": e_proj["kisi_basi_m2"],
+                "gerekli_alt": e_alt["gerekli_m2"],
+                "gerekli_ust": e_ust["gerekli_m2"],
+                "gerekli_proj": e_proj["gerekli_m2"],
+                "durum_alt": e_alt["durum"],
+                "durum_ust": e_ust["durum"],
+                "durum_proj": e_proj["durum"],
+                "fark_alt": e_alt["fark_m2"],
+                "fark_ust": e_ust["fark_m2"],
+                "fark_proj": e_proj["fark_m2"]
             })
 
-        # 9. Tire Nüfus Kıyaslama Raporu
+        # 9. Nüfus Kıyaslama Raporu (referanslar ve kırsal nüfus parametredir)
         kiyaslama = []
-        for b_key, b_info in TIRE_POPULATION_BENCHMARKS.items():
+        for b_info in (kiyas_referanslari or {}).values():
             kiyaslama.append({
                 "kapsam": b_info["kapsam"],
                 "merkez": b_info["merkez"],
                 "ilce": b_info["ilce"],
                 "kaynak": b_info["kaynak"]
             })
-        
+
+        kirsal = max(0, int(kirsal_nufus or 0))
+        if kirsal > 0:
+            ilce_metni = f"{(toplam_alt_nufus + kirsal):,} - {(toplam_ust_nufus + kirsal):,}".replace(",", ".")
+            kaynak_metni = f"PLN3113 NİP Analiz Modeli (Alt - Üst Sınır; kırsal nüfus +{kirsal:,})".replace(",", ".")
+        else:
+            ilce_metni = "Kırsal nüfus girilmedi"
+            kaynak_metni = "PLN3113 NİP Analiz Modeli (Alt - Üst Sınır)"
         kiyaslama.append({
             "kapsam": f"Hesaplanan 1/5000 NİP Nüfusu ({toplam_alt_nufus:,} - {toplam_ust_nufus:,})".replace(",", "."),
             "merkez": f"{toplam_alt_nufus:,} - {toplam_ust_nufus:,}".replace(",", "."),
-            "ilce": f"{(toplam_alt_nufus + 26000):,} - {(toplam_ust_nufus + 26000):,}".replace(",", "."),
-            "kaynak": "PLN3113 Tire NİP Analiz Modeli (Alt - Üst Sınır)"
+            "ilce": ilce_metni,
+            "kaynak": kaynak_metni
         })
+
+        # 10. Elenen adalar ve NULL değerler sessizce kaybolmaz
+        if elenen["bos_geometri"]:
+            uyarilar.append(f"{elenen['bos_geometri']} ada boş/geçersiz geometri nedeniyle hesaba katılmadı.")
+        if elenen["sifir_alan"]:
+            uyarilar.append(f"{elenen['sifir_alan']} adanın alanı sıfır ölçüldü ve hesaba katılmadı.")
+        if sinir_kullanildi and sinir_stats["sinir_disi_elenen"]:
+            elenen["sinir_disi"] = sinir_stats["sinir_disi_elenen"]
+            uyarilar.append(f"{elenen['sinir_disi']} ada plan onama sınırı dışında kaldığı için elendi.")
+        if elenen["fonksiyonu_bos"]:
+            uyarilar.append(
+                f"{elenen['fonksiyonu_bos']} adanın fonksiyon değeri boş (NULL); bu adalarda nüfus ve donatı 0 sayıldı.")
+        if features and not parsed_items:
+            uyarilar.append("Hiçbir ada hesaba girmedi: KRS, plan onama sınırı ve fonksiyon sütununu kontrol edin.")
 
         sinir_stats["islenen_ada_sayisi"] = len(parsed_items)
         sinir_stats["isleme_alinan"] = len(parsed_items)
@@ -492,7 +660,10 @@ class NipCalculatorEngine:
             "fonksiyon_dagilim": fonksiyon_dagilim_list,
             "kent_karakter": kent_karakter_list,
             "ek2_rapor": ek2_rapor,
-            "kiyaslama": kiyaslama
+            "kiyaslama": kiyaslama,
+            "kirsal_nufus": kirsal,
+            "elenen_ada": elenen,
+            "uyarilar": uyarilar
         }
 
         return parsed_items, summary

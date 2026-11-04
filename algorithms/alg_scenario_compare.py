@@ -28,11 +28,72 @@ from qgis.core import (
 
 from ..core.planx_engine import graphs, paths, syntax
 from ..core.planx_engine.planx_base import (
+    CANCELLED_MESSAGE,
     DOUBLE,
     GROUP_REPORT,
     STRING,
     PlanXBaseAlgorithm,
+    check_cancel,
+    layer_units_per_metre,
 )
+
+# --------------------------------------------------------------------------- #
+# Karar eşikleri - PlanX 4.23.0 ölçeği için yeniden türetildi (1.2.0).
+#
+# 1.1.6 eşikleri (dNACH 0.08, dNAIN 0.05, yeni yol NACH < 0.6 ve NAIN < 0.4)
+# eski motora göre ayarlanmıştı: NAIN = (NC + 2)^1.2 / (TD + 2) ve yönsüz
+# seçim. 4.23.0'da NAIN = NC^1.2 / (TD + 2) ve seçim yönlü segment uçları
+# üzerinde, bu yüzden her değer kaydı.
+#
+# Yöntem (aynı yüzdelik): üç deterministik referans A/B çifti - (1) PlanX
+# Generate Demo City düzeni, 10x10 x 100 m ızgara, A çaprazsız / B çapraz
+# bulvarlı; (2) 9x6 x 120 m ızgarada çıkmaz sokakların geçişe açılması;
+# (3) 8x8 x 90 m ızgarada merkezde dört aksın yayalaştırılması - eski motor
+# (1.1.6, git HEAD) ve yeni motorla aracın varsayılan yarıçapı R = 800 m'de
+# çözüldü; B segmentleri A'ya bu aracın kendi kuralıyla (orta nokta <= 20 m)
+# eşlendi (529 eşleşen çift, 565 B segmenti). Her eski eşiğin eski dağılımdaki
+# yüzdeliği bulundu ve yeni dağılımda aynı yüzdelikteki değer alındı:
+#   |dNACH| 0.08 -> yüzdelik 0.777 -> 0.077
+#   |dNAIN| 0.05 -> yüzdelik 0.382 -> 0.047
+#   NACH_B  0.6  -> yüzdelik 0.005 -> 0.734 (tüm B segmentleri üzerinde)
+# NAIN_B 0.4 eski dağılımın en küçük değerinin (1.137) altında kalıyor
+# (yüzdelik 0), aynı yüzdelik tanımsız. Bunun yerine iki ölçek arasındaki
+# kesin segment ilişkisi kullanıldı: NAIN_yeni = NAIN_eski * (NC/(NC+2))^1.2,
+# eşiğe en yakın referans segmentin (en küçük eski NAIN, NC = 104)
+# NC'sinde: 0.4 * 0.9774 = 0.391.
+# Referans çiftleri ve aynı türetme tests/test_engine_values.py'de yeniden
+# kurulur; eşikler orada denetlenir.
+# --------------------------------------------------------------------------- #
+#: Eşleşen aksta "yük artışı" / "sakinleşme" için NACH farkı eşiği.
+DELTA_NACH_THRESHOLD = 0.077
+#: Eşleşen aksta "yük artışı" / "sakinleşme" için NAIN farkı eşiği.
+DELTA_NAIN_THRESHOLD = 0.047
+#: Yeni öneri yol "işlemeyen" sayılır: NACH bunun altında ...
+NEW_ROAD_NACH_THRESHOLD = 0.734
+#: ... ve NAIN bunun altında.
+NEW_ROAD_NAIN_THRESHOLD = 0.391
+#: Eşleştirme toleransı ve donatı erişim eşiği (ikisi de yer metresi).
+SNAP_TOLERANCE_M = 20.0
+COVERAGE_CUTOFF_M = 800.0
+
+DECISION_UPGRADE = "Ulaşım Kademelenmesi Revizyonu"
+DECISION_CALM = "Yayalaştırma / Trafik Sakinleştirme"
+
+
+def classify_matched(d_nach, d_nain):
+    """Eşleşen bir aksın (durum, plan kararı) sınıfı."""
+    if d_nach > DELTA_NACH_THRESHOLD or d_nain > DELTA_NAIN_THRESHOLD:
+        return "Mevcut Aks: Yük Artışı (Kritik Arter)", DECISION_UPGRADE
+    if d_nach < -DELTA_NACH_THRESHOLD or d_nain < -DELTA_NAIN_THRESHOLD:
+        return "Mevcut Aks: Sakinleşen Trafik", DECISION_CALM
+    return "Mevcut Aks: Kararlı / Değişmeyen", "Mevcut Karakter Korunacak"
+
+
+def classify_new_road(nach_b, nain_b):
+    """Eşleşmeyen (yeni) bir B aksının plan kararı."""
+    if nach_b < NEW_ROAD_NACH_THRESHOLD and nain_b < NEW_ROAD_NAIN_THRESHOLD:
+        return "İşlemeyen Öneri Yol (Kademelenme Revizyonu)"
+    return "Stratejik Yeni Bağlantı Aksı"
 
 
 class ScenarioCompareAlgorithm(PlanXBaseAlgorithm):
@@ -64,7 +125,11 @@ class ScenarioCompareAlgorithm(PlanXBaseAlgorithm):
             "  1. Ulaşım kademelenmesi revizyonu: İşlemeyen öneri yollar ile aşırı yük altındaki arterler\n"
             "  2. Yayalaştırma ve trafik sakinleştirme: Arasta/MİA çevresindeki sakinleşen veya yayalaştırılacak akslar\n"
             "  3. Yeni donatı yeri seçimi: Yüksek Delta NAIN odaklarına donatı önceliklendirmesi\n"
-            "  4. Topolojik ve fiziksel bağlantılar: Kritik darboğazlar ve köprü/altgeçit önerileri"
+            "  4. Topolojik ve fiziksel bağlantılar: Kritik darboğazlar ve köprü/altgeçit önerileri\n\n"
+            "Eşikler (PlanX 4.23.0 ölçeği; R = 800 m referans ağlarında aynı yüzdelikle türetildi): "
+            f"|dNACH| > {DELTA_NACH_THRESHOLD}, |dNAIN| > {DELTA_NAIN_THRESHOLD}; yeni yol işlemiyor: "
+            f"NACH < {NEW_ROAD_NACH_THRESHOLD} ve NAIN < {NEW_ROAD_NAIN_THRESHOLD}. "
+            "1.1.6 sonuçlarıyla karşılaştırılamaz. Yarıçap yer metresidir. İptal edilen koşu çıktı yazmaz."
         )
 
     def initAlgorithm(self, config=None):
@@ -93,13 +158,19 @@ class ScenarioCompareAlgorithm(PlanXBaseAlgorithm):
             self.SUMMARY_TABLE, self.tr("A/B Senaryo Karşılaştırma Karnesi"),
             type=QgsProcessing.SourceType.TypeVector))
 
-    def _run_syntax(self, network_source, radius, feedback, step_label):
+    def _run_syntax(self, network_source, radius, feedback, step_label, context=None):
         feedback.pushInfo(self.tr(f"{step_label}: Space Syntax grafı kuruluyor..."))
         polylines, line_feats = self.source_polylines(network_source)
         seg_graph = graphs.build_segment_graph(polylines)
-        feedback.pushInfo(self.tr(f"{step_label}: {seg_graph.n} segment analiz ediliyor (R={radius}m)..."))
+        per_metre = layer_units_per_metre(
+            network_source.sourceCrs(), network_source.sourceExtent(),
+            context.transformContext() if context is not None else None)
+        feedback.pushInfo(self.tr(f"{step_label}: {seg_graph.n} segment analiz ediliyor (R={radius:g} m)..."))
         res = syntax.segment_angular_analysis(
-            seg_graph, radius=radius, cancel=feedback.isCanceled)
+            seg_graph, radius=radius * per_metre, cancel=feedback.isCanceled)
+        if res.get("cancelled"):
+            # Yarım diziler asla sonuç olarak yazılmaz.
+            raise QgsProcessingException(CANCELLED_MESSAGE)
         nach = res["nach"]
         nain = res["nain"]
         return seg_graph, polylines, line_feats, nach, nain
@@ -117,14 +188,19 @@ class ScenarioCompareAlgorithm(PlanXBaseAlgorithm):
         crs = source_b.sourceCrs()
 
         # Run Syntax on Network A
-        _, polys_a, feats_a, nach_a, nain_a = self._run_syntax(source_a, radius, feedback, "Senaryo A (Mevcut)")
-        if feedback.isCanceled():
-            return {}
+        if source_a.sourceCrs() != crs:
+            raise QgsProcessingException(
+                "Senaryo A ve B yol ağları aynı koordinat sisteminde olmalıdır "
+                f"({source_a.sourceCrs().authid()} / {crs.authid()}); akslar orta noktalarıyla eşlenir.")
+        _, polys_a, feats_a, nach_a, nain_a = self._run_syntax(
+            source_a, radius, feedback, "Senaryo A (Mevcut)", context)
+        check_cancel(feedback)
 
         # Run Syntax on Network B
-        _, polys_b, feats_b, nach_b, nain_b = self._run_syntax(source_b, radius, feedback, "Senaryo B (Meri)")
-        if feedback.isCanceled():
-            return {}
+        _, polys_b, feats_b, nach_b, nain_b = self._run_syntax(
+            source_b, radius, feedback, "Senaryo B (Meri)", context)
+        check_cancel(feedback)
+        per_metre_b = layer_units_per_metre(crs, source_b.sourceExtent(), context.transformContext())
 
         # Spatial Index on Network A polylines (midpoints)
         sp_index_a = QgsSpatialIndex()
@@ -154,7 +230,7 @@ class ScenarioCompareAlgorithm(PlanXBaseAlgorithm):
             QgsWkbTypes.Type.LineString, crs)
 
         matched_a = set()
-        snap_tol = 20.0  # metre mesafe toleransı
+        snap_tol = SNAP_TOLERANCE_M * per_metre_b  # yer metresi -> katman birimi
 
         count_new = 0
         count_upgrade = 0
@@ -162,15 +238,14 @@ class ScenarioCompareAlgorithm(PlanXBaseAlgorithm):
         count_stable = 0
 
         for j, arr in enumerate(polys_b):
-            if feedback.isCanceled():
-                break
+            check_cancel(feedback)
             mid_idx = len(arr) // 2
             pt_b = QgsPointXY(float(arr[mid_idx][0]), float(arr[mid_idx][1]))
             cand_a = sp_index_a.nearestNeighbor(pt_b, 1)
 
             val_nach_b = float(nach_b[j])
             val_nain_b = float(nain_b[j])
-            length_b = float(np.sum(np.hypot(np.diff(arr[:, 0]), np.diff(arr[:, 1]))))
+            length_b = float(np.sum(np.hypot(np.diff(arr[:, 0]), np.diff(arr[:, 1])))) / per_metre_b
 
             if cand_a and midpoints_a[cand_a[0]].distance(pt_b) <= snap_tol:
                 idx_a = cand_a[0]
@@ -180,17 +255,12 @@ class ScenarioCompareAlgorithm(PlanXBaseAlgorithm):
                 d_nach = val_nach_b - val_nach_a
                 d_nain = val_nain_b - val_nain_a
 
-                if d_nach > 0.08 or d_nain > 0.05:
-                    status = "Mevcut Aks: Yük Artışı (Kritik Arter)"
-                    decision = "Ulaşım Kademelenmesi Revizyonu"
+                status, decision = classify_matched(d_nach, d_nain)
+                if decision == DECISION_UPGRADE:
                     count_upgrade += 1
-                elif d_nach < -0.08 or d_nain < -0.05:
-                    status = "Mevcut Aks: Sakinleşen Trafik"
-                    decision = "Yayalaştırma / Trafik Sakinleştirme"
+                elif decision == DECISION_CALM:
                     count_calm += 1
                 else:
-                    status = "Mevcut Aks: Kararlı / Değişmeyen"
-                    decision = "Mevcut Karakter Korunacak"
                     count_stable += 1
             else:
                 val_nach_a = 0.0
@@ -198,10 +268,7 @@ class ScenarioCompareAlgorithm(PlanXBaseAlgorithm):
                 d_nach = val_nach_b
                 d_nain = val_nain_b
                 status = "Yeni Öneri Yol (Meri Plan Aksı)"
-                if val_nach_b < 0.6 and val_nain_b < 0.4:
-                    decision = "İşlemeyen Öneri Yol (Kademelenme Revizyonu)"
-                else:
-                    decision = "Stratejik Yeni Bağlantı Aksı"
+                decision = classify_new_road(val_nach_b, val_nain_b)
                 count_new += 1
 
             feat = QgsFeature(diff_fields)
@@ -220,7 +287,7 @@ class ScenarioCompareAlgorithm(PlanXBaseAlgorithm):
         for i, arr in enumerate(polys_a):
             if i not in matched_a:
                 count_removed += 1
-                length_a = float(np.sum(np.hypot(np.diff(arr[:, 0]), np.diff(arr[:, 1]))))
+                length_a = float(np.sum(np.hypot(np.diff(arr[:, 0]), np.diff(arr[:, 1])))) / per_metre_b
                 feat = QgsFeature(diff_fields)
                 feat.setGeometry(QgsGeometry.fromPolylineXY([QgsPointXY(x, y) for x, y in arr]))
                 feat.setAttributes([
@@ -264,21 +331,24 @@ class ScenarioCompareAlgorithm(PlanXBaseAlgorithm):
 
         # Optional facilities and demand check
         if facilities is not None and demand is not None:
-            graph_a, _, _ = self.network_graph(source_a)
-            graph_b, _, _ = self.network_graph(source_b)
+            # Erişim eşiği metre cinsindendir: hazır maliyet sütunları (dakika
+            # olabilir) değil uzunluk kullanılır.
+            graph_a, _, _ = self.network_graph(source_a, use_prepared_costs=False)
+            graph_b, _, _ = self.network_graph(source_b, use_prepared_costs=False)
+            cutoff_u = COVERAGE_CUTOFF_M * per_metre_b
             d_xy, d_feats = self.source_points(demand, crs, context.transformContext())
             f_xy, _ = self.source_points(facilities, crs, context.transformContext())
             if len(d_xy) > 0 and len(f_xy) > 0:
                 d_nodes_a = graphs.nearest_nodes(graph_a, d_xy)
                 f_nodes_a = graphs.nearest_nodes(graph_a, f_xy)
                 dist_a, _ = paths.multi_source(graph_a.indptr, graph_a.adj_node, graph_a.adj_cost,
-                                               graph_a.num_nodes, f_nodes_a, cutoff=800.0)
+                                               graph_a.num_nodes, f_nodes_a, cutoff=cutoff_u)
                 cov_a = float(np.sum(np.isfinite(dist_a[d_nodes_a])))
 
                 d_nodes_b = graphs.nearest_nodes(graph_b, d_xy)
                 f_nodes_b = graphs.nearest_nodes(graph_b, f_xy)
                 dist_b, _ = paths.multi_source(graph_b.indptr, graph_b.adj_node, graph_b.adj_cost,
-                                               graph_b.num_nodes, f_nodes_b, cutoff=800.0)
+                                               graph_b.num_nodes, f_nodes_b, cutoff=cutoff_u)
                 cov_b = float(np.sum(np.isfinite(dist_b[d_nodes_b])))
 
                 total_dem = len(d_xy)
@@ -290,6 +360,7 @@ class ScenarioCompareAlgorithm(PlanXBaseAlgorithm):
                     "Yeni yol ağı sayesinde donatı erişilebilirliğindeki artış"
                 ))
 
+        check_cancel(feedback)
         for r in rows:
             feat = QgsFeature(sum_fields)
             feat.setAttributes(list(r))

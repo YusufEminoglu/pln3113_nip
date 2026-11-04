@@ -7,12 +7,14 @@ from __future__ import annotations
 
 import contextlib
 import csv
+import html
+import inspect
 import os
 try:
     import processing
 except ImportError:
     processing = None
-from qgis.PyQt.QtCore import QSize, Qt, QUrl, QVariant
+from qgis.PyQt.QtCore import QSize, Qt, QTimer, QUrl, QVariant
 from qgis.PyQt.QtGui import QColor, QDesktopServices, QFont, QIcon
 from qgis.PyQt.QtWidgets import (
     QAbstractItemView,
@@ -33,6 +35,7 @@ from qgis.PyQt.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QMessageBox,
+    QSizePolicy,
     QProgressBar,
     QPushButton,
     QScrollArea,
@@ -49,7 +52,6 @@ from qgis.core import (
     NULL,
     QgsCategorizedSymbolRenderer,
     QgsCoordinateReferenceSystem,
-    QgsDistanceArea,
     QgsFeature,
     QgsField,
     QgsFields,
@@ -71,8 +73,8 @@ from qgis.gui import QgsFieldComboBox, QgsMapLayerComboBox, QgsProjectionSelecti
 
 from .core.cleaner import GeometryCleanerEngine
 from .core.field_estimator import FieldEstimatorEngine
-from .core.nip_calculator import NipCalculatorEngine
-from .core.nip_dashboard_builder import open_nip_dashboard, build_nip_dashboard_html
+from .core.nip_calculator import NipCalculatorEngine, build_distance_area, prepare_boundary_and_roads
+from .core.nip_dashboard_builder import EXTERNAL_HOSTS, open_nip_dashboard, build_nip_dashboard_html
 from .core.nip_workspace import (
     create_nip_workspace,
     load_nip_layers,
@@ -103,7 +105,15 @@ from .core.tire_constants import (
     get_default_trip_rule,
     norm_tr
 )
-from .ui_theme import studio_stylesheet
+from .ui_theme import (
+    apply_native_editor_theme,
+    chip_css,
+    chunk_css,
+    hex_colors,
+    note_css,
+    studio_stylesheet,
+    text_css,
+)
 
 # Scoped Qt enums (fully compatible across Qt5 and Qt6)
 _POINTING_HAND = Qt.CursorShape.PointingHandCursor
@@ -118,6 +128,37 @@ _VIEW_MODE_ICON = QListView.ViewMode.IconMode
 _MOVEMENT_STATIC = QListView.Movement.Static
 
 PLUGIN_DIR = os.path.dirname(__file__)
+
+
+DOCK_TITLE = "PLN3113 NİP Analiz Stüdyosu"
+
+# Contract C1 methods (core/projection.py) with their Turkish labels.
+PROJECTION_METHODS = (
+    ("aritmetik", "Aritmetik (doğrusal artış)"),
+    ("geometrik", "Geometrik (sabit oranlı artış)"),
+    ("iller_bankasi", "İller Bankası yöntemi"),
+    ("regresyon", "En küçük kareler (doğrusal regresyon)"),
+    ("polinom", "Polinom (2. derece)"),
+    ("lojistik", "Lojistik (doyum sınırlı)"),
+)
+
+# Processing tools reached from the projection page (contract C1 ids).
+LINKED_ALGORITHMS = (
+    ("nufus_projeksiyonu", "Projeksiyon Aracı (tablo çıktısı)", "Aynı projeksiyonu Processing aracıyla tüm yöntemler için tablo olarak üretir"),
+    ("kohort_projeksiyonu", "Kohort-Bileşen Projeksiyonu", "Yaş grupları ve doğum/ölüm/göç ile 5 yıllık adımlarla projeksiyon"),
+    ("mahalle_dagitimi", "Mahalle Dağıtımı", "Hedef nüfusu mahallelere oransal, bölge payı veya kapasiteye göre dağıtır"),
+    ("kirilganlik_endeksi", "Kırılganlık Endeksi", "Pay/payda ve bileşik kırılganlık endeksini mahalle katmanına yazar"),
+)
+
+
+def _tr_int(value) -> str:
+    """12345.6 -> '12.346' (Turkish thousands separator)."""
+    return f"{int(round(float(value))):,}".replace(",", ".")
+
+
+def _tr_num(value, digits: int = 2) -> str:
+    """0.98765 -> '0,988' style decimals with a Turkish comma."""
+    return f"{float(value):,.{digits}f}".replace(",", " ").replace(".", ",").replace(" ", ".")
 
 
 def _get_plugin_version() -> str:
@@ -153,13 +194,19 @@ class _TabsAdapter:
 
 
 class TireNipDockWidget(QDockWidget):
-    """Tire NİP ve Kentsel Analiz Stüdyosu Ana Dock Paneli."""
+    """PLN3113 NİP ve Kentsel Analiz Stüdyosu ana dock paneli.
+
+    (Sınıf ve nesne adı eski sürümlerle uyum ve kayıtlı pencere düzeni için korunur.)
+    """
 
     def __init__(self, iface, parent=None):
-        super().__init__("Tire NİP Analiz Stüdyosu (PLN3113)", parent)
+        super().__init__(DOCK_TITLE, parent)
         self.iface = iface
         self.setObjectName("TireNipDockWidget")
+        self._c = hex_colors()
         self.setStyleSheet(studio_stylesheet())
+        self._last_projection = None
+        self._pending_handlers = []
 
         self._last_nip_summary = None
         self._last_nip_html = ""
@@ -177,15 +224,15 @@ class TireNipDockWidget(QDockWidget):
         container = QWidget()
         container.setObjectName("nipRoot")
         main_layout = QVBoxLayout(container)
-        main_layout.setContentsMargins(6, 6, 6, 6)
-        main_layout.setSpacing(6)
+        main_layout.setContentsMargins(4, 4, 4, 4)
+        main_layout.setSpacing(4)
 
         # 1. HEADER BANNER
         header_frame = QFrame()
         header_frame.setObjectName("nipHeaderFrame")
         header_layout = QHBoxLayout(header_frame)
-        header_layout.setContentsMargins(8, 6, 8, 6)
-        header_layout.setSpacing(10)
+        header_layout.setContentsMargins(6, 4, 6, 4)
+        header_layout.setSpacing(8)
 
         icon_label = QLabel()
         icon_label.setObjectName("nipAvatarLabel")
@@ -193,30 +240,28 @@ class TireNipDockWidget(QDockWidget):
         if not os.path.exists(avatar_path):
             avatar_path = os.path.join(PLUGIN_DIR, "icons", "icon.png")
         if os.path.exists(avatar_path):
-            icon_label.setPixmap(QIcon(avatar_path).pixmap(46, 46))
+            icon_label.setPixmap(QIcon(avatar_path).pixmap(34, 34))
         icon_label.setToolTip("Stüdyo Koordinatörü & PlanX Studio")
         header_layout.addWidget(icon_label)
 
         title_box = QVBoxLayout()
-        title_box.setSpacing(2)
+        title_box.setSpacing(1)
 
         title_row = QHBoxLayout()
         title_row.setSpacing(6)
-        lbl_title = QLabel("PLN3113 NİP Analiz Stüdyosu")
+        lbl_title = QLabel(DOCK_TITLE)
         lbl_title.setObjectName("nipHeroTitle")
-        title_row.addWidget(lbl_title)
+        title_row.addWidget(lbl_title, 1)
 
         badge_version = QLabel(f"v{_get_plugin_version()}")
         badge_version.setObjectName("nipVersionBadge")
         title_row.addWidget(badge_version)
-        title_row.addStretch()
         title_box.addLayout(title_row)
 
         lbl_sub = QLabel("PLN3113 Şehir Planlama Projesi III")
         lbl_sub.setObjectName("nipHeaderSubtitle")
         title_box.addWidget(lbl_sub)
-        header_layout.addLayout(title_box)
-        header_layout.addStretch()
+        header_layout.addLayout(title_box, 1)
 
         main_layout.addWidget(header_frame)
 
@@ -224,51 +269,47 @@ class TireNipDockWidget(QDockWidget):
         body_widget = QWidget()
         body_layout = QHBoxLayout(body_widget)
         body_layout.setContentsMargins(0, 0, 0, 0)
-        body_layout.setSpacing(6)
+        body_layout.setSpacing(4)
 
-        # Vertical Navigation Rail
+        # Vertical Navigation Rail (scrolls when the dock is short)
         self.nav_list = QListWidget()
         self.nav_list.setObjectName("nipNavRail")
-        self.nav_list.setFixedWidth(78)
+        self.nav_list.setFixedWidth(64)
         self.nav_list.setViewMode(_VIEW_MODE_ICON)
-        self.nav_list.setIconSize(QSize(28, 28))
+        self.nav_list.setIconSize(QSize(22, 22))
         self.nav_list.setMovement(_MOVEMENT_STATIC)
         self.nav_list.setHorizontalScrollBarPolicy(_SCROLL_OFF)
-        self.nav_list.setVerticalScrollBarPolicy(_SCROLL_OFF)
-        self.nav_list.setSpacing(4)
+        self.nav_list.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.nav_list.setSpacing(2)
 
         nav_items = [
-            ("clean.png", "Geometri", "1. Geometri Onarımı ve Duplike Ayıklama"),
-            ("database.png", "Veritabanı", "2. NİP Çizim Veritabanı ve Şablonu (GeoPackage)"),
-            ("road.png", "Yol/Kavşak", "3. Yol Platformu, Bordür ve Kavşak Geometrisi"),
-            ("plan.png", "NİP & DOP", "4. NİP Nüfus, Donatı (Ek-2) ve DOP Analizi"),
-            ("field.png", "Saha/Yapı", "5. Saha ve Bina Fiili Nüfus Kestirimi"),
-            ("network.png", "Network", "6. Ulaşım Ağı, Ön Cephe, Erişim Çapları ve OD Matrisi"),
-            ("report.png", "Rehber", "7. NİP Metodolojisi, Standartlar ve El Kitabı"),
+            ("clean.png", "Geometri", "1. Geometri Onarımı ve Duplike Ayıklama", self._create_tab_cleaner),
+            ("database.png", "Veritabanı", "2. NİP Çizim Veritabanı ve Şablonu (GeoPackage)", self._create_tab_database),
+            ("road.png", "Yol/Kavşak", "3. Yol Platformu, Bordür ve Kavşak Geometrisi", self._create_tab_roads),
+            ("report.png", "Nüfus", "4. Nüfus Projeksiyonu, Kohort, Mahalle Dağıtımı ve Kırılganlık", self._create_tab_projection),
+            ("plan.png", "NİP & DOP", "5. NİP Nüfus, Donatı (Ek-2) ve DOP Analizi", self._create_tab_nip),
+            ("field.png", "Saha/Yapı", "6. Saha ve Bina Fiili Nüfus Kestirimi", self._create_tab_field),
+            ("network.png", "Network", "7. Ulaşım Ağı, Ön Cephe, Erişim Çapları ve OD Matrisi", self._create_tab_network),
+            ("report.png", "Rehber", "8. NİP Metodolojisi, Standartlar ve El Kitabı", self._create_tab_guide),
         ]
 
-        for icon_file, text, tip in nav_items:
+        self.main_stack = QStackedWidget()
+        self.main_stack.setObjectName("nipMainStack")
+        for icon_file, text, tip, factory in nav_items:
             icon_p = os.path.join(PLUGIN_DIR, "icons", icon_file)
             item = QListWidgetItem(QIcon(icon_p) if os.path.exists(icon_p) else QIcon(), text)
             item.setToolTip(tip)
             item.setTextAlignment(_ALIGN_CENTER)
-            item.setSizeHint(QSize(70, 52))
+            item.setSizeHint(QSize(56, 46))
             self.nav_list.addItem(item)
+            self.main_stack.addWidget(factory())
+        self.projection_page_index = 3
+        self.nip_page_index = 4
 
         body_layout.addWidget(self.nav_list)
 
-        # Right-side Content Stack wrapped in ScrollArea
-        self.main_stack = QStackedWidget()
-        self.main_stack.setObjectName("nipMainStack")
-        self.main_stack.addWidget(self._create_tab_cleaner())
-        self.main_stack.addWidget(self._create_tab_database())
-        self.main_stack.addWidget(self._create_tab_roads())
-        self.main_stack.addWidget(self._create_tab_nip())
-        self.main_stack.addWidget(self._create_tab_field())
-        self.main_stack.addWidget(self._create_tab_network())
-        self.main_stack.addWidget(self._create_tab_guide())
-
         stack_scroll = QScrollArea()
+        stack_scroll.setObjectName("nipStackScroll")
         stack_scroll.setWidgetResizable(True)
         stack_scroll.setFrameShape(_NO_FRAME)
         stack_scroll.setWidget(self.main_stack)
@@ -277,11 +318,78 @@ class TireNipDockWidget(QDockWidget):
         main_layout.addWidget(body_widget, 1)
 
         self.nav_list.currentRowChanged.connect(self.main_stack.setCurrentIndex)
-        self.nav_list.setCurrentRow(3)  # Default to NİP & DOP tab
+        self.main_stack.currentChanged.connect(self._fit_stack_to_page)
+        self.nav_list.setCurrentRow(self.nip_page_index)  # Varsayılan: NİP & DOP
+        self._fit_stack_to_page(self.main_stack.currentIndex())
 
         self.tabs = _TabsAdapter(self)
 
+        self._fit_narrow(container)
+        apply_native_editor_theme(container)
         self.setWidget(container)
+
+    # Layer combo handlers run after the event: on QGIS 4 layerChanged arrives (with
+    # None) before the combo's current layer is updated. Bound methods, so PyQt drops
+    # the connections and timers together with the dock.
+    def _deferred(self, handler) -> None:
+        if handler not in self._pending_handlers:
+            self._pending_handlers.append(handler)
+        QTimer.singleShot(0, self._run_deferred)
+
+    def _run_deferred(self) -> None:
+        pending, self._pending_handlers = self._pending_handlers, []
+        for handler in pending:
+            handler()
+
+    def _nip_layer_combo_changed(self, _layer=None) -> None:
+        self._deferred(self._on_nip_layer_changed)
+
+    def _sinir_layer_combo_changed(self, _layer=None) -> None:
+        self._deferred(self._on_sinir_layer_changed)
+
+    def _road_layer_combo_changed(self, _layer=None) -> None:
+        self._deferred(self._on_road_layer_changed)
+
+    def _fca_fac_combo_changed(self, _layer=None) -> None:
+        self._deferred(self._refresh_fca_fac_fields)
+
+    def _fca_dem_combo_changed(self, _layer=None) -> None:
+        self._deferred(self._refresh_fca_dem_fields)
+
+    def _refresh_fca_fac_fields(self) -> None:
+        self._on_fca_fac_layer_changed(self.cmb_fca_facilities.currentLayer())
+
+    def _refresh_fca_dem_fields(self) -> None:
+        self._on_fca_dem_layer_changed(self.cmb_fca_demand.currentLayer())
+
+    def _fit_stack_to_page(self, index: int) -> None:
+        """Only the visible page sizes the stack: hidden pages neither widen the dock
+        nor lengthen its scroll range."""
+        for i in range(self.main_stack.count()):
+            policy = QSizePolicy.Policy.Preferred if i == index else QSizePolicy.Policy.Ignored
+            self.main_stack.widget(i).setSizePolicy(policy, policy)
+        self.main_stack.updateGeometry()
+
+    @staticmethod
+    def _fit_narrow(root: QWidget) -> None:
+        """Lets every page shrink to a ~340 px dock: labels wrap, combo boxes do not
+        demand their longest item, form rows put long labels above the field."""
+        for label in root.findChildren(QLabel):
+            if label.pixmap() is None or label.pixmap().isNull():
+                label.setWordWrap(True)
+        for combo in root.findChildren(QComboBox):
+            combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+            combo.setMinimumContentsLength(8)
+            combo.setSizePolicy(QSizePolicy.Policy.Expanding, combo.sizePolicy().verticalPolicy())
+        for form in root.findChildren(QFormLayout):
+            form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
+            form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+        for tabs in root.findChildren(QTabWidget):
+            tabs.setUsesScrollButtons(True)
+            tabs.setElideMode(Qt.TextElideMode.ElideRight)
+        for button in root.findChildren(QPushButton):
+            if not button.toolTip():
+                button.setToolTip(button.text().strip())
 
     def _open_theoretical_guide(self):
         """A'dan Z'ye teorik metodoloji el kitabını kullanıcının varsayılan tarayıcısında açar."""
@@ -302,7 +410,7 @@ class TireNipDockWidget(QDockWidget):
         intro_lay.setSpacing(6)
 
         t_lbl = QLabel("📚 PLN3113 NİP Metodoloji El Kitabı")
-        t_lbl.setStyleSheet("font-weight: 700; font-size: 10pt;")
+        t_lbl.setStyleSheet(text_css("accent", "10pt", bold=True))
         intro_lay.addWidget(t_lbl)
 
         d_lbl = QLabel(
@@ -313,7 +421,7 @@ class TireNipDockWidget(QDockWidget):
         d_lbl.setWordWrap(True)
         intro_lay.addWidget(d_lbl)
 
-        btn_launch = QPushButton("  📖 Metodoloji El Kitabını Tarayıcıda Aç (Tam Rehber)")
+        btn_launch = QPushButton("📖 El Kitabını Tarayıcıda Aç")
         btn_launch.setObjectName("PrimaryButton")
         btn_launch.setCursor(_POINTING_HAND)
         btn_launch.clicked.connect(self._open_theoretical_guide)
@@ -321,35 +429,36 @@ class TireNipDockWidget(QDockWidget):
         layout.addWidget(card_intro)
 
         # Resmî Mevzuat ve Bakanlık Standartları Bağlantıları Kartı
-        box_links = QGroupBox("Resmî Mevzuat, Yönetmelik ve Bakanlık Standartları")
+        box_links = QGroupBox("Resmî Mevzuat")
+        box_links.setToolTip("Resmî Mevzuat, Yönetmelik ve Bakanlık Standartları")
         links_lay = QVBoxLayout(box_links)
         links_lay.setSpacing(6)
 
         links_data = [
             (
-                "📜 Mekânsal Planlar Yapım Yönetmeliği (MPYY)",
+                "📜 MPYY (Planlar Yapım Yön.)",
                 "https://www.mevzuat.gov.tr/mevzuat?MevzuatNo=19788&MevzuatTur=7&MevzuatTertip=5",
                 "Asgari kişi başı kentsel donatı standartları (Ek-2 tablosu) ve plan yapım ilkeleri."
             ),
             (
-                "🏢 Planlı Alanlar İmar Yönetmeliği (PAİY)",
+                "🏢 Planlı Alanlar İmar Yön. (PAİY)",
                 "https://www.mevzuat.gov.tr/mevzuat?MevzuatNo=23722&MevzuatTur=7&MevzuatTertip=5",
                 "Yapılaşma şartları, TAKS, KAKS, emsal hesabı, kat yükseklikleri ve bina çekme mesafesi kuralları."
             ),
             (
-                "⚖️ 3194 Sayılı İmar Kanunu (Madde 18 - DOP)",
+                "⚖️ İmar Kanunu Md. 18 (DOP)",
                 "https://www.mevzuat.gov.tr/mevzuat?MevzuatNo=3194&MevzuatTur=1&MevzuatTertip=5",
                 "Arazi ve arsa düzenlemesi, Düzenleme Ortaklık Payı (%45 yasal tavan) ve kamuya terk edilecek donatılar."
             ),
             (
-                "🎨 Bakanlık Resmî Plan Gösterimleri (MPGM)",
+                "🎨 Plan Gösterimleri (MPGM)",
                 "https://mpgm.csb.gov.tr/plan-gosterimleri-4926",
                 "Çevre, Şehircilik ve İklim Değişikliği Bakanlığı resmî gösterim (lejant) standartları ve renk kodları."
             )
         ]
 
         for title, url, desc in links_data:
-            btn_link = QPushButton(f"  {title}")
+            btn_link = QPushButton(title)
             btn_link.setCursor(_POINTING_HAND)
             btn_link.setToolTip(f"{desc}\n\nResmî bağlantıyı tarayıcıda aç: {url}")
             btn_link.clicked.connect(lambda checked=False, target_url=url: QDesktopServices.openUrl(QUrl(target_url)))
@@ -358,28 +467,19 @@ class TireNipDockWidget(QDockWidget):
         layout.addWidget(box_links)
 
         # Quick reference cards
-        box_ek2 = QGroupBox("1. MPYY Ek-2 Kentsel Donatı Standartları (Kişi Başı m²)")
+        box_ek2 = QGroupBox("1. Ek-2 Donatı Standartları")
+        box_ek2.setToolTip("MPYY Ek-2 kentsel donatı standartları (kişi başı m²), eklentinin hesapta kullandığı değerler")
         ek2_lay = QVBoxLayout(box_ek2)
-        ek2_info = QLabel(
-            "• <b>Eğitim Alanları (Toplam 7.0 m²/kişi):</b><br>"
-            "  - Anaokulu + İlkokul: 2.5 m²/kişi (Yürüme yarıçapı: 500 m)<br>"
-            "  - Ortaokul: 2.0 m²/kişi (Yürüme yarıçapı: 1000 m)<br>"
-            "  - Ortaöğretim / Lise: 2.5 m²/kişi (Yürüme yarıçapı: 2500 m)<br>"
-            "• <b>Sağlık Tesisleri:</b> 1.5 m²/kişi (Aile Sağlığı, TSM vb.)<br>"
-            "• <b>Sosyal ve Kültürel Tesis:</b> 1.5 m²/kişi (Kültür merkezi, gençlik merk.)<br>"
-            "• <b>İbadet Alanları:</b> 0.5 m²/kişi (Küçük cami, mescit, orta ibadet)<br>"
-            "• <b>Açık ve Yeşil Alanlar:</b> 10.0 m²/kişi (Park, çocuk bahçesi, rekreasyon)<br>"
-            "• <b>Teknik Altyapı:</b> 1.0 m²/kişi (Trafo, arıtma, terfi merkezi vb.)<br>"
-            "➡️ <i>Toplam Asgari Sosyal ve Teknik Altyapı: <b>21.5 m²/kişi</b></i>"
-        )
+        ek2_info = QLabel(self._ek2_reference_html())
         ek2_info.setWordWrap(True)
         ek2_lay.addWidget(ek2_info)
         layout.addWidget(box_ek2)
 
-        box_dop = QGroupBox("2. 3194 Sayılı İmar Kanunu Madde 18 & DOP İlkeleri")
+        box_dop = QGroupBox("2. İmar Kanunu Md. 18 ve DOP")
+        box_dop.setToolTip("3194 Sayılı İmar Kanunu Madde 18 ve DOP ilkeleri")
         dop_lay = QVBoxLayout(box_dop)
         dop_info = QLabel(
-            "• <b>DOP Oranı Formülü:</b> <code>DOP = (Toplam DOP İçi Donatı) / (Toplam Parsel Alanı)</code><br>"
+            "• <b>DOP Oranı:</b> (Toplam DOP İçi Donatı) / (Toplam Parsel Alanı)<br>"
             "• <b>Yasal Tavan:</b> 3194 sayılı Kanun uyarınca azami DOP oranı <b>%45.0</b>'dir.<br>"
             "• <b>Kamu - Özel Ayrımı:</b><br>"
             "  - <i>DOP İçi (Kamusal):</i> Yol, Meydan, Park, Temel Eğitim, İbadet, vb.<br>"
@@ -389,10 +489,11 @@ class TireNipDockWidget(QDockWidget):
         dop_lay.addWidget(dop_info)
         layout.addWidget(box_dop)
 
-        box_field = QGroupBox("3. Fiili Yapı & Saha Nüfusu Kestirim Metodu")
+        box_field = QGroupBox("3. Saha Nüfusu Kestirimi")
+        box_field.setToolTip("Fiili yapı ve saha nüfusu kestirim metodu")
         field_lay = QVBoxLayout(box_field)
         field_info = QLabel(
-            "• <b>Formül:</b> <code>Nüfus = (Taban Alanı × Kat Adedi × Konut Payı) ÷ (Ortalama Konut m²) × (Ortalama Hanehalkı)</code><br>"
+            "• <b>Yöntem:</b> Nüfus = (Taban Alanı × Kat Adedi × Konut Payı) ÷ (Ortalama Konut m²) × (Ortalama Hanehalkı)<br>"
             "• Kat verisi olmayan binalar için mahalle/bölge ortalaması otomatik atanır.<br>"
             "• NİP brüt yoğunluk kapasitesi ile sahadaki fiili mevcut nüfus karşılaştırılarak kapasite doygunluk analizi üretilir."
         )
@@ -413,10 +514,10 @@ class TireNipDockWidget(QDockWidget):
         layout.setSpacing(8)
 
         # Girdi Katmanı Seçimi
-        box_input = QGroupBox("Girdi Poligon Katmanı Seçimi")
+        box_input = QGroupBox("Girdi Poligon Katmanı")
         box_layout = QVBoxLayout(box_input)
 
-        lbl = QLabel("Temizlenecek ve Denetlenecek Poligon Katmanı (Örn: nipt_test.gpkg):")
+        lbl = QLabel("Temizlenecek ve denetlenecek poligon katmanı:")
         box_layout.addWidget(lbl)
 
         self.cmb_clean_layer = QgsMapLayerComboBox()
@@ -425,7 +526,8 @@ class TireNipDockWidget(QDockWidget):
         layout.addWidget(box_input)
 
         # 1. Aşama: Topoloji ve Hata Denetimi (Check Validity)
-        box_check = QGroupBox("1. Aşama: Topoloji ve Hata Denetimi (Check Validity)")
+        box_check = QGroupBox("1. Aşama: Hata Denetimi")
+        box_check.setToolTip("Topoloji ve hata denetimi (Check Validity)")
         check_layout = QVBoxLayout(box_check)
 
         info_check = QLabel(
@@ -433,10 +535,11 @@ class TireNipDockWidget(QDockWidget):
             "kendini kesen halkaları (self-intersection), hatalı düğüm noktalarını ve mükerrer poligonları tespit eder."
         )
         info_check.setWordWrap(True)
-        info_check.setStyleSheet("color: #475569; font-size: 8pt;")
+        info_check.setStyleSheet(text_css("subtle", "8pt"))
         check_layout.addWidget(info_check)
 
-        self.btn_run_check_validity = QPushButton("  🔍 Geometri Geçerliliğini ve Hataları Denetle")
+        self.btn_run_check_validity = QPushButton("🔍 Geçerliliği Denetle")
+        self.btn_run_check_validity.setToolTip("Geometri geçerliliğini ve hataları denetle")
         self.btn_run_check_validity.setObjectName("CleanButton")
         self.btn_run_check_validity.setCursor(_POINTING_HAND)
         self.btn_run_check_validity.clicked.connect(self._run_geometry_check_validity)
@@ -447,25 +550,25 @@ class TireNipDockWidget(QDockWidget):
         grid_metrics.setSpacing(6)
 
         self.lbl_metric_total = QLabel("Toplam: -")
-        self.lbl_metric_total.setStyleSheet("background: #f1f5f9; padding: 6px; border-radius: 6px; font-weight: 600;")
+        self.lbl_metric_total.setStyleSheet(chip_css())
         self.lbl_metric_total.setAlignment(_ALIGN_CENTER)
 
         self.lbl_metric_invalid = QLabel("Geçersiz: -")
-        self.lbl_metric_invalid.setStyleSheet("background: #fee2e2; color: #b91c1c; padding: 6px; border-radius: 6px; font-weight: 700;")
+        self.lbl_metric_invalid.setStyleSheet(chip_css("bad"))
         self.lbl_metric_invalid.setAlignment(_ALIGN_CENTER)
 
         self.lbl_metric_duplicate = QLabel("Mükerrer: -")
-        self.lbl_metric_duplicate.setStyleSheet("background: #fef3c7; color: #b45309; padding: 6px; border-radius: 6px; font-weight: 700;")
+        self.lbl_metric_duplicate.setStyleSheet(chip_css("warn"))
         self.lbl_metric_duplicate.setAlignment(_ALIGN_CENTER)
 
         self.lbl_metric_valid = QLabel("Geçerli: -")
-        self.lbl_metric_valid.setStyleSheet("background: #dcfce7; color: #15803d; padding: 6px; border-radius: 6px; font-weight: 700;")
+        self.lbl_metric_valid.setStyleSheet(chip_css("ok"))
         self.lbl_metric_valid.setAlignment(_ALIGN_CENTER)
 
         grid_metrics.addWidget(self.lbl_metric_total, 0, 0)
         grid_metrics.addWidget(self.lbl_metric_invalid, 0, 1)
-        grid_metrics.addWidget(self.lbl_metric_duplicate, 0, 2)
-        grid_metrics.addWidget(self.lbl_metric_valid, 0, 3)
+        grid_metrics.addWidget(self.lbl_metric_duplicate, 1, 0)
+        grid_metrics.addWidget(self.lbl_metric_valid, 1, 1)
         check_layout.addLayout(grid_metrics)
 
         # Hata Listesi Tablosu
@@ -481,11 +584,11 @@ class TireNipDockWidget(QDockWidget):
         self.tbl_clean_errors.cellClicked.connect(self._on_clean_error_row_clicked)
         check_layout.addWidget(self.tbl_clean_errors)
 
-        lbl_zoom_hint = QLabel("💡 <i>Tablodaki herhangi bir hata satırına tıklayarak harita tuvalinde doğrudan o geometriye odaklanabilirsiniz.</i>")
-        lbl_zoom_hint.setStyleSheet("color: #64748b; font-size: 7.5pt;")
+        lbl_zoom_hint = QLabel("💡 <i>Bir hata satırına tıklayınca harita o geometriye odaklanır.</i>")
+        lbl_zoom_hint.setStyleSheet(text_css("subtle", "8pt"))
         check_layout.addWidget(lbl_zoom_hint)
 
-        self.btn_add_error_points = QPushButton("  📍 Hata Noktalarını Haritaya Ekle (Point Layer)")
+        self.btn_add_error_points = QPushButton("📍 Hata Noktalarını Haritaya Ekle")
         self.btn_add_error_points.setCursor(_POINTING_HAND)
         self.btn_add_error_points.setEnabled(False)
         self.btn_add_error_points.clicked.connect(self._add_error_points_to_map)
@@ -494,7 +597,8 @@ class TireNipDockWidget(QDockWidget):
         layout.addWidget(box_check)
 
         # 2. Aşama: Akıllı Onarım ve Tekilleştirme (Fix & Deduplicate)
-        box_fix = QGroupBox("2. Aşama: Akıllı Onarım ve Tekilleştirme (Fix & Deduplicate)")
+        box_fix = QGroupBox("2. Aşama: Onarım ve Tekilleştirme")
+        box_fix.setToolTip("Akıllı onarım ve tekilleştirme (Fix & Deduplicate)")
         fix_layout = QVBoxLayout(box_fix)
 
         info_fix = QLabel(
@@ -503,10 +607,11 @@ class TireNipDockWidget(QDockWidget):
             "2. Sekme (NİP Analizi) için otomatik atanır."
         )
         info_fix.setWordWrap(True)
-        info_fix.setStyleSheet("color: #475569; font-size: 8pt;")
+        info_fix.setStyleSheet(text_css("subtle", "8pt"))
         fix_layout.addWidget(info_fix)
 
-        self.btn_run_clean = QPushButton("  ⚡ Geometriyi Otomatik Onar ve Duplikeleri Ayıkla")
+        self.btn_run_clean = QPushButton("⚡ Onar ve Duplikeleri Ayıkla")
+        self.btn_run_clean.setToolTip("Geometriyi otomatik onar ve mükerrer (duplike) poligonları ayıkla")
         self.btn_run_clean.setObjectName("PrimaryButton")
         self.btn_run_clean.setCursor(_POINTING_HAND)
         clean_icon_path = os.path.join(PLUGIN_DIR, "icons", "clean.png")
@@ -557,9 +662,9 @@ class TireNipDockWidget(QDockWidget):
                 item_tur = QTableWidgetItem(h["hata_turu"])
                 item_tur.setFlags(item_tur.flags() & ~_ITEM_EDITABLE)
                 if "Geçersiz" in h["hata_turu"]:
-                    item_tur.setForeground(QColor("#dc2626"))
+                    item_tur.setForeground(QColor(self._c["bad"]))
                 elif "Mükerrer" in h["hata_turu"]:
-                    item_tur.setForeground(QColor("#d97706"))
+                    item_tur.setForeground(QColor(self._c["warn"]))
 
                 item_detay = QTableWidgetItem(h["detay"])
                 item_detay.setFlags(item_detay.flags() & ~_ITEM_EDITABLE)
@@ -712,9 +817,9 @@ class TireNipDockWidget(QDockWidget):
                 f"✅ <b>Temizleme Başarıyla Tamamlandı!</b><br>"
                 f"• Girdi Katmanı: <b>{orig_layer_name}</b><br>"
                 f"• Toplam Taranan Obje: <b>{stats['toplam_girdi']:,}</b><br>"
-                f"• Ayıklanan Mükerrer (Duplike) Poligon: <b style='color:#dc2626;'>{stats['duplike_elenen']:,}</b> (%{dup_oran})<br>"
+                f"• Ayıklanan Mükerrer (Duplike) Poligon: <b style='color:{self._c["bad"]};'>{stats['duplike_elenen']:,}</b> (%{dup_oran})<br>"
                 f"• Onarılan Geçersiz Geometri: <b>{stats['gecersiz_onarilan']:,}</b><br>"
-                f"• Temiz Çıktı Obje Sayısı: <b style='color:#16a34a;'>{stats['temiz_cikan']:,}</b><br>"
+                f"• Temiz Çıktı Obje Sayısı: <b style='color:{self._c["ok"]};'>{stats['temiz_cikan']:,}</b><br>"
                 f"Yeni katman <i>'{out_name}'</i> haritaya eklendi ve 2. Sekme (NİP Analiz) için seçildi."
             )
             self.txt_clean_log.setHtml(log_text)
@@ -738,7 +843,7 @@ class TireNipDockWidget(QDockWidget):
 
         except Exception as e:
             QMessageBox.critical(self, "Hata", f"Temizleme sırasında hata: {str(e)}")
-            self.txt_clean_log.append(f"<span style='color:red;'>Hata: {str(e)}</span>")
+            self.txt_clean_log.append(f"<span style='color:{self._c['bad']};'>Hata: {html.escape(str(e))}</span>")
         finally:
             self.btn_run_clean.setEnabled(True)
             self.clean_progress.setVisible(False)
@@ -759,8 +864,8 @@ class TireNipDockWidget(QDockWidget):
         info_lay.setContentsMargins(10, 8, 10, 8)
         info_lay.setSpacing(4)
 
-        t_lbl = QLabel("🗄️ 1/5000 Nazım İmar Planı (NİP) Çizim Veritabanı ve Şablonu")
-        t_lbl.setStyleSheet("font-weight: 700; font-size: 10pt; color: #0f766e;")
+        t_lbl = QLabel("🗄️ 1/5000 NİP Çizim Veritabanı ve Şablonu")
+        t_lbl.setStyleSheet(text_css("accent", "10pt", bold=True))
         info_lay.addWidget(t_lbl)
 
         d_lbl = QLabel(
@@ -769,19 +874,21 @@ class TireNipDockWidget(QDockWidget):
             "kodlamaları ve 1-N ilişkileri (Relations) içeren hazır GeoPackage (.gpkg) çalışma alanı üretir."
         )
         d_lbl.setWordWrap(True)
-        d_lbl.setStyleSheet("color: #475569; font-size: 8.5pt;")
+        d_lbl.setStyleSheet(text_css("subtle", "8.5pt"))
         info_lay.addWidget(d_lbl)
         layout.addWidget(card_info)
 
         # Hedef Veritabanı Konumu ve CRS
-        box_db = QGroupBox("Veritabanı Şeması ve Dosya Konumu")
+        box_db = QGroupBox("Şema ve Dosya Konumu")
         form_db = QFormLayout(box_db)
         form_db.setSpacing(8)
 
         # Şema Seçici (MPYY 1.1.7 vs Yerel NİP)
         self.cmb_db_schema = QComboBox()
-        self.cmb_db_schema.addItem("🏛️ Resmî MPYY 1.1.7 XSD Şeması (Bakanlık e-Plan & Ek-1e - 87 Katman)", SCHEMA_MPYY_117)
-        self.cmb_db_schema.addItem("📐 PLN3113 Yerel NİP Şablonu (MpyyNipDB 1/5000 - 5 Katman + Tablo + QML)", SCHEMA_YEREL_NIP)
+        self.cmb_db_schema.addItem("🏛️ Resmî MPYY 1.1.7 XSD (87 katman)", SCHEMA_MPYY_117)
+        self.cmb_db_schema.addItem("📐 PLN3113 Yerel NİP (MpyyNipDB 1/5000)", SCHEMA_YEREL_NIP)
+        self.cmb_db_schema.setToolTip("Resmî MPYY 1.1.7 XSD şeması (Bakanlık e-Plan & Ek-1e, 87 katman) veya "
+                                      "PLN3113 yerel NİP şablonu (5 katman + tablo + QML)")
         self.cmb_db_schema.currentIndexChanged.connect(self._on_db_schema_changed)
         form_db.addRow("Plan Şeması / Standart:", self.cmb_db_schema)
 
@@ -808,40 +915,45 @@ class TireNipDockWidget(QDockWidget):
         layout.addWidget(box_db)
 
         # Seçenekler
-        box_opts = QGroupBox("Otomasyon ve Proje Entegrasyon Seçenekleri")
+        box_opts = QGroupBox("Seçenekler")
         opts_lay = QVBoxLayout(box_opts)
         opts_lay.setSpacing(6)
 
-        self.chk_db_load_layers = QCheckBox("Üretilen katmanları mevcut QGIS projesine otomatik ekle")
+        self.chk_db_load_layers = QCheckBox("Katmanları projeye ekle")
+        self.chk_db_load_layers.setToolTip("Üretilen katmanları mevcut QGIS projesine otomatik ekle")
         self.chk_db_load_layers.setChecked(True)
         opts_lay.addWidget(self.chk_db_load_layers)
 
-        self.chk_db_apply_styles = QCheckBox("MPYY resmî lejant stillerini (.qml / SLD) otomatik bağla")
+        self.chk_db_apply_styles = QCheckBox("Resmî lejant stillerini bağla")
+        self.chk_db_apply_styles.setToolTip("MPYY resmî lejant stillerini (.qml / SLD) otomatik bağla")
         self.chk_db_apply_styles.setChecked(True)
         opts_lay.addWidget(self.chk_db_apply_styles)
 
-        self.chk_db_setup_forms = QCheckBox("Hiyerarşik öznitelik formlarını ve açılır menü (Value Map) kurallarını kur")
+        self.chk_db_setup_forms = QCheckBox("Öznitelik formlarını kur")
+        self.chk_db_setup_forms.setToolTip("Hiyerarşik öznitelik formlarını ve açılır menü (Value Map) kurallarını kur")
         self.chk_db_setup_forms.setChecked(True)
         opts_lay.addWidget(self.chk_db_setup_forms)
 
-        self.chk_db_setup_relations = QCheckBox("Çoklu fonksiyon ilişkilerini (Relations: alanlar-5000 <-> fonksiyonlar) aktifleştir")
+        self.chk_db_setup_relations = QCheckBox("Fonksiyon ilişkilerini kur")
+        self.chk_db_setup_relations.setToolTip("Çoklu fonksiyon ilişkilerini (Relations: alanlar-5000 <-> fonksiyonlar) aktifleştir")
         self.chk_db_setup_relations.setChecked(True)
         opts_lay.addWidget(self.chk_db_setup_relations)
 
         layout.addWidget(box_opts)
 
         # Buton
-        self.btn_create_db = QPushButton("  🚀 MPYY 1.1.7 NİP Çizim Veritabanını Oluştur ve Katmanları Yükle")
+        self.btn_create_db = QPushButton("🚀 Veritabanını Oluştur")
+        self.btn_create_db.setToolTip("MPYY 1.1.7 NİP çizim veritabanını oluştur ve katmanları yükle")
         self.btn_create_db.setObjectName("PrimaryButton")
         self.btn_create_db.setCursor(_POINTING_HAND)
         self.btn_create_db.clicked.connect(self._on_create_database)
         layout.addWidget(self.btn_create_db)
 
         # Bilgilendirme Kartı: Üretilecek Katman Şeması
-        self.box_schema = QGroupBox("Oluşturulacak Resmî MPYY 1.1.7 NİP Katmanları ve Hiyerarşisi")
+        self.box_schema = QGroupBox("Oluşturulacak Katmanlar")
         schema_lay = QVBoxLayout(self.box_schema)
         self.schema_html = QLabel(
-            "<div style='font-size:8.5pt; color:#334155; line-height:1.45;'>"
+            "<div style='font-size:8.5pt; line-height:1.45;'>"
             "• <b>Alanlar (58 Poligon Katmanı)</b>: GelismeKonut, MevcutKonut, DonusumKonutAlanlari, KentselCalisma, "
             "AcikYesilAlan, EgitimTesisAlani, SaglikTesisAlani, PlanSiniri, YolDuzenlemeAlanlari, AfetHizmetAlani, AraziKoruma vb.<br/>"
             "• <b>Çizgiler (23 Çizgi Katmanı)</b>: KarayoluGuzergahi, Demiryolu, AdaKenari, ManiaSiniri, SuUlasimBaglantisi vb.<br/>"
@@ -860,10 +972,12 @@ class TireNipDockWidget(QDockWidget):
     def _on_db_schema_changed(self, index=0):
         schema_type = self.cmb_db_schema.currentData()
         if schema_type == SCHEMA_YEREL_NIP:
-            self.btn_create_db.setText("  🚀 PLN3113 Yerel NİP Veritabanını Oluştur ve Katmanları Yükle")
-            self.box_schema.setTitle("Oluşturulacak PLN3113 Yerel NİP (MpyyNipDB) Katmanları")
+            self.btn_create_db.setText("🚀 Veritabanını Oluştur")
+            self.btn_create_db.setToolTip("PLN3113 yerel NİP veritabanını oluştur ve katmanları yükle")
+            self.box_schema.setTitle("Oluşturulacak Katmanlar")
+            self.box_schema.setToolTip("PLN3113 Yerel NİP (MpyyNipDB) katmanları")
             self.schema_html.setText(
-                "<div style='font-size:8.5pt; color:#334155; line-height:1.45;'>"
+                "<div style='font-size:8.5pt; line-height:1.45;'>"
                 "• <b>alanlar-5000 (Poligon)</b>: 1/5000 NİP arazi kullanım fonksiyon lekeleri ve alan kullanım kararları.<br/>"
                 "• <b>cizgiler_5000_v2 (Çizgi)</b>: 1/5000 NİP yol aksları, plan onama sınırı, koruma kuşakları ve hatlar.<br/>"
                 "• <b>fonksiyonlar-5000_tablo (Öznitelik Tablosu)</b>: 1-N ilişkili çoklu fonksiyon, lejant kodu ve alt detay tanımları.<br/>"
@@ -874,10 +988,12 @@ class TireNipDockWidget(QDockWidget):
             self.chk_db_setup_relations.setEnabled(True)
             self.chk_db_setup_relations.setChecked(True)
         else:
-            self.btn_create_db.setText("  🚀 MPYY 1.1.7 NİP Çizim Veritabanını Oluştur ve Katmanları Yükle")
-            self.box_schema.setTitle("Oluşturulacak Resmî MPYY 1.1.7 NİP Katmanları ve Hiyerarşisi")
+            self.btn_create_db.setText("🚀 Veritabanını Oluştur")
+            self.btn_create_db.setToolTip("MPYY 1.1.7 NİP çizim veritabanını oluştur ve katmanları yükle")
+            self.box_schema.setTitle("Oluşturulacak Katmanlar")
+            self.box_schema.setToolTip("Resmî MPYY 1.1.7 NİP katmanları ve hiyerarşisi")
             self.schema_html.setText(
-                "<div style='font-size:8.5pt; color:#334155; line-height:1.45;'>"
+                "<div style='font-size:8.5pt; line-height:1.45;'>"
                 "• <b>Alanlar (58 Poligon Katmanı)</b>: GelismeKonut, MevcutKonut, DonusumKonutAlanlari, KentselCalisma, "
                 "AcikYesilAlan, EgitimTesisAlani, SaglikTesisAlani, PlanSiniri, YolDuzenlemeAlanlari, AfetHizmetAlani, AraziKoruma vb.<br/>"
                 "• <b>Çizgiler (23 Çizgi Katmanı)</b>: KarayoluGuzergahi, Demiryolu, AdaKenari, ManiaSiniri, SuUlasimBaglantisi vb.<br/>"
@@ -963,8 +1079,8 @@ class TireNipDockWidget(QDockWidget):
         info_lay.setContentsMargins(10, 8, 10, 8)
         info_lay.setSpacing(4)
 
-        t_lbl = QLabel("🛣️ Yol Platformu, Bordür ve Kavşak Geometrisi Modülü")
-        t_lbl.setStyleSheet("font-weight: 700; font-size: 10pt; color: #0f766e;")
+        t_lbl = QLabel("🛣️ Yol Platformu, Bordür ve Kavşak")
+        t_lbl.setStyleSheet(text_css("accent", "10pt", bold=True))
         info_lay.addWidget(t_lbl)
 
         d_lbl = QLabel(
@@ -973,12 +1089,13 @@ class TireNipDockWidget(QDockWidget):
             "dış sınırları otomatik poligonlaştırarak NİP imar adalarıyla eşleştirir."
         )
         d_lbl.setWordWrap(True)
-        d_lbl.setStyleSheet("color: #475569; font-size: 8.5pt;")
+        d_lbl.setStyleSheet(text_css("subtle", "8.5pt"))
         info_lay.addWidget(d_lbl)
         layout.addWidget(card_info)
 
         # 1. Bölüm: Yol Platformu & Bordür Üretici
-        box_plat = QGroupBox("1. Aşama: Yol Platformu, Refüj ve Bordür/Kaldırım Üretimi")
+        box_plat = QGroupBox("1. Aşama: Yol Platformu")
+        box_plat.setToolTip("Yol platformu, refüj ve bordür/kaldırım üretimi")
         lay_plat = QVBoxLayout(box_plat)
         lay_plat.setSpacing(6)
 
@@ -990,8 +1107,8 @@ class TireNipDockWidget(QDockWidget):
         form_plat.addRow("Yol Orta Çizgisi Katmanı:", self.cmb_road_layer)
 
         self.cmb_road_width_field = QComboBox()
-        self.cmb_road_layer.layerChanged.connect(self._on_road_layer_changed)
-        form_plat.addRow("Yol Genişliği Alanı (Örn: GENISLIK):", self.cmb_road_width_field)
+        self.cmb_road_layer.layerChanged.connect(self._road_layer_combo_changed)
+        form_plat.addRow("Yol genişliği alanı:", self.cmb_road_width_field)
 
         self.spn_default_road_width = QDoubleSpinBox()
         self.spn_default_road_width.setRange(3.0, 100.0)
@@ -1013,7 +1130,8 @@ class TireNipDockWidget(QDockWidget):
 
         lay_plat.addLayout(form_plat)
 
-        self.btn_run_platform = QPushButton("  📐 Yol Platformu ve Kaldırım Çizgilerini Üret")
+        self.btn_run_platform = QPushButton("📐 Platform ve Kaldırımı Üret")
+        self.btn_run_platform.setToolTip("Yol platformu ve kaldırım çizgilerini üret")
         self.btn_run_platform.setObjectName("PrimaryButton")
         self.btn_run_platform.setCursor(_POINTING_HAND)
         self.btn_run_platform.clicked.connect(self._on_run_road_platform)
@@ -1021,7 +1139,8 @@ class TireNipDockWidget(QDockWidget):
         layout.addWidget(box_plat)
 
         # 2. Bölüm: Kavşak Geometrisi & Yaklaşım Kırpma
-        box_kavsak = QGroupBox("2. Aşama: Kavşak Geometrisi ve Yaklaşım Kırpma (5m Trim)")
+        box_kavsak = QGroupBox("2. Aşama: Kavşak Kırpma")
+        box_kavsak.setToolTip("Kavşak geometrisi ve yaklaşım kırpma (5 m)")
         lay_kavsak = QVBoxLayout(box_kavsak)
         lay_kavsak.setSpacing(6)
 
@@ -1040,7 +1159,8 @@ class TireNipDockWidget(QDockWidget):
 
         lay_kavsak.addLayout(form_kavsak)
 
-        self.btn_run_kavsak = QPushButton("  ✂️ Kavşak Hatlarını Kırp ve Yaklaşımları Ayır")
+        self.btn_run_kavsak = QPushButton("✂️ Kavşak Hatlarını Kırp")
+        self.btn_run_kavsak.setToolTip("Kavşak hatlarını kırp ve yaklaşımları ayır")
         self.btn_run_kavsak.setObjectName("SecondaryButton")
         self.btn_run_kavsak.setCursor(_POINTING_HAND)
         self.btn_run_kavsak.clicked.connect(self._on_run_kavsak_trim)
@@ -1048,7 +1168,8 @@ class TireNipDockWidget(QDockWidget):
         layout.addWidget(box_kavsak)
 
         # 3. Bölüm: Yol Poligonlaştırma ve Plan Alanı Eşleştirme
-        box_poly = QGroupBox("3. Aşama: Yol Dış Çizgilerini Poligonlaştırma ve Fonksiyon Eşleştirme")
+        box_poly = QGroupBox("3. Aşama: Poligonlaştırma")
+        box_poly.setToolTip("Yol dış çizgilerini poligonlaştırma ve fonksiyon eşleştirme")
         lay_poly = QVBoxLayout(box_poly)
         lay_poly.setSpacing(6)
 
@@ -1065,7 +1186,8 @@ class TireNipDockWidget(QDockWidget):
 
         lay_poly.addLayout(form_poly)
 
-        self.btn_run_poly = QPushButton("  🔄 Yolları Poligonlaştır ve Plan Fonksiyonlarına Bağla")
+        self.btn_run_poly = QPushButton("🔄 Yolları Poligonlaştır")
+        self.btn_run_poly.setToolTip("Yolları poligonlaştır ve plan fonksiyonlarına bağla")
         self.btn_run_poly.setObjectName("AccentButton")
         self.btn_run_poly.setCursor(_POINTING_HAND)
         self.btn_run_poly.clicked.connect(self._on_run_road_polygonize)
@@ -1216,6 +1338,236 @@ class TireNipDockWidget(QDockWidget):
     # -----------------------------------------------------------------
     # SEKME 4: NİP PLAN NÜFUSU, DONATI, KAMU-ÖZEL & DOP ANALİZİ
     # -----------------------------------------------------------------
+    # -----------------------------------------------------------------
+    # SEKME: NÜFUS PROJEKSİYONU (C1 core/projection.py; formül dock'ta yok)
+    # -----------------------------------------------------------------
+    def _create_tab_projection(self) -> QWidget:
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        layout.setContentsMargins(4, 4, 4, 4)
+        layout.setSpacing(6)
+
+        box = QGroupBox("Nüfus Projeksiyonu")
+        box.setToolTip("Sayım / ADNKS yılları ve nüfuslarından hedef yıl nüfusunu kestirir; "
+                       "sonucu NİP hedef nüfusuna aktarabilirsiniz.")
+        lay = QVBoxLayout(box)
+        lay.setSpacing(6)
+
+        lbl_in = QLabel("Yıl ve nüfus değerlerini girin (en az iki yıl):")
+        lay.addWidget(lbl_in)
+
+        self.tbl_proj_input = QTableWidget(4, 2)
+        self.tbl_proj_input.setHorizontalHeaderLabels(["Yıl", "Nüfus"])
+        self.tbl_proj_input.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.tbl_proj_input.verticalHeader().setVisible(False)
+        self.tbl_proj_input.setMinimumHeight(120)
+        self.tbl_proj_input.setMaximumHeight(170)
+        lay.addWidget(self.tbl_proj_input)
+
+        row_btns = QHBoxLayout()
+        btn_add = QPushButton("Ekle")
+        btn_add.setToolTip("Tabloya yeni bir yıl satırı ekle")
+        btn_add.clicked.connect(lambda: self.tbl_proj_input.insertRow(self.tbl_proj_input.rowCount()))
+        btn_del = QPushButton("Sil")
+        btn_del.setToolTip("Seçili (ya da son) satırı sil")
+        btn_del.clicked.connect(self._proj_remove_row)
+        self.btn_proj_example = QPushButton("Örnek: Tire")
+        self.btn_proj_example.setToolTip("Örnek veri: Tire (İzmir) ilçe toplamı — 1990 DİE sayımı, "
+                                         "2015 ve 2025 TÜİK ADNKS. Kendi yerleşmenizin değerleriyle değiştirin.")
+        self.btn_proj_example.clicked.connect(self._proj_fill_example)
+        row_btns.addWidget(btn_add)
+        row_btns.addWidget(btn_del)
+        row_btns.addWidget(self.btn_proj_example)
+        lay.addLayout(row_btns)
+
+        form = QFormLayout()
+        self.cmb_proj_method = QComboBox()
+        for key, label in PROJECTION_METHODS:
+            self.cmb_proj_method.addItem(label, key)
+        self.cmb_proj_method.setToolTip("İller Bankası oranı sınırlandığında, lojistik model doyum "
+                                        "sınırına yaklaştığında sonuçla birlikte uyarı verilir.")
+        form.addRow("Yöntem:", self.cmb_proj_method)
+        self.spn_proj_target_year = QSpinBox()
+        self.spn_proj_target_year.setRange(1950, 2200)
+        self.spn_proj_target_year.setValue(2045)
+        form.addRow("Hedef yıl:", self.spn_proj_target_year)
+        lay.addLayout(form)
+
+        self.btn_proj_run = QPushButton("📈 Projeksiyonu Hesapla")
+        self.btn_proj_run.setObjectName("PrimaryButton")
+        self.btn_proj_run.setCursor(_POINTING_HAND)
+        self.btn_proj_run.clicked.connect(self._run_projection)
+        lay.addWidget(self.btn_proj_run)
+
+        self.lbl_proj_result = QLabel("Sonuç burada görünecek: hedef yıl nüfusu, R², geriye dönük "
+                                      "sınama hatası ve uyarılar.")
+        self.lbl_proj_result.setWordWrap(True)
+        self.lbl_proj_result.setTextFormat(Qt.TextFormat.RichText)
+        self.lbl_proj_result.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.lbl_proj_result.setStyleSheet(note_css("info"))
+        lay.addWidget(self.lbl_proj_result)
+
+        self.btn_proj_apply = QPushButton("⤵ Hedef Nüfusa Aktar")
+        self.btn_proj_apply.setToolTip("Hesaplanan nüfusu NİP & DOP sayfasındaki hedef nüfus kutusuna yazar")
+        self.btn_proj_apply.setEnabled(False)
+        self.btn_proj_apply.clicked.connect(self._apply_projection_to_target)
+        lay.addWidget(self.btn_proj_apply)
+        layout.addWidget(box)
+
+        box_tools = QGroupBox("İleri Nüfus Araçları")
+        box_tools.setToolTip("Processing araç kutusundaki algoritmaları iletişim penceresiyle açar")
+        tools_lay = QVBoxLayout(box_tools)
+        tools_lay.setSpacing(4)
+        for alg_name, title, tip in LINKED_ALGORITHMS:
+            btn = QPushButton(f"⚙️ {title}")
+            btn.setToolTip(tip)
+            btn.setCursor(_POINTING_HAND)
+            btn.clicked.connect(lambda _checked=False, n=alg_name: self._open_algorithm_dialog(n))
+            setattr(self, f"btn_open_{alg_name}", btn)
+            tools_lay.addWidget(btn)
+        self.lbl_proj_tools_status = QLabel("")
+        self.lbl_proj_tools_status.setWordWrap(True)
+        self.lbl_proj_tools_status.setStyleSheet(text_css("subtle", "8pt"))
+        tools_lay.addWidget(self.lbl_proj_tools_status)
+        layout.addWidget(box_tools)
+
+        lbl_credit = QLabel("Nüfus projeksiyonu, dağıtım ve kırılganlık araçları Kent Öngörü v1.0.0 "
+                            "(Berkay Memiş, GPL-2.0-or-later) temel alınarak yeniden yazıldı.")
+        lbl_credit.setStyleSheet(text_css("subtle", "8pt"))
+        layout.addWidget(lbl_credit)
+        layout.addStretch()
+        return tab
+
+    def _proj_remove_row(self):
+        table = self.tbl_proj_input
+        row = table.currentRow() if table.currentRow() >= 0 else table.rowCount() - 1
+        if row >= 0:
+            table.removeRow(row)
+
+    def _proj_fill_example(self):
+        """Örnek ön ayar: Tire (İzmir) ilçe toplamı (yalnızca örnek)."""
+        rows = []
+        try:
+            from .core.tire_constants import TIRE_POPULATION_BENCHMARKS as bench
+            for key, year in (("plan_1997_die", 1990), ("tuik_2015_kesin", 2015), ("tuik_2026_guncel", 2025)):
+                if key in bench:
+                    rows.append((year, int(bench[key]["ilce"])))
+        except (ImportError, KeyError, TypeError, ValueError):
+            rows = []
+        table = self.tbl_proj_input
+        table.setRowCount(max(len(rows), 2))
+        for r, (year, pop) in enumerate(rows):
+            table.setItem(r, 0, QTableWidgetItem(str(year)))
+            table.setItem(r, 1, QTableWidgetItem(str(pop)))
+
+    def _projection_input(self):
+        """Tablodaki yıl/nüfus satırlarını okur. Dönüş: (yıllar, nüfuslar, hata_metni)."""
+        pairs, bad = [], []
+        table = self.tbl_proj_input
+        for r in range(table.rowCount()):
+            cells = [table.item(r, c).text().strip() if table.item(r, c) else "" for c in range(2)]
+            if not any(cells):
+                continue
+            try:
+                year = int(cells[0])
+                pop = float(cells[1].replace(".", "").replace(" ", "").replace(",", "."))
+            except ValueError:
+                bad.append(r + 1)
+                continue
+            pairs.append((year, pop))
+        if bad:
+            return [], [], f"{', '.join(map(str, bad))}. satır sayı değil; yılı ve nüfusu rakamla yazın."
+        pairs.sort()
+        years = [p[0] for p in pairs]
+        if len(set(years)) < 2:
+            return [], [], "En az iki farklı yıl ve nüfus girin."
+        if len(set(years)) != len(years):
+            return [], [], "Aynı yıl birden çok kez girilmiş."
+        return years, [p[1] for p in pairs], ""
+
+    def _run_projection(self):
+        """C1 project_trend'i çağırır; sonucu ve uyarıları dock'ta gösterir."""
+        self._last_projection = None
+        self.btn_proj_apply.setEnabled(False)
+        years, pops, error = self._projection_input()
+        target_year = self.spn_proj_target_year.value()
+        if not error and target_year <= years[-1]:
+            error = f"Hedef yıl son veri yılından ({years[-1]}) sonra olmalı."
+        if error:
+            self._show_projection_message(error, "warn")
+            return
+        method = self.cmb_proj_method.currentData()
+        try:
+            from .core import projection
+            result = projection.project_trend(years, pops, method, target_year)
+        except ImportError:
+            self._show_projection_message("Projeksiyon modülü (core/projection.py) bu kurulumda yok.", "bad")
+            return
+        except (ValueError, ZeroDivisionError, OverflowError, TypeError) as exc:
+            self._show_projection_message(f"Bu verilerle {self.cmb_proj_method.currentText()} hesaplanamadı: {exc}", "bad")
+            return
+        self._last_projection = dict(result, method=method, target_year=target_year)
+        lines = [f"<b>{target_year} nüfusu: {_tr_int(result['value'])} kişi</b> "
+                 f"({html.escape(str(result.get('label') or self.cmb_proj_method.currentText()))})"]
+        if result.get("params_text"):
+            lines.append(html.escape(str(result["params_text"])))
+        if result.get("r2") is not None:
+            lines.append(f"R² = {_tr_num(result['r2'], 3)}")
+        if result.get("backtest_pct") is not None:
+            lines.append(f"Geriye dönük sınama hatası: %{_tr_num(result['backtest_pct'], 1)}")
+        warnings = [str(w) for w in (result.get("warnings") or [])]
+        for warning in warnings:
+            lines.append(f"⚠ {html.escape(warning)}")
+        self._show_projection_message("<br>".join(lines), "warn" if warnings else "ok", rich=True)
+        self.btn_proj_apply.setEnabled(True)
+
+    def _show_projection_message(self, text: str, tone: str, rich: bool = False):
+        self.lbl_proj_result.setStyleSheet(note_css(tone))
+        self.lbl_proj_result.setText(text if rich else html.escape(text))
+
+    def _apply_projection_to_target(self):
+        """Projeksiyon sonucunu NİP hedef nüfus kutusuna aktarır ve NİP sayfasını açar."""
+        if not self._last_projection:
+            return
+        value = int(round(float(self._last_projection["value"])))
+        if value > self.spn_proj_nufus.maximum():
+            self.spn_proj_nufus.setMaximum(value)
+        self.spn_proj_nufus.setValue(max(value, self.spn_proj_nufus.minimum()))
+        self.set_page(self.nip_page_index)
+
+    @staticmethod
+    def _algorithm_id(name: str) -> str | None:
+        """Bu eklentinin sağlayıcısındaki algoritma kimliği (sağlayıcı kimliğinden bağımsız)."""
+        from qgis.core import QgsApplication
+        registry = QgsApplication.processingRegistry()
+        for provider_id in ("pln3113", "pln3113_nip"):
+            alg = registry.algorithmById(f"{provider_id}:{name}")
+            if alg is not None:
+                return alg.id()
+        return None
+
+    def _open_algorithm_dialog(self, name: str):
+        alg_id = self._algorithm_id(name)
+        if alg_id is None or processing is None or not hasattr(processing, "execAlgorithmDialog"):
+            self.lbl_proj_tools_status.setText(
+                f"“{name}” algoritması Processing araç kutusunda bulunamadı; eklentiyi yeniden yükleyin.")
+            return
+        self.lbl_proj_tools_status.setText("")
+        processing.execAlgorithmDialog(alg_id, {})
+
+    def _ek2_reference_html(self) -> str:
+        """Rehber sayfası için Ek-2 değerleri — hesapta kullanılan tablodan okunur."""
+        try:
+            from .core.tire_constants import MPYY_DONATI_STANDARTLARI as table
+            rows = [(v.get("adi", k), float(v.get("standart_m2_kisi", 0.0))) for k, v in table.items()]
+        except (ImportError, AttributeError, TypeError, ValueError):
+            rows = []
+        if not rows:
+            return "Ek-2 standart tablosu bu kurulumda okunamadı."
+        items = "<br>".join(f"• <b>{html.escape(str(name))}:</b> {_tr_num(value, 2)} m²/kişi" for name, value in rows)
+        total = sum(value for _name, value in rows)
+        return f"{items}<br>➡️ <i>Toplam: <b>{_tr_num(total, 2)} m²/kişi</b> (eklentinin hesapta kullandığı değerler)</i>"
+
     def _create_tab_nip(self) -> QWidget:
         tab = QWidget()
         layout = QVBoxLayout(tab)
@@ -1223,56 +1575,55 @@ class TireNipDockWidget(QDockWidget):
         layout.setSpacing(6)
 
         # Bilgi Barı
-        info_banner = QWidget()
-        info_banner.setStyleSheet("background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 6px; padding: 4px;")
-        info_l = QHBoxLayout(info_banner)
+        info_banner = QFrame()
+        info_banner.setStyleSheet(note_css("info"))
+        info_l = QVBoxLayout(info_banner)
         info_l.setContentsMargins(6, 4, 6, 4)
-        lbl_hint = QLabel("💡 <b>Tire NİP Metodolojisi:</b> Nüfus aralıkları, MPYY Ek-2 standartları, DOP ve yol formülleri.")
-        lbl_hint.setStyleSheet("color: #1e40af; font-size: 11px;")
-        btn_hint_guide = QPushButton("📖 Metodoloji El Kitabı")
+        lbl_hint = QLabel("💡 <b>NİP Metodolojisi:</b> Nüfus aralıkları, MPYY Ek-2 standartları, DOP ve yol hesapları.")
+        lbl_hint.setStyleSheet(f"color: {self._c['info']}; background: transparent; border: none;")
+        btn_hint_guide = QPushButton("📖 El Kitabı")
         btn_hint_guide.setCursor(_POINTING_HAND)
-        btn_hint_guide.setStyleSheet("background: #2563eb; color: white; border-radius: 4px; padding: 3px 8px; font-size: 11px; font-weight: bold;")
         btn_hint_guide.clicked.connect(self._open_theoretical_guide)
         info_l.addWidget(lbl_hint)
-        info_l.addStretch()
         info_l.addWidget(btn_hint_guide)
         layout.addWidget(info_banner)
 
         # 1. Girdi Kutusu
-        box_nip = QGroupBox("NİP & Fiziki Mevcut Durum Katmanı ve Parametreler")
+        box_nip = QGroupBox("Katman ve Parametreler")
+        box_nip.setToolTip("NİP & fiziki mevcut durum katmanı ve parametreler")
         f_layout = QFormLayout(box_nip)
 
         self.cmb_analysis_mode = QComboBox()
         self.cmb_analysis_mode.addItem("Nazım İmar Planı (NİP - Öneri / Revizyon)")
         self.cmb_analysis_mode.addItem("Fiziki Mevcut Durum (TUCBS / Arazi Kullanımı)")
         self.cmb_analysis_mode.currentIndexChanged.connect(self._on_analysis_mode_changed)
-        f_layout.addRow("Analiz Modu / Kapsam:", self.cmb_analysis_mode)
+        f_layout.addRow("Analiz modu:", self.cmb_analysis_mode)
 
         self.cmb_nip_layer = QgsMapLayerComboBox()
         self.cmb_nip_layer.setFilters(QgsMapLayerProxyModel.Filter.PolygonLayer)
-        self.cmb_nip_layer.layerChanged.connect(self._on_nip_layer_changed)
-        f_layout.addRow("Analiz Katmanı (Poligon):", self.cmb_nip_layer)
+        self.cmb_nip_layer.layerChanged.connect(self._nip_layer_combo_changed)
+        f_layout.addRow("Analiz katmanı:", self.cmb_nip_layer)
 
         self.cmb_fonk_field = QComboBox()
         self.cmb_fonk_field.currentTextChanged.connect(self._on_fonk_col_changed)
-        f_layout.addRow("Birincil Fonksiyon / TUCBS Sütunu:", self.cmb_fonk_field)
+        f_layout.addRow("Fonksiyon sütunu:", self.cmb_fonk_field)
 
         self.cmb_secondary_fonk_field = QComboBox()
         self.cmb_secondary_fonk_field.currentTextChanged.connect(self._on_fonk_col_changed)
-        f_layout.addRow("Tamamlayıcı / İkincil Sütun (Opsiyonel):", self.cmb_secondary_fonk_field)
+        f_layout.addRow("İkincil sütun (ops.):", self.cmb_secondary_fonk_field)
 
         self.cmb_sinir_layer = QgsMapLayerComboBox()
         self.cmb_sinir_layer.setFilters(QgsMapLayerProxyModel.Filter.PolygonLayer)
         self.cmb_sinir_layer.setAllowEmptyLayer(True)
-        self.cmb_sinir_layer.layerChanged.connect(self._on_sinir_layer_changed)
-        f_layout.addRow("Plan Onama Sınırı (Opsiyonel):", self.cmb_sinir_layer)
+        self.cmb_sinir_layer.layerChanged.connect(self._sinir_layer_combo_changed)
+        f_layout.addRow("Plan onama sınırı (ops.):", self.cmb_sinir_layer)
 
         self.cmb_sinir_modu = QComboBox()
-        self.cmb_sinir_modu.addItem("✂️ Sınırla Kırp / Kes (Clip - Önerilen)", "clip")
-        self.cmb_sinir_modu.addItem("➕ Sınıra Değenleri Dahil Et (Intersect - Bütün Al)", "intersect")
-        self.cmb_sinir_modu.addItem("⛔ Kesişenleri Hariç Tut (Within - Sadece %100 İçeridekiler)", "within")
-        self.cmb_sinir_modu.addItem("🎯 Ağırlık Merkezine Göre (Centroid - Merkezi İçerideyse Al)", "centroid")
-        f_layout.addRow("Sınır Kırpma / Kesişim Modu:", self.cmb_sinir_modu)
+        self.cmb_sinir_modu.addItem("✂️ Sınırla Kırp (Clip - Önerilen)", "clip")
+        self.cmb_sinir_modu.addItem("➕ Değenleri Dahil Et (Intersect)", "intersect")
+        self.cmb_sinir_modu.addItem("⛔ Yalnız Tamamen İçeridekiler (Within)", "within")
+        self.cmb_sinir_modu.addItem("🎯 Ağırlık Merkezine Göre (Centroid)", "centroid")
+        f_layout.addRow("Sınır kesişim modu:", self.cmb_sinir_modu)
 
         self.lbl_sinir_foolproof = QLabel(
             "<b>💡 Öğrenci Kılavuzu — Plan Onama Sınırı & Kesişim Mantığı:</b><br>"
@@ -1283,31 +1634,46 @@ class TireNipDockWidget(QDockWidget):
             "sadece sınır içinde kalan net parçayı ve nüfusu hesaba katar.<br>"
             "&nbsp;&nbsp;<b>2. Sınıra Değenleri Dahil Et (Intersect):</b> Adanın ucu dahi sınıra giriyorsa adayı bölmeden tamamını analize katar.<br>"
             "&nbsp;&nbsp;<b>3. Kesişenleri Hariç Tut (Within):</b> Dışarıya 1 mm bile taşan adaları tamamen eler; sadece %100 içeride kalanları alır.<br>"
-            "&nbsp;&nbsp;<b>4. Ağırlık Merkezine Göre (Centroid):</b> Adanın ağırlık merkezi sınır içindeyse tamamını alır, dışındaysa eler."
+            "&nbsp;&nbsp;<b>4. Ağırlık Merkezine Göre (Centroid):</b> Adanın ağırlık merkezi sınır içindeyse tamamını alır, dışındaysa eler.<br>"
+            "• <b>Sınır yoksa</b> yol alanı tahmin edilir; DOP oranı tahminidir ve yasal sınır değerlendirmesi yapılmaz."
         )
         self.lbl_sinir_foolproof.setWordWrap(True)
-        self.lbl_sinir_foolproof.setStyleSheet(
-            "background: #fffbeb; border: 1px solid #fde047; border-radius: 6px; "
-            "padding: 8px; font-size: 11px; color: #854d0e; line-height: 140%;"
-        )
+        self.lbl_sinir_foolproof.setStyleSheet(note_css("warn", "8.5pt"))
         f_layout.addRow(self.lbl_sinir_foolproof)
 
         self.cmb_yol_layer = QgsMapLayerComboBox()
         self.cmb_yol_layer.setFilters(QgsMapLayerProxyModel.Filter.LineLayer)
         self.cmb_yol_layer.setAllowEmptyLayer(True)
-        f_layout.addRow("Yol Aksları Katmanı (Opsiyonel):", self.cmb_yol_layer)
+        f_layout.addRow("Yol aksları (ops.):", self.cmb_yol_layer)
 
         self.spn_proj_nufus = QSpinBox()
-        self.spn_proj_nufus.setRange(1000, 500000)
+        self.spn_proj_nufus.setRange(100, 50000000)
         self.spn_proj_nufus.setValue(65000)
         self.spn_proj_nufus.setSingleStep(1000)
-        self.spn_proj_nufus.setSuffix(" Kişi")
-        f_layout.addRow("Projeksiyon Hedef Nüfusu:", self.spn_proj_nufus)
+        self.spn_proj_nufus.setGroupSeparatorShown(True)
+        self.spn_proj_nufus.setSuffix(" kişi")
+        self.spn_proj_nufus.setToolTip("Plan hedef yılı nüfusu. “Nüfus” sayfasındaki projeksiyondan aktarılabilir.")
+        f_layout.addRow("Hedef nüfus:", self.spn_proj_nufus)
+
+        self.spn_kirsal_nufus = QSpinBox()
+        self.spn_kirsal_nufus.setRange(0, 50000000)
+        self.spn_kirsal_nufus.setValue(0)
+        self.spn_kirsal_nufus.setSingleStep(1000)
+        self.spn_kirsal_nufus.setGroupSeparatorShown(True)
+        self.spn_kirsal_nufus.setSuffix(" kişi")
+        self.spn_kirsal_nufus.setToolTip("İlçe toplamı için NİP nüfusuna eklenecek kırsal nüfus (yoksa 0).")
+        f_layout.addRow("Kırsal nüfus (ops.):", self.spn_kirsal_nufus)
+
+        self.btn_go_projection = QPushButton("📈 Projeksiyondan Hesapla")
+        self.btn_go_projection.setToolTip("Nüfus sayfasını açar: yıl/nüfus verisinden hedef nüfusu kestirin")
+        self.btn_go_projection.clicked.connect(lambda: self.set_page(self.projection_page_index))
+        f_layout.addRow(self.btn_go_projection)
 
         layout.addWidget(box_nip)
 
         # 2. Planlama, DOP, İstihdam & Yolculuk Kuralları (Dahil / Hariç) - Açılır Kutu
-        self.box_rules = QGroupBox("⚙️ İstihdam, Yolculuk & DOP Kuralları (Dahil / Hariç ve Katsayılar)")
+        self.box_rules = QGroupBox("⚙️ DOP, İstihdam ve Yolculuk")
+        self.box_rules.setToolTip("İstihdam, yolculuk ve DOP kuralları (dahil / hariç ve katsayılar)")
         self.box_rules.setCheckable(True)
         self.box_rules.setChecked(False)  # Başlangıçta derli toplu dursun
         rules_layout = QVBoxLayout(self.box_rules)
@@ -1318,13 +1684,15 @@ class TireNipDockWidget(QDockWidget):
             "istihdam veya yolculuktan hariç tutabilir ya da katsayılarını değiştirebilirsiniz."
         )
         lbl_rules_info.setWordWrap(True)
-        lbl_rules_info.setStyleSheet("color: #0f766e; font-size: 11px; background: #f0fdfa; padding: 6px; border-radius: 4px;")
+        lbl_rules_info.setStyleSheet(note_css("ok", "8.5pt"))
         rules_layout.addWidget(lbl_rules_info)
 
         btn_rules_bar = QHBoxLayout()
-        self.btn_load_fonks = QPushButton("🔄 Katmandan Fonksiyonları Oku")
+        self.btn_load_fonks = QPushButton("🔄 Katmandan Oku")
+        self.btn_load_fonks.setToolTip("Katmandaki fonksiyonları tabloya oku")
         self.btn_load_fonks.clicked.connect(self._load_rules_table_from_layer)
-        self.btn_reset_rules = QPushButton("Varsayılanlara Sıfırla")
+        self.btn_reset_rules = QPushButton("Sıfırla")
+        self.btn_reset_rules.setToolTip("Varsayılanlara sıfırla")
         self.btn_reset_rules.clicked.connect(self._reset_rules_to_defaults)
         btn_rules_bar.addWidget(self.btn_load_fonks)
         btn_rules_bar.addWidget(self.btn_reset_rules)
@@ -1347,53 +1715,35 @@ class TireNipDockWidget(QDockWidget):
 
         layout.addWidget(self.box_rules)
 
-        # 3. Nüfus Gösterge & Kıyaslama Tablosu
-        box_bench = QGroupBox("Tire Tarihsel Nüfus ve Projeksiyon Gösterge Paneli")
+        # 3. Nüfus Kıyaslama Tablosu (ön ayar; Tire yalnızca örnek)
+        box_bench = QGroupBox("Nüfus Kıyaslaması")
+        box_bench.setToolTip("Tarihsel nüfus ve plan hedefleriyle kıyas; hazır veri yalnızca örnektir.")
         bench_layout = QVBoxLayout(box_bench)
 
-        self.tbl_benchmark = QTableWidget(5, 4)
-        self.tbl_benchmark.setHorizontalHeaderLabels([
-            "Nüfus Niteliği / Kapsam", "Kentsel Merkez", "Kırsal Nüfus", "İlçe Toplamı"
-        ])
+        self.cmb_kiyas_preset = QComboBox()
+        self.cmb_kiyas_preset.addItem("Kıyas verisi yok", "yok")
+        self.cmb_kiyas_preset.addItem("Örnek: Tire (İzmir) tarihsel nüfusu", "tire")
+        self.cmb_kiyas_preset.currentIndexChanged.connect(self._fill_benchmark_table)
+        bench_layout.addWidget(self.cmb_kiyas_preset)
+
+        self.tbl_benchmark = QTableWidget(0, 3)
+        self.tbl_benchmark.setHorizontalHeaderLabels(["Kapsam", "Kentsel merkez", "İlçe toplamı"])
         self.tbl_benchmark.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.tbl_benchmark.verticalHeader().setVisible(False)
         self.tbl_benchmark.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self.tbl_benchmark.setMaximumHeight(140)
-
-        bench_rows = [
-            ("1997 Plan Raporu (1990 DİE)", "37.855", "39.459 (65 Köy)", "77.314"),
-            ("2015 Plan Projeksiyonu (Hedef)", "53.629", "46.711 (Model)", "100.340"),
-            ("2015 TÜİK ADNKS (Gerçekleşen)", "~57.069", "~25.033", "82.102"),
-            ("Güncel TÜİK ADNKS (2025/2026)", "~61.738", "~25.833", "87.571"),
-            ("Hesaplanan 1/5000 NİP Kapasitesi", "Hesaplanmadı", "-", "Hesaplanmadı")
-        ]
-        for r_idx, (k, m, r, i) in enumerate(bench_rows):
-            self.tbl_benchmark.setItem(r_idx, 0, QTableWidgetItem(k))
-            self.tbl_benchmark.setItem(r_idx, 1, QTableWidgetItem(m))
-            self.tbl_benchmark.setItem(r_idx, 2, QTableWidgetItem(r))
-            self.tbl_benchmark.setItem(r_idx, 3, QTableWidgetItem(i))
-
-        font = QFont()
-        font.setBold(True)
-        for c in range(4):
-            item = self.tbl_benchmark.item(4, c)
-            if item:
-                item.setFont(font)
-                item.setForeground(QColor("#0f766e"))
-
+        self.tbl_benchmark.setMaximumHeight(150)
         bench_layout.addWidget(self.tbl_benchmark)
 
-        lbl_bench_note = QLabel(
-            "<small style='color:#64748b;'>📌 <i>6360 sayılı yasa sonrası köyler mahalleye dönüştüğünden 2015 ve güncel kentsel merkez, "
-            "yerleşik leke içindeki mahalleler toplamıdır. Kırsal nüfus farktan elde edilmiştir. "
-            "Güncel resmi veri 31 Aralık 2025 referanslı kütüktür (87.571 kişi).</i></small>"
-        )
-        lbl_bench_note.setWordWrap(True)
-        bench_layout.addWidget(lbl_bench_note)
+        self.lbl_bench_note = QLabel("")
+        self.lbl_bench_note.setWordWrap(True)
+        self.lbl_bench_note.setStyleSheet(text_css("subtle", "8pt"))
+        bench_layout.addWidget(self.lbl_bench_note)
         layout.addWidget(box_bench)
+        self._fill_benchmark_table()
 
         # 4. Çalıştır Butonu
-        self.btn_run_nip = QPushButton("  PLN3113 NİP Nüfus, Donatı, Kamu-Özel ve DOP Analizini Başlat")
+        self.btn_run_nip = QPushButton("NİP Analizini Başlat")
+        self.btn_run_nip.setToolTip("PLN3113 NİP nüfus, donatı, kamu-özel ve DOP analizini başlat")
         self.btn_run_nip.setObjectName("PrimaryButton")
         plan_icon_path = os.path.join(PLUGIN_DIR, "icons", "plan.png")
         if os.path.exists(plan_icon_path):
@@ -1403,11 +1753,13 @@ class TireNipDockWidget(QDockWidget):
 
         # 5. Dışa Aktarma Buton Çubuğu
         export_bar = QHBoxLayout()
-        self.btn_export_csv = QPushButton("  Tabloları CSV (Excel) Kaydet")
+        self.btn_export_csv = QPushButton("CSV Kaydet")
+        self.btn_export_csv.setToolTip("Tabloları CSV (Excel uyumlu) olarak kaydet")
         self.btn_export_csv.clicked.connect(self._export_nip_tables_csv)
         self.btn_export_csv.setEnabled(False)
 
-        self.btn_export_html = QPushButton("  Raporu HTML Kaydet")
+        self.btn_export_html = QPushButton("HTML Rapor")
+        self.btn_export_html.setToolTip("İnteraktif raporu HTML dosyası olarak kaydet")
         self.btn_export_html.clicked.connect(self._export_nip_report_html)
         self.btn_export_html.setEnabled(False)
 
@@ -1416,38 +1768,38 @@ class TireNipDockWidget(QDockWidget):
         layout.addLayout(export_bar)
 
         # Canlı Görsel Göstergeler (Mikro-Barlar)
-        box_kpi_gauges = QGroupBox("Canlı Yasal Oran Göstergeleri")
+        box_kpi_gauges = QGroupBox("Yasal Oran Göstergeleri")
         lay_kpi = QVBoxLayout(box_kpi_gauges)
-        lay_kpi.setSpacing(6)
+        lay_kpi.setSpacing(4)
 
+        lbl_dop_bar = QLabel("DOP oranı (yasal tavan %45):")
+        lbl_dop_bar.setStyleSheet("font-weight: 600;")
+        lay_kpi.addWidget(lbl_dop_bar)
         row_dop_bar = QHBoxLayout()
-        lbl_dop_bar = QLabel("DOP Oranı (Hedef %45.0):")
-        lbl_dop_bar.setStyleSheet("font-weight: 600; font-size: 8.5pt;")
         self.bar_dop = QProgressBar()
         self.bar_dop.setRange(0, 80)
         self.bar_dop.setValue(0)
         self.bar_dop.setTextVisible(True)
-        self.bar_dop.setFormat("%v.0% / %45.0")
-        self.bar_dop.setStyleSheet("QProgressBar::chunk { background-color: #10b981; }")
+        self.bar_dop.setFormat("%v% / tavan %45")
+        self.bar_dop.setStyleSheet(chunk_css("ok"))
         self.lbl_dop_badge = QLabel("-")
-        self.lbl_dop_badge.setStyleSheet("font-size: 8pt; font-weight: 700; padding: 2px 6px; border-radius: 4px; background: #e2e8f0;")
-        row_dop_bar.addWidget(lbl_dop_bar)
+        self.lbl_dop_badge.setStyleSheet(chip_css())
         row_dop_bar.addWidget(self.bar_dop, 1)
         row_dop_bar.addWidget(self.lbl_dop_badge)
         lay_kpi.addLayout(row_dop_bar)
 
+        lbl_yesil_bar = QLabel("PAİY Md. 9 açık-yeşil payı (asgari %75):")
+        lbl_yesil_bar.setStyleSheet("font-weight: 600;")
+        lay_kpi.addWidget(lbl_yesil_bar)
         row_yesil_bar = QHBoxLayout()
-        lbl_yesil_bar = QLabel("PAİY Md.9 Açık-Yeşil (Hedef %75):")
-        lbl_yesil_bar.setStyleSheet("font-weight: 600; font-size: 8.5pt;")
         self.bar_yesil = QProgressBar()
         self.bar_yesil.setRange(0, 100)
         self.bar_yesil.setValue(0)
         self.bar_yesil.setTextVisible(True)
-        self.bar_yesil.setFormat("%v.0% / %75.0")
-        self.bar_yesil.setStyleSheet("QProgressBar::chunk { background-color: #22c55e; }")
+        self.bar_yesil.setFormat("%v% / asgari %75")
+        self.bar_yesil.setStyleSheet(chunk_css("ok"))
         self.lbl_yesil_badge = QLabel("-")
-        self.lbl_yesil_badge.setStyleSheet("font-size: 8pt; font-weight: 700; padding: 2px 6px; border-radius: 4px; background: #e2e8f0;")
-        row_yesil_bar.addWidget(lbl_yesil_bar)
+        self.lbl_yesil_badge.setStyleSheet(chip_css())
         row_yesil_bar.addWidget(self.bar_yesil, 1)
         row_yesil_bar.addWidget(self.lbl_yesil_badge)
         lay_kpi.addLayout(row_yesil_bar)
@@ -1455,21 +1807,31 @@ class TireNipDockWidget(QDockWidget):
         layout.addWidget(box_kpi_gauges)
 
         # İnteraktif Dashboard Butonu
-        self.btn_open_dashboard = QPushButton("  📊 İnteraktif NİP & DOP Dashboard Raporunu Aç (Plotly + Leaflet)")
+        self.btn_open_dashboard = QPushButton("📊 İnteraktif Raporu Aç")
+        self.btn_open_dashboard.setToolTip("İnteraktif NİP & DOP raporunu tarayıcıda aç (Plotly + Leaflet)")
         self.btn_open_dashboard.setObjectName("AccentButton")
         self.btn_open_dashboard.setCursor(_POINTING_HAND)
         self.btn_open_dashboard.setEnabled(False)
         self.btn_open_dashboard.clicked.connect(self._open_nip_dashboard)
         layout.addWidget(self.btn_open_dashboard)
 
+        self.lbl_dashboard_network = QLabel(
+            "🌐 İnteraktif rapor tarayıcıda açılırken plotly, Leaflet ve OpenStreetMap karolarını "
+            f"internetten yükler ({', '.join(EXTERNAL_HOSTS)}).")
+        self.lbl_dashboard_network.setWordWrap(True)
+        self.lbl_dashboard_network.setStyleSheet(text_css("subtle", "8pt"))
+        layout.addWidget(self.lbl_dashboard_network)
+
         # Katman Lejantı ve Stil Değiştirme Çubuğu
         style_nip_bar = QHBoxLayout()
-        self.btn_style_density = QPushButton("  📊 Yoğunluk (UST_SNR)")
+        self.btn_style_density = QPushButton("📊 Yoğunluk")
+        self.btn_style_density.setToolTip("Yoğunluk (UST_SNR) stilini uygula")
         self.btn_style_density.setCursor(_POINTING_HAND)
         self.btn_style_density.setEnabled(False)
         self.btn_style_density.clicked.connect(self._apply_density_style_nip)
 
-        self.btn_style_mpyy = QPushButton("  🎨 Resmî MPYY Lejantı")
+        self.btn_style_mpyy = QPushButton("🎨 MPYY Lejantı")
+        self.btn_style_mpyy.setToolTip("Resmî MPYY lejantını uygula")
         self.btn_style_mpyy.setCursor(_POINTING_HAND)
         self.btn_style_mpyy.setEnabled(False)
         self.btn_style_mpyy.clicked.connect(self._apply_mpyy_style_nip)
@@ -1583,16 +1945,7 @@ class TireNipDockWidget(QDockWidget):
         has_sinir = (self.cmb_sinir_layer.currentLayer() is not None)
         self.cmb_sinir_modu.setEnabled(has_sinir)
         if hasattr(self, 'lbl_sinir_foolproof'):
-            if has_sinir:
-                self.lbl_sinir_foolproof.setStyleSheet(
-                    "background: #fffbeb; border: 1px solid #fde047; border-radius: 6px; "
-                    "padding: 8px; font-size: 11px; color: #854d0e; line-height: 140%;"
-                )
-            else:
-                self.lbl_sinir_foolproof.setStyleSheet(
-                    "background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; "
-                    "padding: 8px; font-size: 11px; color: #64748b; line-height: 140%;"
-                )
+            self.lbl_sinir_foolproof.setStyleSheet(note_css("warn" if has_sinir else "info", "8.5pt"))
 
     def _load_rules_table_from_layer(self, preserve_custom: bool = True):
         """Seçili katmandaki fonksiyonları okuyup kurallar tablosuna doldurur.
@@ -1902,39 +2255,109 @@ class TireNipDockWidget(QDockWidget):
         tbl.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
         tbl.horizontalHeader().setStretchLastSection(True)
 
+    # -----------------------------------------------------------------
+    # NİP: kıyaslama ön ayarı, DOP satırları (tek kaynak), analiz
+    # -----------------------------------------------------------------
+    def _kiyas_referanslari(self) -> dict:
+        """Seçili kıyaslama ön ayarının satırları (Tire yalnızca örnek)."""
+        key = self.cmb_kiyas_preset.currentData() if hasattr(self, "cmb_kiyas_preset") else "yok"
+        if key in (None, "yok"):
+            return {}
+        try:
+            from .core.tire_constants import NUFUS_KIYAS_ONAYARLARI
+            return dict(NUFUS_KIYAS_ONAYARLARI.get(key) or {})
+        except ImportError:
+            from .core.tire_constants import TIRE_POPULATION_BENCHMARKS
+            return dict(TIRE_POPULATION_BENCHMARKS) if key == "tire" else {}
+
+    @staticmethod
+    def _fmt_pop(value) -> str:
+        if isinstance(value, (int, float)):
+            return _tr_int(value)
+        return str(value)
+
+    def _fill_benchmark_table(self, *_args, kiyaslama: list | None = None):
+        """Kıyaslama tablosunu ön ayardan ya da analiz özetindeki 'kiyaslama' listesinden doldurur."""
+        if kiyaslama is None:
+            kiyaslama = [dict(v) for v in self._kiyas_referanslari().values()]
+        self.tbl_benchmark.setRowCount(len(kiyaslama))
+        for r, row in enumerate(kiyaslama):
+            for c, key in enumerate(("kapsam", "merkez", "ilce")):
+                item = QTableWidgetItem(self._fmt_pop(row.get(key, "-")))
+                item.setToolTip(str(row.get("kaynak", "")))
+                self.tbl_benchmark.setItem(r, c, item)
+        key = self.cmb_kiyas_preset.currentData()
+        if key == "tire":
+            self.lbl_bench_note.setText(
+                "📌 Örnek veri: Tire (İzmir) — 1997 planı (1990 DİE), 2015 ve 2025 TÜİK ADNKS. "
+                "6360 sayılı yasa sonrası kentsel merkez, yerleşik lekedeki mahallelerin toplamıdır. "
+                "Kendi yerleşmeniz için kıyas verisi yoksa “Kıyas verisi yok” seçin.")
+        else:
+            self.lbl_bench_note.setText("Kıyas için hazır veri seçilmedi; analizden sonra hesaplanan "
+                                        "NİP nüfusu burada görünür.")
+
+    @staticmethod
+    def _dop_rows(dop: dict) -> list[tuple]:
+        """DOP ve kamu-özel dengesi satırları: (parametre, alan_m2, alan_ha, oran_yuzde, açıklama).
+
+        Tablo, katman, CSV ve rapor bu tek listeden yazılır. Plan onama sınırı
+        yoksa DOP oranı tahminidir ve öyle adlandırılır.
+        """
+        p_m2 = dop["toplam_plan_alani_m2"]
+        e_m2 = dop["dop_esas_alan_m2"]
+        tahmini = bool(dop.get("tahmini"))
+        sinir_aciklama = ("Plan Onama Sınırına Göre" if dop.get("sinir_katmani_kullanildi")
+                          else "İmar Adaları Toplamı Esas Alındı")
+        yol_aciklama = ("Yol alanı TAHMİNİ (sınır yok)" if tahmini else "Plan Sınırı - İmar Adaları Boşluğu")
+        rows = [
+            ("Plan Onama Sınırı / Toplam Alan", p_m2, dop["toplam_plan_alani_ha"], 100.0, sinir_aciklama),
+            ("İmar Adaları (Kullanım Poligonları)", dop["adalar_toplam_m2"], dop["adalar_toplam_ha"],
+             round(dop["adalar_toplam_m2"] / max(1, p_m2) * 100.0, 2), "Plan Fonksiyon Blokları"),
+            ("Net Yol ve Ulaşım Ağı Alanı", dop["hesaplanan_yol_m2"], dop["hesaplanan_yol_ha"],
+             dop["yol_orani_yuzde"], yol_aciklama),
+            ("DOP Dışı Alanlar (Harice Ayrılan)", dop["dop_disi_alan_m2"], round(dop["dop_disi_alan_m2"] / 10000.0, 2),
+             round(dop["dop_disi_alan_m2"] / max(1, p_m2) * 100.0, 2), "Orman, Tarım, Su, Sit vb."),
+            ("Düzenleme Sahası (DOP Esas Alan)", e_m2, round(e_m2 / 10000.0, 2),
+             round(e_m2 / max(1, p_m2) * 100.0, 2), "Düzenlemeye Giren Net Saha"),
+            ("Toplam Özel Mülkiyet (Tahsis)", dop["toplam_ozel_tahsis_m2"], round(dop["toplam_ozel_tahsis_m2"] / 10000.0, 2),
+             round(dop["toplam_ozel_tahsis_m2"] / max(1, e_m2) * 100.0, 2), "Konut, Ticaret, Sanayi vb."),
+            ("Kamu Poligon Donatıları", dop["kamu_poligonlar_m2"], round(dop["kamu_poligonlar_m2"] / 10000.0, 2),
+             round(dop["kamu_poligonlar_m2"] / max(1, e_m2) * 100.0, 2), "Eğitim, Sağlık, Yeşil vb."),
+            ("Toplam Kamu Kesintisi (Donatı + Yol)", dop["toplam_kamu_kesinti_m2"],
+             round(dop["toplam_kamu_kesinti_m2"] / 10000.0, 2), dop["dop_orani"], "Donatılar + Yol Ağı"),
+            ("Kamu / Özel Mülkiyet Oranı", 0.0, 0.0, dop.get("kamu_ozel_orani", 0.0), "Kamu Kesintisi / Özel Tahsis"),
+            ("TAHMİNİ DOP ORANI (%)" if tahmini else "HESAPLANAN DOP ORANI (%)", 0.0, 0.0,
+             dop["dop_orani"], dop.get("dop_uygunluk", "")),
+        ]
+        if dop.get("ortalama_yol_genisligi_m"):
+            rows.insert(3, ("Ortalama Fiili Yol Genişliği (m)", 0.0, 0.0, dop["ortalama_yol_genisligi_m"],
+                            f"{dop.get('yol_agi_uzunlugu_km', 0)} km Yol Ağı / Yol Alanı"))
+        return rows
+
+    def _dop_tone(self, dop: dict) -> str | None:
+        """Yasal sınır renklendirmesi: tahminde renk yok (None)."""
+        if dop.get("tahmini"):
+            return None
+        limit = float(dop.get("yasal_sinir", 45.0) or 45.0)
+        return "ok" if dop["dop_orani"] <= limit else "bad"
+
     def _populate_dop_table(self, dop: dict):
         """DOP ve Kamu-Özel Dengesi Tablosunu oluşturur ve biçimlendirir."""
         headers = ["Parametre", "Alan (m²)", "Alan (ha)", "Oran (%)", "Açıklama / Yasal Durum"]
-        p_m2 = dop["toplam_plan_alani_m2"]
-        e_m2 = dop["dop_esas_alan_m2"]
-        sinir_aciklama = "Plan Onama Sınırına Göre Kesin" if dop.get("sinir_katmani_kullanildi") else "İmar Adaları Toplamı Esas Alındı"
-
-        rows = [
-            ["Plan Onama Sınırı / Toplam Alan", f"{p_m2:,.0f} m²", f"{dop['toplam_plan_alani_ha']:.2f} ha", "100.0 %", sinir_aciklama],
-            ["İmar Adaları (Kullanım Poligonları)", f"{dop['adalar_toplam_m2']:,.0f} m²", f"{dop['adalar_toplam_ha']:.2f} ha", f"{(dop['adalar_toplam_m2']/max(1, p_m2)*100.0):.2f} %", "Plan Fonksiyon Blokları"],
-            ["Net Yol ve Ulaşım Ağı Alanı", f"{dop['hesaplanan_yol_m2']:,.0f} m²", f"{dop['hesaplanan_yol_ha']:.2f} ha", f"% {dop['yol_orani_yuzde']:.2f}", "Plan Sınırı - İmar Adaları Boşluğu"],
-            ["Kişi Başına Düşen Yol Standardı", "-", "-", f"{dop['kisi_basi_yol_m2']:.2f} m²/k", "Üst Plan Nüfusuna Göre Yol Standardı"],
-            ["DOP Dışı Alanlar (Harice Ayrılan)", f"{dop['dop_disi_alan_m2']:,.0f} m²", f"{(dop['dop_disi_alan_m2']/10000.0):.2f} ha", f"{(dop['dop_disi_alan_m2']/max(1, p_m2)*100.0):.2f} %", "Orman, Tarım, Su vb."],
-            ["Düzenleme Sahası (DOP Esas Alan)", f"{e_m2:,.0f} m²", f"{(e_m2/10000.0):.2f} ha", f"{(e_m2/max(1, p_m2)*100.0):.2f} %", "Düzenlemeye Giren Net Saha"],
-            ["Toplam Özel Mülkiyet (Tahsis)", f"{dop['toplam_ozel_tahsis_m2']:,.0f} m²", f"{(dop['toplam_ozel_tahsis_m2']/10000.0):.2f} ha", f"{(dop['toplam_ozel_tahsis_m2']/max(1, e_m2)*100.0):.2f} %", "Konut, Ticaret, Sanayi vb."],
-            ["Kamu Poligon Donatıları", f"{dop['kamu_poligonlar_m2']:,.0f} m²", f"{(dop['kamu_poligonlar_m2']/10000.0):.2f} ha", f"{(dop['kamu_poligonlar_m2']/max(1, e_m2)*100.0):.2f} %", "Eğitim, Sağlık, Yeşil vb."],
-            ["Toplam Kamu Kesintisi (DOP)", f"{dop['toplam_kamu_kesinti_m2']:,.0f} m²", f"{(dop['toplam_kamu_kesinti_m2']/10000.0):.2f} ha", f"% {dop['dop_orani']:.2f}", "Donatılar + Gerçek Yol Ağı"],
-            ["Kamu / Özel Mülkiyet Oranı", "-", "-", f"% {dop['kamu_ozel_orani']:.2f}", "Kamu Kesintisi / Özel Tahsis Oranı"],
-            ["HESAPLANAN DOP ORANI (%)", "-", "-", f"% {dop['dop_orani']:.2f}", dop['dop_uygunluk']]
-        ]
-        if dop.get("ortalama_yol_genisligi_m"):
-            rows.insert(4, ["Ortalama Fiili Yol Genişliği", "-", f"{dop['yol_agi_uzunlugu_km']:.2f} km Yol", f"{dop['ortalama_yol_genisligi_m']:.2f} m", "Yol Alanı / Hat Uzunluğu"])
-
+        rows = []
+        for name, m2, ha, pct, note in self._dop_rows(dop):
+            rows.append([name, f"{m2:,.0f} m²" if m2 else "-", f"{ha:.2f} ha" if ha else "-", f"{pct:.2f} %", note])
         self._populate_table(self.tbl_dop, headers, rows)
         bold_font = QFont()
         bold_font.setBold(True)
-        color = QColor("#16a34a") if dop["dop_orani"] <= 45.0 else QColor("#dc2626")
+        tone = self._dop_tone(dop)
         last_idx = len(rows) - 1
         for col in range(5):
             it = self.tbl_dop.item(last_idx, col)
             if it:
                 it.setFont(bold_font)
-                it.setForeground(color)
+                if tone:
+                    it.setForeground(QColor(self._c[tone]))
 
     def _populate_kk_table(self, kk_list: list):
         """Kent Karakteri Tablosunu oluşturur."""
@@ -1968,7 +2391,7 @@ class TireNipDockWidget(QDockWidget):
         for r_idx, ek in enumerate(ek2_list):
             it = self.tbl_ek2.item(r_idx, 4)
             if it:
-                it.setForeground(QColor("#16a34a") if ek["durum_ust"] == "YETERLİ" else QColor("#dc2626"))
+                it.setForeground(QColor(self._c["ok"] if ek["durum_ust"] == "YETERLİ" else self._c["bad"]))
                 it.setFont(font)
 
     def _populate_fd_table(self, fd_list: list):
@@ -2011,17 +2434,19 @@ class TireNipDockWidget(QDockWidget):
         self.txt_nip_results.append(f"<i>{mode_title} Analizi hesaplanıyor, lütfen bekleyiniz...</i>")
 
         try:
-            da = QgsDistanceArea()
-            da.setSourceCrs(layer.sourceCrs(), QgsProject.instance().transformContext())
-            da.setEllipsoid(QgsProject.instance().ellipsoid() or 'WGS84')
+            project = QgsProject.instance()
+            context = project.transformContext()
+            # Alan ve uzunluklar her zaman elipsoit üzerinde ölçülür (proje elipsoidi 'NONE' olsa da).
+            da, _ellipsoid, _fixed = build_distance_area(layer.crs(), context, project.ellipsoid())
 
-            # 1. Plan Onama Sınırı Geometrisi
+            # Plan onama sınırı ve yol aksları ada katmanının KRS'sine dönüştürülür.
             sinir_layer = self.cmb_sinir_layer.currentLayer()
-            sinir_geom = None
-            if sinir_layer and isinstance(sinir_layer, QgsVectorLayer):
-                geoms = [f.geometry() for f in sinir_layer.getFeatures() if f.geometry() and not f.geometry().isEmpty()]
-                if geoms:
-                    sinir_geom = QgsGeometry.unaryUnion(geoms)
+            yol_layer = self.cmb_yol_layer.currentLayer()
+            sinir_geom, yol_uzunlugu_m, input_warnings = prepare_boundary_and_roads(
+                layer.crs(), context, da,
+                sinir_layer=sinir_layer if isinstance(sinir_layer, QgsVectorLayer) else None,
+                yol_layer=yol_layer if isinstance(yol_layer, QgsVectorLayer) else None,
+            )
 
             sinir_modu = "clip"
             if hasattr(self, 'cmb_sinir_modu'):
@@ -2029,37 +2454,31 @@ class TireNipDockWidget(QDockWidget):
                 if cur_data:
                     sinir_modu = str(cur_data)
 
-            # 2. Yol Aksları Uzunluğu
-            yol_layer = self.cmb_yol_layer.currentLayer()
-            yol_uzunlugu_m = 0.0
-            if yol_layer and isinstance(yol_layer, QgsVectorLayer):
-                for yf in yol_layer.getFeatures():
-                    yg = yf.geometry()
-                    if yg and not yg.isEmpty():
-                        yol_uzunlugu_m += da.measureLength(yg)
-
-            # 3. Özel İstihdam ve Yolculuk Kuralları
             rules_config = self._get_rules_config()
 
             # Otomatik duplike kontrolü ve geometri temizliği
-            cleaned_feats, clean_stats = GeometryCleanerEngine.clean_layer(layer)
+            feats, clean_stats = GeometryCleanerEngine.clean_layer(layer)
             if clean_stats["duplike_elenen"] > 0:
-                feats = cleaned_feats
                 self.txt_nip_results.append(
-                    f"<p style='color:#b45309;'>ℹ️ <i>Katmanda tespit edilen <b>{clean_stats['duplike_elenen']:,} adet mükerrer poligon</b> otomatik olarak ayıklandı; hesaplama <b>{clean_stats['temiz_cikan']:,} tekil ada</b> üzerinden yapıldı.</i></p>"
+                    f"<p style='color:{self._c['warn']};'>ℹ️ <i>Katmanda tespit edilen <b>{clean_stats['duplike_elenen']:,} adet mükerrer poligon</b> otomatik olarak ayıklandı; hesaplama <b>{clean_stats['temiz_cikan']:,} tekil ada</b> üzerinden yapıldı.</i></p>"
                 )
-            else:
-                feats = cleaned_feats
 
-            parsed_items, summary = NipCalculatorEngine.calculate(
-                feats, layer.fields(), fonk_col, proj_nufus, da,
+            calc_kwargs = dict(
                 sinir_geom=sinir_geom,
                 sinir_modu=sinir_modu,
                 yol_uzunlugu_m=yol_uzunlugu_m,
                 rules_config=rules_config,
                 secondary_fonk_col=secondary_fonk_col,
-                analysis_mode=analysis_mode
+                analysis_mode=analysis_mode,
             )
+            accepted = inspect.signature(NipCalculatorEngine.calculate).parameters
+            if "kirsal_nufus" in accepted:
+                calc_kwargs["kirsal_nufus"] = self.spn_kirsal_nufus.value()
+            if "kiyas_referanslari" in accepted:
+                calc_kwargs["kiyas_referanslari"] = self._kiyas_referanslari()
+            parsed_items, summary = NipCalculatorEngine.calculate(
+                feats, layer.fields(), fonk_col, proj_nufus, da, **calc_kwargs)
+            warnings = list(input_warnings) + [str(w) for w in summary.get("uyarilar", [])]
 
             # 4. Ana Poligon Analiz Katmanı
             uri = f"MultiPolygon?crs={layer.crs().authid()}"
@@ -2115,38 +2534,19 @@ class TireNipDockWidget(QDockWidget):
             # 5. DOP ve Kamu-Özel Dengesi Tablosu Katmanı (NoGeometry)
             tbl_dop_layer = QgsVectorLayer("None", f"PLN3113_{analysis_mode}_2_DOP_ve_Kamu_Ozel_Dengesi", "memory")
             tbl_dop_pr = tbl_dop_layer.dataProvider()
-            tbl_dop_fields = [
+            tbl_dop_pr.addAttributes([
                 QgsField('parametre', QVariant.String),
                 QgsField('alan_m2', QVariant.Double),
                 QgsField('alan_ha', QVariant.Double),
                 QgsField('oran_yuzde', QVariant.Double),
                 QgsField('aciklama', QVariant.String)
-            ]
-            tbl_dop_pr.addAttributes(tbl_dop_fields)
+            ])
             tbl_dop_layer.updateFields()
 
             dop = summary["dop_ozet"]
-            p_m2 = dop["toplam_plan_alani_m2"]
-            e_m2 = dop["dop_esas_alan_m2"]
-            sinir_aciklama = "Plan Onama Sınırına Göre Kesin" if dop.get("sinir_katmani_kullanildi") else "İmar Adaları Toplamı Esas Alındı"
-
-            dop_raw_rows = [
-                ("Plan Onama Sınırı / Toplam Alan", p_m2, dop["toplam_plan_alani_ha"], 100.0, sinir_aciklama),
-                ("İmar Adaları (Kullanım Poligonları)", dop["adalar_toplam_m2"], dop["adalar_toplam_ha"], round(dop["adalar_toplam_m2"]/max(1, p_m2)*100.0, 2), "Plan Fonksiyon Blokları"),
-                ("Net Yol ve Ulaşım Ağı Alanı", dop["hesaplanan_yol_m2"], dop["hesaplanan_yol_ha"], dop["yol_orani_yuzde"], "Plan Sınırı - İmar Adaları Boşluğu"),
-                ("DOP Dışı Alanlar (Harice Ayrılan)", dop["dop_disi_alan_m2"], round(dop["dop_disi_alan_m2"]/10000.0, 2), round(dop["dop_disi_alan_m2"]/max(1, p_m2)*100.0, 2), "Orman, Tarım, Su, Sit vb."),
-                ("Düzenleme Sahası (DOP Esas Alan)", e_m2, round(e_m2/10000.0, 2), round(e_m2/max(1, p_m2)*100.0, 2), "Düzenlemeye Giren Net Saha"),
-                ("Toplam Özel Mülkiyet (Tahsis)", dop["toplam_ozel_tahsis_m2"], round(dop["toplam_ozel_tahsis_m2"]/10000.0, 2), round(dop["toplam_ozel_tahsis_m2"]/max(1, e_m2)*100.0, 2), "Konut, Ticaret, Sanayi vb."),
-                ("Kamu Poligon Donatıları", dop["kamu_poligonlar_m2"], round(dop["kamu_poligonlar_m2"]/10000.0, 2), round(dop["kamu_poligonlar_m2"]/max(1, e_m2)*100.0, 2), "Eğitim, Sağlık, Yeşil vb."),
-                ("Toplam Kamu Kesintisi (DOP)", dop["toplam_kamu_kesinti_m2"], round(dop["toplam_kamu_kesinti_m2"]/10000.0, 2), dop["dop_orani"], "Donatılar + Gerçek Yol Ağı"),
-                ("Kamu / Özel Mülkiyet Oranı", 0.0, 0.0, dop["kamu_ozel_orani"], "Kamu Kesintisi / Özel Tahsis Oranı"),
-                ("HESAPLANAN DOP ORANI (%)", 0.0, 0.0, dop["dop_orani"], dop["dop_uygunluk"])
-            ]
-            if dop.get("ortalama_yol_genisligi_m"):
-                dop_raw_rows.insert(3, ("Ortalama Fiili Yol Genişliği (m)", 0.0, 0.0, dop["ortalama_yol_genisligi_m"], f"{dop['yol_agi_uzunlugu_km']} km Yol Ağı / Yol Alanı"))
-
+            dop_rows = self._dop_rows(dop)
             dop_feats = []
-            for r in dop_raw_rows:
+            for r in dop_rows:
                 df = QgsFeature(tbl_dop_layer.fields())
                 df.setAttributes(list(r))
                 dop_feats.append(df)
@@ -2155,14 +2555,13 @@ class TireNipDockWidget(QDockWidget):
             # 6. Kent Karakteri Tablosu Katmanı (NoGeometry)
             tbl_kk_layer = QgsVectorLayer("None", f"PLN3113_{analysis_mode}_3_Kent_Karakter_Tablosu", "memory")
             tbl_kk_pr = tbl_kk_layer.dataProvider()
-            tbl_kk_fields = [
+            tbl_kk_pr.addAttributes([
                 QgsField('nip_fonksiyon', QVariant.String),
                 QgsField('toplam_m2', QVariant.Double),
                 QgsField('alt_nufus_m2_kisi', QVariant.Double),
                 QgsField('ust_nufus_m2_kisi', QVariant.Double),
                 QgsField('proj_nufus_m2_kisi', QVariant.Double)
-            ]
-            tbl_kk_pr.addAttributes(tbl_kk_fields)
+            ])
             tbl_kk_layer.updateFields()
             kk_feats = []
             for kk in summary["kent_karakter"]:
@@ -2174,15 +2573,14 @@ class TireNipDockWidget(QDockWidget):
             # 7. MPYY Ek-2 Donatı Tablosu Katmanı (NoGeometry)
             tbl_ek2_layer = QgsVectorLayer("None", f"PLN3113_{analysis_mode}_4_Ek2_Donati_Dengesi", "memory")
             tbl_ek2_pr = tbl_ek2_layer.dataProvider()
-            tbl_ek2_fields = [
+            tbl_ek2_pr.addAttributes([
                 QgsField('donati_turu', QVariant.String),
                 QgsField('toplam_m2', QVariant.Double),
                 QgsField('mpyy_standart_m2', QVariant.Double),
                 QgsField('mevcut_m2_alt_nufus', QVariant.Double),
                 QgsField('mevcut_m2_ust_nufus', QVariant.Double),
                 QgsField('durum_ust_nufus', QVariant.String)
-            ]
-            tbl_ek2_pr.addAttributes(tbl_ek2_fields)
+            ])
             tbl_ek2_layer.updateFields()
             ek2_feats = []
             for ek in summary["ek2_rapor"]:
@@ -2194,7 +2592,7 @@ class TireNipDockWidget(QDockWidget):
             # 8. Detaylı Fonksiyon Dağılım Tablosu Katmanı (NoGeometry)
             tbl_fd_layer = QgsVectorLayer("None", f"PLN3113_{analysis_mode}_5_Fonksiyon_Dagilim_Tablosu", "memory")
             tbl_fd_pr = tbl_fd_layer.dataProvider()
-            tbl_fd_fields = [
+            tbl_fd_pr.addAttributes([
                 QgsField('nip_fonksiyon', QVariant.String),
                 QgsField('dop_durumu', QVariant.String),
                 QgsField('alan_turu', QVariant.String),
@@ -2204,8 +2602,7 @@ class TireNipDockWidget(QDockWidget):
                 QgsField('kisi_basi_m2', QVariant.Double),
                 QgsField('tum_plan_yuzdesi', QVariant.Double),
                 QgsField('dop_ici_yuzde', QVariant.Double)
-            ]
-            tbl_fd_pr.addAttributes(tbl_fd_fields)
+            ])
             tbl_fd_layer.updateFields()
             fd_feats = []
             for fd in summary["fonksiyon_dagilim"]:
@@ -2218,164 +2615,41 @@ class TireNipDockWidget(QDockWidget):
             tbl_fd_pr.addFeatures(fd_feats)
 
             # Katmanları QGIS Projesinde Düzenli Bir Gruba Ekle
-            root = QgsProject.instance().layerTreeRoot()
+            root = project.layerTreeRoot()
             grp_name = f"PLN3113 {mode_title} Analiz Çıktıları ({layer.name()})"
             grp = root.findGroup(grp_name)
             if not grp:
                 grp = root.insertGroup(0, grp_name)
 
             for lyr in [out_layer, tbl_dop_layer, tbl_kk_layer, tbl_ek2_layer, tbl_fd_layer]:
-                QgsProject.instance().addMapLayer(lyr, False)
+                project.addMapLayer(lyr, False)
                 grp.addLayer(lyr)
 
             # DockWidget Tablolarını Doldur
-            self._populate_dop_table(summary["dop_ozet"])
+            self._populate_dop_table(dop)
             self._populate_kk_table(summary["kent_karakter"])
             self._populate_ek2_table(summary["ek2_rapor"])
             self._populate_fd_table(summary["fonksiyon_dagilim"])
 
-            # Gösterge Tablosunu Güncelle (Son Satır)
-            alt_str = f"{summary['toplam_alt_nufus']:,}".replace(",", ".")
-            ust_str = f"{summary['toplam_ust_nufus']:,}".replace(",", ".")
-            kirsal_sabit = 25833
-            ilce_alt_str = f"{(summary['toplam_alt_nufus'] + kirsal_sabit):,}".replace(",", ".")
-            ilce_ust_str = f"{(summary['toplam_ust_nufus'] + kirsal_sabit):,}".replace(",", ".")
+            alt_str = _tr_int(summary['toplam_alt_nufus'])
+            ust_str = _tr_int(summary['toplam_ust_nufus'])
 
-            self.tbl_benchmark.setItem(4, 0, QTableWidgetItem(f"Hesaplanan {mode_title} Kapasitesi"))
-            self.tbl_benchmark.setItem(4, 1, QTableWidgetItem(f"{alt_str} - {ust_str}"))
-            self.tbl_benchmark.setItem(4, 2, QTableWidgetItem(f"~{kirsal_sabit:,}".replace(",", ".")))
-            self.tbl_benchmark.setItem(4, 3, QTableWidgetItem(f"{ilce_alt_str} - {ilce_ust_str}"))
+            # Kıyaslama tablosu: özetteki liste (ön ayar + hesaplanan satır) ya da yerel satır
+            kiyaslama = summary.get("kiyaslama")
+            if kiyaslama is None:
+                kiyaslama = [dict(v) for v in self._kiyas_referanslari().values()]
+                kiyaslama.append({"kapsam": f"Hesaplanan {mode_title} Nüfusu",
+                                  "merkez": f"{alt_str} - {ust_str}", "ilce": "-", "kaynak": "PLN3113 NİP Analiz Modeli"})
+            self._fill_benchmark_table(kiyaslama=kiyaslama)
 
-            font = QFont()
-            font.setBold(True)
-            for c in range(4):
-                item = self.tbl_benchmark.item(4, c)
-                if item:
-                    item.setFont(font)
-                    item.setForeground(QColor("#0f766e"))
-
-            # HTML Rapor Hazırla
-            dop_durum_color = "#16a34a" if dop["dop_orani"] <= 45.0 else "#dc2626"
-            yol_genislik_tr = f"<tr><td><b>Ortalama Fiili Yol Genişliği</b></td><td colspan='2'><b>{dop['ortalama_yol_genisligi_m']} m</b> ({dop['yol_agi_uzunlugu_km']} km Yol Ağı)</td></tr>" if dop.get("ortalama_yol_genisligi_m") else ""
-
-            # Plan Onama Sınırı Bilgi Özeti
-            s_stats = summary.get("sinir_filtre_ozet")
-            sinir_info_html = ""
-            sinir_msg_extra = ""
-            if s_stats and s_stats.get("aktif"):
-                mod_names = {
-                    "clip": "Sınırla Kırp / Kes (Sınır Dışını At, Net İç Alanı Al)",
-                    "intersect": "Sınıra Değenleri Dahil Et (Bütünsel Korunur)",
-                    "within": "Sınırı Aşanları Hariç Tut (Yalnızca Tamamı İçte Olanlar)",
-                    "centroid": "Ağırlık Merkezine Göre (Merkezi İçte Olanlar)"
-                }
-                mod_label = mod_names.get(s_stats.get("mod"), s_stats.get("mod"))
-                elenen_style = "color:#b91c1c; font-weight:bold;" if s_stats['sinir_disi_elenen'] > 0 else "color:#15803d; font-weight:bold;"
-                sinir_info_html = f"""
-                <h4>🌐 Plan Onama Sınırı Mekânsal Kapsam Raporu</h4>
-                <div style="font-size:11px; color:#1e3a8a; margin-bottom:12px; background:#eff6ff; padding:10px; border-left:4px solid #3b82f6; border-radius:4px;">
-                    <b>Uygulanan Sınır İşlem Modu:</b> {mod_label}<br>
-                    • <b>Toplam Girdi Ada Sayısı:</b> {s_stats['toplam_girdi_ada']} adet<br>
-                    • <b>Hesaplamaya Alınan Ada Sayısı:</b> {s_stats['islenen_ada_sayisi']} adet<br>
-                    • <b>Tamamı Sınır İçinde Kalanlar:</b> {s_stats['tamamen_icinde']} adet<br>
-                    • <b>Sınırı Kesen / İşlenen Adalar:</b> {s_stats['kesisen_islenen']} adet<br>
-                    • <b>Sınır Dışında Kaldığı İçin Elenenler:</b> <span style="{elenen_style}">{s_stats['sinir_disi_elenen']} adet ada</span> (Kesinlikle hesaba katılmadı)
-                </div>
-                """
-                if s_stats.get("sinir_disi_elenen", 0) > 0:
-                    sinir_msg_extra = f"\n\n⚠️ Plan Onama Sınırı dışında kalan {s_stats['sinir_disi_elenen']} adet ada otomatik olarak elendi ve hesaba dahil edilmedi."
-
-            report_html = f"""
-            <h3>🏙️ TİRE {mode_title.upper()} ANALİZ VE KAPASİTE RAPORU</h3>
-            
-            <h4>0. 👥 Demografik Göstergeler ve Tarihsel Kıyaslama</h4>
-            <table border="1" cellpadding="4" style="border-collapse:collapse; width:100%; margin-bottom:12px;">
-                <tr style="background:#0f766e; color:white;">
-                    <th>Nüfus Niteliği / Kapsam</th><th>Kentsel Merkez</th><th>Kırsal Nüfus</th><th>İlçe Toplamı</th>
-                </tr>
-                <tr><td><b>1997 Plan Raporu (1990 DİE)</b></td><td>37.855</td><td>39.459 (65 Köy)</td><td>77.314</td></tr>
-                <tr><td><b>2015 Plan Projeksiyonu (Hedef)</b></td><td>53.629</td><td>46.711 (Model)</td><td>100.340</td></tr>
-                <tr><td><b>2015 TÜİK ADNKS (Gerçekleşen)</b></td><td>~57.069 (Merkez Mahalleler)</td><td>~25.033</td><td>82.102</td></tr>
-                <tr><td><b>Güncel TÜİK ADNKS (2025/2026)</b></td><td>~61.738 (Merkez Mahalleler)</td><td>~25.833</td><td>87.571</td></tr>
-                <tr style="background:#ecfdf5; font-weight:bold; color:#0f766e;">
-                    <td><b>Hesaplanan {mode_title} Kapasitesi</b></td><td>{alt_str} - {ust_str}</td><td>~25.833 (Kırsal Sabit)</td><td>{ilce_alt_str} - {ilce_ust_str}</td>
-                </tr>
-            </table>
-            <div style="font-size:11px; color:#475569; margin-bottom:14px; background:#f1f5f9; padding:8px; border-left:3px solid #0f766e; border-radius:3px;">
-                <b>Metodolojik Açıklamalar ve Veri Kısıtları:</b><br>
-                • <b>1997 Plan Raporu (1990 DİE Sayımı):</b> Raporda kırsal nüfus 65 köyün tek tek dökümüyle (39.459 kişi) verilmiş; kentsel merkez nüfusu 37.855 kişi aktarılmıştır.<br>
-                • <b>2015 Plan Projeksiyonu:</b> Üst Değerli Model (Regresyon) projeksiyonuna göre kentsel nüfus 53.629, toplam ilçe 100.340 kişidir. Kırsal nüfus farktan türetilmiştir (46.711).<br>
-                • <b>6360 Sayılı Kanun Etkisi:</b> 2012'de kabul edilen yasa uyarınca İzmir genelinde tüm köyler ve beldeler mahalleye dönüştüğünden resmi ADNKS bültenlerinde idari kır/kent ayrımı bulunmamaktadır.<br>
-                • <b>Merkez / Kırsal Ayrıştırması:</b> Kentsel merkez, kentsel makroform ve yerleşik leke içindeki mahalleler toplamıdır; kırsal nüfus ilçe toplamından bu değer düşülerek elde edilmiştir.<br>
-                • <b>Güncel TÜİK Verisi:</b> En güncel resmi sayım 31 Aralık 2025 referanslı (Şubat 2026'da ilan edilen) ADNKS kütüğüdür (87.571 kişi).<br>
-                • <b>Planlama Uyumu:</b> Hesaplanan kentsel üst sınır nüfusu ({ust_str} kişi), 1997 planının 2015 hedefi (53.629 kişi) ile %99.6 oranında birebir örtüşmektedir.
-            </div>
-
-            {sinir_info_html}
-
-            <h4>1. Genel Nüfus, Alan ve Ulaşım Göstergeleri</h4>
-            <table border="1" cellpadding="4" style="border-collapse:collapse; width:100%;">
-                <tr style="background:#0f766e; color:white;">
-                    <th>Metrik</th><th>Alt Sınır (Kişi/Birim)</th><th>Üst Sınır (Kişi/Birim)</th>
-                </tr>
-                <tr><td><b>Toplam Plan Nüfusu</b></td><td style="color:#0f766e; font-weight:bold;">{alt_str} Kişi</td><td style="color:#0f766e; font-weight:bold;">{ust_str} Kişi</td></tr>
-                <tr><td><b>Toplam Konut & Karma Alanı</b></td><td colspan="2">{summary['toplam_konut_alani_ha']:.2f} Hektar</td></tr>
-                <tr><td><b>Toplam İmar Adaları Alanı</b></td><td colspan="2">{dop['adalar_toplam_ha']:.2f} Hektar ({dop['adalar_toplam_m2']:,.0f} m²)</td></tr>
-                <tr><td><b>Net Yol ve Ulaşım Alanı</b></td><td colspan="2"><b>{dop['hesaplanan_yol_ha']:.2f} Hektar</b> (% {dop['yol_orani_yuzde']:.2f} - {dop['kisi_basi_yol_m2']:.2f} m²/kişi)</td></tr>
-                {yol_genislik_tr}
-                <tr><td><b>Toplam Plan Alanı ({sinir_aciklama})</b></td><td colspan="2"><b>{dop['toplam_plan_alani_ha']:.2f} Hektar</b> ({p_m2:,.0f} m²)</td></tr>
-                <tr><td><b>Tahmini İstihdam Kapasitesi</b></td><td colspan="2"><b>{summary['toplam_istihdam']:,}</b> Çalışan</td></tr>
-                <tr><td><b>Günlük Araç Yolculuk Yükü</b></td><td colspan="2"><b>{summary['toplam_gunluk_arac']:,}</b> Araç (PAU)</td></tr>
-                <tr><td><b>Günlük Yaya Yolculuk Yükü</b></td><td colspan="2"><b>{summary['toplam_gunluk_yaya']:,}</b> Yaya</td></tr>
-            </table>
-
-            <h4>2. ⚖️ Kamu - Özel Mülkiyet Dengesi ve DOP Hesabı</h4>
-            <table border="1" cellpadding="4" style="border-collapse:collapse; width:100%;">
-                <tr style="background:#0f766e; color:white;">
-                    <th>Parametre</th><th>Alan (m²)</th><th>Alan (ha)</th><th>Oran (%)</th><th>Açıklama</th>
-                </tr>
-                <tr><td><b>Plan Onama Sınırı / Toplam Alan</b></td><td>{p_m2:,.0f} m²</td><td>{dop['toplam_plan_alani_ha']:.2f} ha</td><td>100.0 %</td><td>{sinir_aciklama}</td></tr>
-                <tr><td><b>İmar Adaları (Kullanım Poligonları)</b></td><td>{dop['adalar_toplam_m2']:,.0f} m²</td><td>{dop['adalar_toplam_ha']:.2f} ha</td><td>{(dop['adalar_toplam_m2']/max(1, p_m2)*100.0):.2f} %</td><td>Plan Fonksiyon Blokları</td></tr>
-                <tr><td><b>Net Yol ve Ulaşım Alanı</b></td><td>{dop['hesaplanan_yol_m2']:,.0f} m²</td><td>{dop['hesaplanan_yol_ha']:.2f} ha</td><td>% {dop['yol_orani_yuzde']:.2f}</td><td>Plan Sınırı - İmar Adaları Farkı</td></tr>
-                <tr><td><b>DOP Dışı Alanlar</b></td><td>{dop['dop_disi_alan_m2']:,.0f} m²</td><td>{(dop['dop_disi_alan_m2']/10000.0):.2f} ha</td><td>{(dop['dop_disi_alan_m2']/max(1, p_m2)*100.0):.2f} %</td><td>Orman, Tarım, Su vb.</td></tr>
-                <tr><td><b>Düzenleme Sahası (DOP Esas)</b></td><td>{e_m2:,.0f} m²</td><td>{(e_m2/10000.0):.2f} ha</td><td>{(e_m2/max(1, p_m2)*100.0):.2f} %</td><td>Düzenlemeye Giren Net Saha</td></tr>
-                <tr><td><b>Toplam Özel Mülkiyet (Tahsis)</b></td><td>{dop['toplam_ozel_tahsis_m2']:,.0f} m²</td><td>{(dop['toplam_ozel_tahsis_m2']/10000.0):.2f} ha</td><td>{(dop['toplam_ozel_tahsis_m2']/max(1, e_m2)*100.0):.2f} %</td><td>Konut, Ticaret vb.</td></tr>
-                <tr><td><b>Toplam Kamu Kesintisi (DOP)</b></td><td>{dop['toplam_kamu_kesinti_m2']:,.0f} m²</td><td>{(dop['toplam_kamu_kesinti_m2']/10000.0):.2f} ha</td><td>% {dop['dop_orani']:.2f}</td><td>Donatılar + Gerçek Yol Ağı</td></tr>
-                <tr><td><b>Kamu Poligon Donatıları</b></td><td>{dop['kamu_poligonlar_m2']:,.0f} m²</td><td>{(dop['kamu_poligonlar_m2']/10000.0):.2f} ha</td><td>{(dop['kamu_poligonlar_m2']/max(1, e_m2)*100.0):.2f} %</td><td>Eğitim, Sağlık, Yeşil vb.</td></tr>
-                <tr style="background:#fef08a;">
-                    <td><b>HESAPLANAN DOP ORANI (%)</b></td><td>-</td><td>-</td>
-                    <td style="color:{dop_durum_color}; font-weight:bold; font-size:14px;">% {dop['dop_orani']:.2f}</td>
-                    <td style="color:{dop_durum_color}; font-weight:bold;">{dop['dop_uygunluk']}</td>
-                </tr>
-            </table>
-
-            <h4>3. 📋 MPYY Ek-2 Donatı Yeterlilik Dengesi:</h4>
-            <table border="1" cellpadding="3" style="border-collapse:collapse; width:100%;">
-                <tr style="background:#e2e8f0; font-size:11px;">
-                    <th>Donatı Grubu</th><th>Mevcut Alan</th><th>Ek-2 Std</th><th>Mevcut (Üst Nüfus)</th><th>Durum</th>
-                </tr>
-            """
-            for ek in summary["ek2_rapor"]:
-                durum_color = "#16a34a" if ek["durum_ust"] == "YETERLİ" else "#dc2626"
-                report_html += f"""
-                <tr>
-                    <td>{ek['kategori_adi']}</td>
-                    <td>{ek['toplam_m2']:,.0f} m²</td>
-                    <td>{ek['standart_m2']} m²/k</td>
-                    <td>{ek['kb_ust']:.2f} m²/k</td>
-                    <td style="color:{durum_color}; font-weight:bold;">{ek['durum_ust']}</td>
-                </tr>
-                """
-            report_html += "</table>"
-
-            self.txt_nip_results.setHtml(report_html)
+            self._last_nip_html = self._nip_report_html(summary, dop_rows, mode_title, warnings)
+            self.txt_nip_results.setHtml(self._last_nip_html)
 
             # Durumu Sakla ve Dışa Aktarmayı Etkinleştir
             self._last_nip_summary = summary
             self._last_nip_items = parsed_items
             self._last_nip_sinir_geom = sinir_geom
             self._last_nip_crs = layer.crs()
-            self._last_nip_html = report_html
             self._last_nip_out_layer = out_layer
             self.btn_export_csv.setEnabled(True)
             self.btn_export_html.setEnabled(True)
@@ -2385,43 +2659,136 @@ class TireNipDockWidget(QDockWidget):
 
             # Canlı Görsel Göstergeleri Güncelle
             dop_val = dop.get('dop_orani', 0.0)
+            limit = float(dop.get("yasal_sinir", 45.0) or 45.0)
             self.bar_dop.setValue(min(80, max(0, int(round(dop_val)))))
-            if dop_val <= 45.0:
-                self.bar_dop.setStyleSheet("QProgressBar::chunk { background-color: #10b981; }")
+            tone = self._dop_tone(dop)
+            if tone is None:
+                self.bar_dop.setStyleSheet(chunk_css("subtle"))
+                self.lbl_dop_badge.setText(f"%{dop_val:.2f} TAHMİNİ")
+                self.lbl_dop_badge.setToolTip("Plan onama sınırı verilmedi: yol alanı tahmin edildi, "
+                                              "yasal sınır değerlendirmesi yapılmadı.")
+                self.lbl_dop_badge.setStyleSheet(chip_css())
+            elif tone == "ok":
+                self.bar_dop.setStyleSheet(chunk_css("ok"))
                 self.lbl_dop_badge.setText(f"%{dop_val:.2f} YASAL UYGUN")
-                self.lbl_dop_badge.setStyleSheet("font-size: 8pt; font-weight: 700; padding: 2px 6px; border-radius: 4px; background: #dcfce7; color: #15803d;")
+                self.lbl_dop_badge.setToolTip("")
+                self.lbl_dop_badge.setStyleSheet(chip_css("ok"))
             else:
-                self.bar_dop.setStyleSheet("QProgressBar::chunk { background-color: #ef4444; }")
-                self.lbl_dop_badge.setText(f"%{dop_val:.2f} AŞIM (+%{dop_val - 45.0:.2f})")
-                self.lbl_dop_badge.setStyleSheet("font-size: 8pt; font-weight: 700; padding: 2px 6px; border-radius: 4px; background: #fee2e2; color: #b91c1c;")
+                self.bar_dop.setStyleSheet(chunk_css("bad"))
+                self.lbl_dop_badge.setText(f"%{dop_val:.2f} AŞIM (+%{dop_val - limit:.2f})")
+                self.lbl_dop_badge.setToolTip("")
+                self.lbl_dop_badge.setStyleSheet(chip_css("bad"))
 
             toplam_kamu_donati_m2 = dop.get("kamu_poligonlar_m2", 0.0)
             yesil_alan_m2 = sum(it.get("alan_m2", 0.0) for it in parsed_items if any(k in it.get("fonk_raw", "").upper() for k in ["PARK", "YEŞİL", "YESIL", "ÇOCUK", "COCUK", "MEYDAN", "REKREASYON", "SPOR"]) and it.get("dop_durumu") == "DOP İÇİ")
             acik_yesil_pct = round((yesil_alan_m2 / max(1.0, toplam_kamu_donati_m2)) * 100.0, 1)
             self.bar_yesil.setValue(min(100, max(0, int(round(acik_yesil_pct)))))
             if acik_yesil_pct >= 75.0:
-                self.bar_yesil.setStyleSheet("QProgressBar::chunk { background-color: #16a34a; }")
+                self.bar_yesil.setStyleSheet(chunk_css("ok"))
                 self.lbl_yesil_badge.setText(f"%{acik_yesil_pct:.1f} YETERLİ")
-                self.lbl_yesil_badge.setStyleSheet("font-size: 8pt; font-weight: 700; padding: 2px 6px; border-radius: 4px; background: #dcfce7; color: #15803d;")
+                self.lbl_yesil_badge.setStyleSheet(chip_css("ok"))
             else:
-                self.bar_yesil.setStyleSheet("QProgressBar::chunk { background-color: #f59e0b; }")
+                self.bar_yesil.setStyleSheet(chunk_css("warn"))
                 self.lbl_yesil_badge.setText(f"%{acik_yesil_pct:.1f} EKSİK")
-                self.lbl_yesil_badge.setStyleSheet("font-size: 8pt; font-weight: 700; padding: 2px 6px; border-radius: 4px; background: #fef3c7; color: #b45309;")
+                self.lbl_yesil_badge.setStyleSheet(chip_css("warn"))
 
+            dop_name = "Tahmini DOP Oranı" if dop.get("tahmini") else "Hesaplanan DOP Oranı"
+            warn_text = ("\n\nUyarılar:\n• " + "\n• ".join(warnings)) if warnings else ""
             QMessageBox.information(
                 self, f"{mode_title} Analizi Tamamlandı",
                 f"Hesaplanan {mode_title} Nüfusu:\nAlt Sınır: {alt_str} Kişi\nÜst Sınır: {ust_str} Kişi\n\n"
-                f"Hesaplanan DOP Oranı: %{dop['dop_orani']:.2f} ({dop['dop_uygunluk']})\n"
+                f"{dop_name}: %{dop['dop_orani']:.2f} ({dop.get('dop_uygunluk', '')})\n"
                 f"Net Yol Ağı Alanı: {dop['hesaplanan_yol_ha']:.2f} ha (%{dop['yol_orani_yuzde']:.2f})\n\n"
                 f"Analiz katmanı ve 4 adet detaylı tablo (DOP, Kent Karakteri, Ek-2 ve Fonksiyon Dağılımı) "
-                f"harita projenize 'PLN3113 {mode_title} Analiz Çıktıları' grubu altında eklendi.{sinir_msg_extra}"
+                f"harita projenize 'PLN3113 {mode_title} Analiz Çıktıları' grubu altında eklendi.{warn_text}"
             )
 
         except Exception as e:
             QMessageBox.critical(self, "Hata", f"NİP Analizi sırasında hata: {str(e)}")
-            self.txt_nip_results.append(f"<span style='color:red;'>Hata: {str(e)}</span>")
+            self.txt_nip_results.append(f"<span style='color:{self._c['bad']};'>Hata: {html.escape(str(e))}</span>")
         finally:
             self.btn_run_nip.setEnabled(True)
+
+    def _nip_report_html(self, summary: dict, dop_rows: list, mode_title: str, warnings: list) -> str:
+        """Dock içindeki ayrıntılı rapor (tema renkleriyle; metinler kaçışlanır)."""
+        c = self._c
+        esc = html.escape
+        dop = summary["dop_ozet"]
+        alt_str, ust_str = _tr_int(summary['toplam_alt_nufus']), _tr_int(summary['toplam_ust_nufus'])
+        head = f"background:{c['primary']}; color:{c['on_accent']};"
+        out = [f"<h3>🏙️ {esc(mode_title.upper())} ANALİZ VE KAPASİTE RAPORU</h3>"]
+
+        if warnings:
+            items = "".join(f"<li>{esc(str(w))}</li>" for w in warnings)
+            out.append(f"<h4>⚠️ Uyarılar</h4><div style='color:{c['warn']};'><ul>{items}</ul></div>")
+        elenen = summary.get("elenen_ada") or {}
+        elenen_labels = {"bos_geometri": "boş/geçersiz geometri", "sifir_alan": "sıfır alan",
+                         "sinir_disi": "sınır dışı", "fonksiyonu_bos": "fonksiyonu boş (NULL)"}
+        elenen_parts = [f"{n} ada {elenen_labels.get(k, k)}" for k, n in elenen.items() if n]
+        if elenen_parts:
+            out.append(f"<p style='color:{c['warn']};'><b>Hesap dışı kalan / eksik veri:</b> {esc(', '.join(elenen_parts))}</p>")
+
+        out.append("<h4>0. 👥 Nüfus Kıyaslaması</h4>")
+        out.append(f"<table border='1' cellpadding='4' style='border-collapse:collapse; width:100%;'>"
+                   f"<tr style='{head}'><th>Kapsam</th><th>Kentsel Merkez</th><th>İlçe Toplamı</th></tr>")
+        kiyaslama = summary.get("kiyaslama") or [{"kapsam": f"Hesaplanan {mode_title} Nüfusu",
+                                                   "merkez": f"{alt_str} - {ust_str}", "ilce": "-"}]
+        for row in kiyaslama:
+            out.append(f"<tr><td>{esc(str(row.get('kapsam', '')))}</td><td>{esc(self._fmt_pop(row.get('merkez', '-')))}</td>"
+                       f"<td>{esc(self._fmt_pop(row.get('ilce', '-')))}</td></tr>")
+        out.append("</table>")
+        out.append(f"<p>Hedef (projeksiyon) nüfusu: <b>{_tr_int(summary.get('projeksiyon_nufus', 0))} kişi</b></p>")
+
+        s_stats = summary.get("sinir_filtre_ozet")
+        if s_stats and s_stats.get("aktif"):
+            mod_names = {
+                "clip": "Sınırla Kırp / Kes (Sınır Dışını At, Net İç Alanı Al)",
+                "intersect": "Sınıra Değenleri Dahil Et (Bütünsel Korunur)",
+                "within": "Sınırı Aşanları Hariç Tut (Yalnızca Tamamı İçte Olanlar)",
+                "centroid": "Ağırlık Merkezine Göre (Merkezi İçte Olanlar)"
+            }
+            elenen_tone = c["bad"] if s_stats.get('sinir_disi_elenen', 0) > 0 else c["ok"]
+            out.append(
+                f"<h4>🌐 Plan Onama Sınırı Kapsamı</h4><p>"
+                f"<b>Mod:</b> {esc(str(mod_names.get(s_stats.get('mod'), s_stats.get('mod'))))}<br>"
+                f"• Toplam girdi ada: {s_stats.get('toplam_girdi_ada', 0)}<br>"
+                f"• Hesaplamaya alınan: {s_stats.get('islenen_ada_sayisi', 0)}<br>"
+                f"• Tamamı sınır içinde: {s_stats.get('tamamen_icinde', 0)}<br>"
+                f"• Sınırı kesen / işlenen: {s_stats.get('kesisen_islenen', 0)}<br>"
+                f"• Sınır dışında elenen: <b style='color:{elenen_tone};'>{s_stats.get('sinir_disi_elenen', 0)} ada</b></p>")
+
+        out.append(f"<h4>1. Genel Nüfus, Alan ve Ulaşım Göstergeleri</h4>"
+                   f"<table border='1' cellpadding='4' style='border-collapse:collapse; width:100%;'>"
+                   f"<tr style='{head}'><th>Metrik</th><th>Alt Sınır</th><th>Üst Sınır</th></tr>"
+                   f"<tr><td><b>Toplam Plan Nüfusu</b></td><td><b>{alt_str} Kişi</b></td><td><b>{ust_str} Kişi</b></td></tr>"
+                   f"<tr><td><b>Toplam Konut & Karma Alanı</b></td><td colspan='2'>{summary['toplam_konut_alani_ha']:.2f} ha</td></tr>"
+                   f"<tr><td><b>Tahmini İstihdam</b></td><td colspan='2'>{summary['toplam_istihdam']:,} çalışan</td></tr>"
+                   f"<tr><td><b>Günlük Araç Yolculuğu</b></td><td colspan='2'>{summary['toplam_gunluk_arac']:,} araç</td></tr>"
+                   f"<tr><td><b>Günlük Yaya Yolculuğu</b></td><td colspan='2'>{summary['toplam_gunluk_yaya']:,} yaya</td></tr>"
+                   f"</table>")
+
+        tone = self._dop_tone(dop)
+        verdict_style = f"color:{c[tone]}; font-weight:bold;" if tone else "font-weight:bold;"
+        out.append(f"<h4>2. ⚖️ Kamu - Özel Mülkiyet Dengesi ve DOP</h4>"
+                   f"<table border='1' cellpadding='4' style='border-collapse:collapse; width:100%;'>"
+                   f"<tr style='{head}'><th>Parametre</th><th>Alan (m²)</th><th>Alan (ha)</th><th>Oran (%)</th><th>Açıklama</th></tr>")
+        for i, (name, m2, ha, pct, note) in enumerate(dop_rows):
+            last = i == len(dop_rows) - 1
+            style = f" style='{verdict_style}'" if last else ""
+            out.append(f"<tr><td><b>{esc(name)}</b></td><td>{(f'{m2:,.0f}' if m2 else '-')}</td>"
+                       f"<td>{(f'{ha:.2f}' if ha else '-')}</td><td{style}>{pct:.2f}</td><td{style}>{esc(str(note))}</td></tr>")
+        out.append("</table>")
+
+        out.append(f"<h4>3. 📋 MPYY Ek-2 Donatı Yeterliliği</h4>"
+                   f"<table border='1' cellpadding='3' style='border-collapse:collapse; width:100%;'>"
+                   f"<tr style='{head}'><th>Donatı Grubu</th><th>Mevcut Alan</th><th>Ek-2 Std</th><th>Üst Nüfusa Göre</th><th>Durum</th></tr>")
+        for ek in summary["ek2_rapor"]:
+            durum_color = c["ok"] if ek["durum_ust"] == "YETERLİ" else c["bad"]
+            out.append(f"<tr><td>{esc(str(ek['kategori_adi']))}</td><td>{ek['toplam_m2']:,.0f} m²</td>"
+                       f"<td>{ek['standart_m2']} m²/k</td><td>{ek['kb_ust']:.2f} m²/k</td>"
+                       f"<td style='color:{durum_color}; font-weight:bold;'>{esc(str(ek['durum_ust']))}</td></tr>")
+        out.append("</table>")
+        return "\n".join(out)
 
     def _export_nip_tables_csv(self):
         """Tüm hesaplanan analiz tablolarını UTF-8-BOM formatında CSV olarak dışa aktarır."""
@@ -2435,9 +2802,6 @@ class TireNipDockWidget(QDockWidget):
 
         summary = self._last_nip_summary
         dop = summary["dop_ozet"]
-        p_m2 = dop["toplam_plan_alani_m2"]
-        e_m2 = dop["dop_esas_alan_m2"]
-        sinir_aciklama = "Plan Onama Sınırına Göre Kesin" if dop.get("sinir_katmani_kullanildi") else "İmar Adaları Toplamı Esas Alındı"
 
         try:
             # 1. DOP CSV
@@ -2445,22 +2809,9 @@ class TireNipDockWidget(QDockWidget):
             with open(dop_csv, "w", newline="", encoding="utf-8-sig") as f:
                 w = csv.writer(f, delimiter=";")
                 w.writerow(["Parametre", "Alan (m²)", "Alan (ha)", "Oran (%)", "Açıklama / Değerlendirme"])
-                dop_rows = [
-                    ["Plan Onama Sınırı / Toplam Alan", dop["toplam_plan_alani_m2"], dop["toplam_plan_alani_ha"], 100.0, sinir_aciklama],
-                    ["İmar Adaları (Kullanım Poligonları)", dop["adalar_toplam_m2"], dop["adalar_toplam_ha"], round(dop["adalar_toplam_m2"]/max(1, p_m2)*100.0, 2), "Plan Fonksiyon Blokları"],
-                    ["Net Yol ve Ulaşım Ağı Alanı", dop["hesaplanan_yol_m2"], dop["hesaplanan_yol_ha"], dop["yol_orani_yuzde"], "Plan Sınırı - İmar Adaları Boşluğu"],
-                    ["Kişi Başına Düşen Yol Standardı", "-", "-", f"{dop['kisi_basi_yol_m2']:.2f} m²/k", "Üst Nüfusa Göre Yol Alanı"],
-                    ["DOP Dışı Alanlar", dop["dop_disi_alan_m2"], round(dop["dop_disi_alan_m2"]/10000.0, 2), round(dop["dop_disi_alan_m2"]/max(1, p_m2)*100.0, 2), "Orman, Tarım, Su, Sit vb."],
-                    ["Düzenleme Sahası (DOP Esas Alan)", dop["dop_esas_alan_m2"], round(dop["dop_esas_alan_m2"]/10000.0, 2), round(dop["dop_esas_alan_m2"]/max(1, p_m2)*100.0, 2), "Düzenlemeye Giren Net Saha"],
-                    ["Toplam Özel Mülkiyet (Tahsis)", dop["toplam_ozel_tahsis_m2"], round(dop["toplam_ozel_tahsis_m2"]/10000.0, 2), round(dop["toplam_ozel_tahsis_m2"]/max(1, e_m2)*100.0, 2), "Konut, Ticaret, Sanayi vb."],
-                    ["Toplam Kamu Alanı (Kesinti + Yol)", dop["toplam_kamu_kesinti_m2"], round(dop["toplam_kamu_kesinti_m2"]/10000.0, 2), dop["dop_orani"], "Donatılar + Hesaplanan Yol Payı"],
-                    ["Kamu Poligon Donatıları", dop["kamu_poligonlar_m2"], round(dop["kamu_poligonlar_m2"]/10000.0, 2), round(dop["kamu_poligonlar_m2"]/max(1, e_m2)*100.0, 2), "Eğitim, Sağlık, Yeşil vb."],
-                    ["Kamu / Özel Mülkiyet Oranı", "-", "-", dop["kamu_ozel_orani"], "Kamu Kesintisi / Özel Tahsis Oranı"],
-                    ["HESAPLANAN DOP ORANI (%)", "-", "-", dop["dop_orani"], dop["dop_uygunluk"]]
-                ]
-                if dop.get("ortalama_yol_genisligi_m"):
-                    dop_rows.insert(4, ["Ortalama Fiili Yol Genişliği (m)", "-", f"{dop['yol_agi_uzunlugu_km']} km Yol", dop["ortalama_yol_genisligi_m"], "Yol Alanı / Hat Uzunluğu"])
-                w.writerows(dop_rows)
+                w.writerows([list(r) for r in self._dop_rows(dop)])
+                for warning in summary.get("uyarilar", []):
+                    w.writerow(["UYARI", "", "", "", warning])
 
             # 2. Kent Karakteri CSV
             kk_csv = os.path.join(folder, "pln3113_nip_kent_karakter_tablosu.csv")
@@ -2583,20 +2934,20 @@ class TireNipDockWidget(QDockWidget):
     def _create_tab_field(self) -> QWidget:
         tab = QWidget()
         layout = QVBoxLayout(tab)
+        layout.setContentsMargins(4, 4, 4, 4)
+        layout.setSpacing(6)
 
         # Bilgi Barı
-        info_banner = QWidget()
-        info_banner.setStyleSheet("background: #fefce8; border: 1px solid #fef08a; border-radius: 6px; padding: 4px;")
-        info_l = QHBoxLayout(info_banner)
+        info_banner = QFrame()
+        info_banner.setStyleSheet(note_css("warn"))
+        info_l = QVBoxLayout(info_banner)
         info_l.setContentsMargins(6, 4, 6, 4)
-        lbl_hint = QLabel("💡 <b>Mevcut Durum Fiili Nüfus Metodolojisi:</b> Bina kat, taban alanı, TÜİK hanehalkı ve fiili istihdam hesabı.")
-        lbl_hint.setStyleSheet("color: #854d0e; font-size: 11px;")
+        lbl_hint = QLabel("💡 <b>Fiili Nüfus Metodolojisi:</b> Bina kat, taban alanı, TÜİK hanehalkı ve fiili istihdam hesabı.")
+        lbl_hint.setStyleSheet(f"color: {self._c['warn']}; background: transparent; border: none;")
         btn_hint_guide = QPushButton("📖 Rehberde İncele")
         btn_hint_guide.setCursor(_POINTING_HAND)
-        btn_hint_guide.setStyleSheet("background: #d97706; color: white; border-radius: 4px; padding: 3px 8px; font-size: 11px; font-weight: bold;")
         btn_hint_guide.clicked.connect(self._open_theoretical_guide)
         info_l.addWidget(lbl_hint)
-        info_l.addStretch()
         info_l.addWidget(btn_hint_guide)
         layout.addWidget(info_banner)
 
@@ -2605,17 +2956,17 @@ class TireNipDockWidget(QDockWidget):
 
         self.cmb_ada_layer = QgsMapLayerComboBox()
         self.cmb_ada_layer.setFilters(QgsMapLayerProxyModel.Filter.PolygonLayer)
-        f_layout.addRow("Kadastro / Saha Adaları:", self.cmb_ada_layer)
+        f_layout.addRow("Kadastro / saha adaları:", self.cmb_ada_layer)
 
         self.cmb_bina_layer = QgsMapLayerComboBox()
         self.cmb_bina_layer.setFilters(QgsMapLayerProxyModel.Filter.PolygonLayer)
-        f_layout.addRow("Bina Katmanı (tire_bina):", self.cmb_bina_layer)
+        f_layout.addRow("Bina katmanı:", self.cmb_bina_layer)
 
         self.spn_hh = QDoubleSpinBox()
         self.spn_hh.setRange(1.0, 8.0)
         self.spn_hh.setValue(2.85)
         self.spn_hh.setSingleStep(0.05)
-        f_layout.addRow("Ortalama Hanehalkı Büyüklüğü:", self.spn_hh)
+        f_layout.addRow("Ort. hanehalkı büyüklüğü:", self.spn_hh)
 
         self.spn_daire_m2 = QDoubleSpinBox()
         self.spn_daire_m2.setRange(40.0, 300.0)
@@ -2637,10 +2988,11 @@ class TireNipDockWidget(QDockWidget):
             "Yalnızca Konut ve Karma Kullanım (TİCK) alanlarında yaşayan nüfus toplanır."
         )
         lbl_kural.setWordWrap(True)
-        lbl_kural.setStyleSheet("color: #0369a1; font-size: 11px; background: #e0f2fe; padding: 8px; border-radius: 4px;")
+        lbl_kural.setStyleSheet(note_css("info"))
         layout.addWidget(lbl_kural)
 
-        self.btn_run_field = QPushButton("  Saha ve Bina Bazlı Fiili Nüfus ve Morfolojiyi Hesapla")
+        self.btn_run_field = QPushButton("Fiili Nüfusu Hesapla")
+        self.btn_run_field.setToolTip("Saha ve bina bazlı fiili nüfus ve morfolojiyi hesapla")
         self.btn_run_field.setObjectName("FieldButton")
         field_icon_path = os.path.join(PLUGIN_DIR, "icons", "field.png")
         if os.path.exists(field_icon_path):
@@ -2653,54 +3005,49 @@ class TireNipDockWidget(QDockWidget):
         layout.addWidget(self.field_progress)
 
         # 1-Tıkla Tematik Harita ve Morfoloji Görselleştirme Kutusu
-        self.box_field_styles = QGroupBox("🎨 1-Tıkla Tematik Harita ve Morfoloji Stilleri")
-        self.box_field_styles.setStyleSheet("QGroupBox { font-weight: bold; color: #0f766e; }")
+        self.box_field_styles = QGroupBox("🎨 Tematik Stiller")
+        self.box_field_styles.setToolTip("1-tıkla tematik harita ve morfoloji stilleri")
         self.box_field_styles.setVisible(False)
         st_layout = QVBoxLayout(self.box_field_styles)
         st_layout.setSpacing(4)
 
-        lbl_style_desc = QLabel("Hesaplanan ada katmanını tek tıkla mekânsal ve tematik olarak renklendirin:")
-        lbl_style_desc.setStyleSheet("font-size: 11px; color: #64748b;")
+        lbl_style_desc = QLabel("Hesaplanan ada katmanını tek tıkla renklendirin:")
+        lbl_style_desc.setStyleSheet(text_css("subtle", "8.5pt"))
         st_layout.addWidget(lbl_style_desc)
 
-        btn_row1 = QHBoxLayout()
+        btn_grid = QGridLayout()
+        btn_grid.setSpacing(4)
         self.btn_style_pop = QPushButton("👥 Nüfus (k/ha)")
         self.btn_style_pop.setToolTip("Brüt nüfus yoğunluğu kademeleri (0, 1-50, 51-150, 151-300, 301-600, 600+)")
         self.btn_style_pop.clicked.connect(self._apply_style_pop)
-        btn_row1.addWidget(self.btn_style_pop)
 
         self.btn_style_taks = QPushButton("🏗️ TAKS (GSI)")
         self.btn_style_taks.setToolTip("Taban Alanı Katsayısı / Zemin Doluluk Oranı (GSI: <0.20, 0.20-0.40, 0.40-0.60, >0.60)")
         self.btn_style_taks.clicked.connect(self._apply_style_taks)
-        btn_row1.addWidget(self.btn_style_taks)
 
-        self.btn_style_kaks = QPushButton("🏢 KAKS (FSI / Emsal)")
+        self.btn_style_kaks = QPushButton("🏢 KAKS (Emsal)")
         self.btn_style_kaks.setToolTip("Kat Alanı Katsayısı / Emsal (FSI: <0.60, 0.60-1.20, 1.20-2.0, 2.0-3.5, >3.5)")
         self.btn_style_kaks.clicked.connect(self._apply_style_kaks)
-        btn_row1.addWidget(self.btn_style_kaks)
-        st_layout.addLayout(btn_row1)
-
-        btn_row2 = QHBoxLayout()
         self.btn_style_kat = QPushButton("📏 Kat Sayısı (L)")
         self.btn_style_kat.setToolTip("Ağırlıklı Ortalama Kat Adedi (L = İnşaat Alanı / Taban Alanı)")
         self.btn_style_kat.clicked.connect(self._apply_style_ort_kat)
-        btn_row2.addWidget(self.btn_style_kat)
 
         self.btn_style_open = QPushButton("🌳 Açık Alan (%)")
         self.btn_style_open.setToolTip("Ada Zeminindeki Açık / Boş Alan Yüzdesi (100 - TAKS*100)")
         self.btn_style_open.clicked.connect(self._apply_style_open)
-        btn_row2.addWidget(self.btn_style_open)
 
         self.btn_style_nizam = QPushButton("🏘️ Yapı Nizamı (A4)")
         self.btn_style_nizam.setToolTip("PlanX Morfoloji Motoru (A4): Ayrık, Bitişik / Blok, Karma, Boş Ada")
         self.btn_style_nizam.clicked.connect(self._apply_style_nizam)
-        btn_row2.addWidget(self.btn_style_nizam)
 
-        self.btn_style_doku = QPushButton("📐 Doku / Spacematrix")
+        self.btn_style_doku = QPushButton("📐 Spacematrix")
         self.btn_style_doku.setToolTip("Spacematrix Morfolojik Tipolojisi: Seyrek Bahçeli, Orta Yoğunluk, Kompakt Blok, Kule Blok, Geleneksel Doku")
         self.btn_style_doku.clicked.connect(self._apply_style_doku)
-        btn_row2.addWidget(self.btn_style_doku)
-        st_layout.addLayout(btn_row2)
+        style_buttons = (self.btn_style_pop, self.btn_style_taks, self.btn_style_kaks, self.btn_style_kat,
+                         self.btn_style_open, self.btn_style_nizam, self.btn_style_doku)
+        for n, btn in enumerate(style_buttons):
+            btn_grid.addWidget(btn, n // 2, n % 2)
+        st_layout.addLayout(btn_grid)
 
         layout.addWidget(self.box_field_styles)
 
@@ -2803,25 +3150,25 @@ class TireNipDockWidget(QDockWidget):
             report_text = f"""
             <h3>🏠 MEVCUT DURUM FİİLİ NÜFUS VE MORFOLOJİ RAPORU</h3>
             <table border="1" cellpadding="4" style="border-collapse:collapse; width:100%; margin-bottom:8px;">
-                <tr style="background:#d97706; color:white;"><th colspan="2">1. Demografi & Yapılaşma Kapasitesi</th></tr>
+                <tr style="background:{self._c['accent_amber']}; color:{self._c['on_amber']};"><th colspan="2">1. Demografi & Yapılaşma Kapasitesi</th></tr>
                 <tr><td><b>Toplam İncelenen Kadastro Adası</b></td><td>{stats['toplam_ada_sayisi']:,} Adet</td></tr>
                 <tr><td><b>Eşleşen Toplam Bina Sayısı</b></td><td>{stats['toplam_eslesen_bina']:,} Adet</td></tr>
                 <tr><td><b>Tahmini Konut Birim Sayısı</b></td><td>{stats['toplam_konut_birimi']:,} Bağımsız Bölüm</td></tr>
-                <tr><td><b>Tahmini Fiili Yaşayan Nüfus</b></td><td style="color:#b45309; font-weight:bold; font-size:13px;">{stats['toplam_fiili_nufus']:,} Kişi</td></tr>
+                <tr><td><b>Tahmini Fiili Yaşayan Nüfus</b></td><td style="color:{self._c['warn']}; font-weight:bold; font-size:13px;">{stats['toplam_fiili_nufus']:,} Kişi</td></tr>
                 <tr><td><b>Tahmini Fiili İstihdam</b></td><td><b>{stats['toplam_fiili_istihdam']:,}</b> Çalışan</td></tr>
                 <tr><td><b>Ortalama Hanehalkı Büyüklüğü</b></td><td>{stats['ortalama_hanehalki']} Kişi/Hane (Daire: {stats['ortalama_daire_m2']} m²)</td></tr>
             </table>
 
             <table border="1" cellpadding="4" style="border-collapse:collapse; width:100%;">
-                <tr style="background:#0f766e; color:white;"><th colspan="2">2. Kentsel Morfoloji, TAKS / KAKS ve Spacematrix Göstergeleri</th></tr>
+                <tr style="background:{self._c['primary']}; color:{self._c['on_accent']};"><th colspan="2">2. Kentsel Morfoloji, TAKS / KAKS ve Spacematrix Göstergeleri</th></tr>
                 <tr><td><b>Toplam Bina Taban Alanı (m²)</b></td><td>{stats['toplam_taban_m2']:,.1f} m²</td></tr>
                 <tr><td><b>Toplam İnşaat Alanı (m²)</b></td><td>{stats['toplam_insaat_m2']:,.1f} m²</td></tr>
-                <tr style="background:#fefce8;"><td><b>Ortalama Fiili TAKS (GSI)</b></td><td style="font-weight:bold; color:#0f766e;">{stats['ortalama_taks']:.3f}</td></tr>
-                <tr style="background:#fefce8;"><td><b>Ortalama Fiili KAKS (Emsal / FSI)</b></td><td style="font-weight:bold; color:#0f766e;">{stats['ortalama_kaks']:.3f}</td></tr>
+                <tr><td><b>Ortalama Fiili TAKS (GSI)</b></td><td style="font-weight:bold; color:{self._c['accent']};">{stats['ortalama_taks']:.3f}</td></tr>
+                <tr><td><b>Ortalama Fiili KAKS (Emsal / FSI)</b></td><td style="font-weight:bold; color:{self._c['accent']};">{stats['ortalama_kaks']:.3f}</td></tr>
                 <tr><td><b>Ortalama Kat Adedi (L)</b></td><td><b>{stats['ortalama_kat']:.1f}</b> Kat</td></tr>
                 <tr><td><b>Ortalama Açık Alan Oranı (%)</b></td><td><b>%{stats['ortalama_acik_alan_yuzde']:.1f}</b></td></tr>
             </table>
-            <div style="font-size:10px; color:#475569; margin-top:6px; background:#f1f5f9; padding:6px; border-radius:3px;">
+            <div style="font-size:10px; color:{self._c['subtle']}; margin-top:6px;">
                 <i>* PlanX kentsel morfoloji motoru ve Spacematrix (Berghauser Pont & Haupt) analitik kütüphanesi ile hesaplanmıştır. Yukarıdaki 1-tıkla stil butonlarıyla tematik analiz haritaları üretebilirsiniz.</i>
             </div>
             """
@@ -2838,7 +3185,7 @@ class TireNipDockWidget(QDockWidget):
 
         except Exception as e:
             QMessageBox.critical(self, "Hata", f"Mevcut Durum Analizi sırasında hata: {str(e)}")
-            self.txt_field_results.append(f"<span style='color:red;'>Hata: {str(e)}</span>")
+            self.txt_field_results.append(f"<span style='color:{self._c['bad']};'>Hata: {html.escape(str(e))}</span>")
         finally:
             self.btn_run_field.setEnabled(True)
             self.field_progress.setVisible(False)
@@ -2973,8 +3320,9 @@ class TireNipDockWidget(QDockWidget):
         info_lay.setContentsMargins(10, 8, 10, 8)
         info_lay.setSpacing(4)
 
-        t_lbl = QLabel("🌐 Kentsel Ulaşım, Ağ ve Mekânsal Erişim Analizleri (PlanX Motoru)")
-        t_lbl.setStyleSheet("font-weight: 700; font-size: 10pt; color: #0f766e;")
+        t_lbl = QLabel("🌐 Ulaşım, Ağ ve Erişim Analizleri")
+        t_lbl.setToolTip("Kentsel ulaşım, ağ ve mekânsal erişim analizleri (PlanX motoru)")
+        t_lbl.setStyleSheet(text_css("accent", "10pt", bold=True))
         info_lay.addWidget(t_lbl)
 
         d_lbl = QLabel(
@@ -2984,7 +3332,7 @@ class TireNipDockWidget(QDockWidget):
             "ve Mevcut vs Meri Plan A/B Fark Haritası."
         )
         d_lbl.setWordWrap(True)
-        d_lbl.setStyleSheet("color: #475569; font-size: 8.5pt;")
+        d_lbl.setStyleSheet(text_css("subtle", "8.5pt"))
         info_lay.addWidget(d_lbl)
         layout.addWidget(card_info)
 
@@ -3000,18 +3348,19 @@ class TireNipDockWidget(QDockWidget):
 
         self.cmb_syntax_roads = QgsMapLayerComboBox()
         self.cmb_syntax_roads.setFilters(QgsMapLayerProxyModel.Filter.LineLayer)
-        f_syntax.addRow("Yol Ağı Katmanı (Mevcut / Meri):", self.cmb_syntax_roads)
+        f_syntax.addRow("Yol ağı katmanı:", self.cmb_syntax_roads)
 
         self.txt_syntax_radii = QLineEdit("400, 800, 1200, n")
         self.txt_syntax_radii.setToolTip("Metrik yarıçaplar (m): Yaya koridorları için 400/800, kent ölçeği için n")
-        f_syntax.addRow("Analiz Yarıçapları (R metre):", self.txt_syntax_radii)
+        f_syntax.addRow("Yarıçaplar (m):", self.txt_syntax_radii)
 
         l_syntax.addLayout(f_syntax)
         lbl_syntax_hint = QLabel("💡 Çıktılar: NAIN (Varış/Yaya Canlılığı) ve NACH (Geçiş/Arter Yükü) metrikleri.")
-        lbl_syntax_hint.setStyleSheet("color: #64748b; font-size: 8pt; font-style: italic;")
+        lbl_syntax_hint.setStyleSheet(text_css("subtle", "8pt", italic=True))
         l_syntax.addWidget(lbl_syntax_hint)
 
-        self.btn_run_syntax = QPushButton("  🚀 Space Syntax Segment Analizini Çalıştır (NAIN & NACH)")
+        self.btn_run_syntax = QPushButton("🚀 Space Syntax Çalıştır")
+        self.btn_run_syntax.setToolTip("Space Syntax segment analizini çalıştır (NAIN & NACH)")
         self.btn_run_syntax.setObjectName("PrimaryButton")
         self.btn_run_syntax.setCursor(_POINTING_HAND)
         self.btn_run_syntax.clicked.connect(self._on_run_space_syntax)
@@ -3034,20 +3383,21 @@ class TireNipDockWidget(QDockWidget):
         self.txt_cent_radii.setToolTip("R=800m yaya/ticaret koridorları, R=5000m taşıt/lojistik koridorları")
         f_cent.addRow("Yarıçaplar (R metre):", self.txt_cent_radii)
 
-        self.chk_cent_edges = QCheckBox("Aks Çizgileri Merkezilikleri (Edges)")
+        self.chk_cent_edges = QCheckBox("Aks merkezilikleri (Edges)")
         self.chk_cent_edges.setChecked(True)
         f_cent.addRow(self.chk_cent_edges)
 
-        self.chk_cent_nodes = QCheckBox("Kavşak Düğüm Merkezilikleri (Nodes)")
+        self.chk_cent_nodes = QCheckBox("Kavşak merkezilikleri (Nodes)")
         self.chk_cent_nodes.setChecked(True)
         f_cent.addRow(self.chk_cent_nodes)
 
         l_cent.addLayout(f_cent)
         lbl_cent_hint = QLabel("💡 Çıktılar: Betweenness (Aradalık), Closeness (Yakınlık) ve Straightness (Doğrusallık).")
-        lbl_cent_hint.setStyleSheet("color: #64748b; font-size: 8pt; font-style: italic;")
+        lbl_cent_hint.setStyleSheet(text_css("subtle", "8pt", italic=True))
         l_cent.addWidget(lbl_cent_hint)
 
-        self.btn_run_cent = QPushButton("  📊 Primal Ağ Merkeziliklerini Hesapla")
+        self.btn_run_cent = QPushButton("📊 Merkezilikleri Hesapla")
+        self.btn_run_cent.setToolTip("Primal ağ merkeziliklerini hesapla")
         self.btn_run_cent.setObjectName("PrimaryButton")
         self.btn_run_cent.setCursor(_POINTING_HAND)
         self.btn_run_cent.clicked.connect(self._on_run_network_centrality)
@@ -3064,30 +3414,33 @@ class TireNipDockWidget(QDockWidget):
 
         self.cmb_od_origins = QgsMapLayerComboBox()
         self.cmb_od_origins.setFilters(QgsMapLayerProxyModel.Filter.PointLayer)
-        f_od.addRow("Menşe (Origins / Mahalle-Ada Merkezleri):", self.cmb_od_origins)
+        f_od.addRow("Menşe noktaları:", self.cmb_od_origins)
 
         self.cmb_od_destinations = QgsMapLayerComboBox()
         self.cmb_od_destinations.setFilters(QgsMapLayerProxyModel.Filter.PointLayer)
-        f_od.addRow("Hedef (Destinations / MİA, Sanayi, Donatı):", self.cmb_od_destinations)
+        f_od.addRow("Hedef noktaları:", self.cmb_od_destinations)
 
         self.cmb_od_road = QgsMapLayerComboBox()
         self.cmb_od_road.setFilters(QgsMapLayerProxyModel.Filter.LineLayer)
         f_od.addRow("Yol Ağı Katmanı:", self.cmb_od_road)
 
-        self.chk_od_routes = QCheckBox("Ağ üzerindeki gerçek en kısa yol rotalarını çizgi olarak üret")
+        self.chk_od_routes = QCheckBox("En kısa yol rotalarını üret")
+        self.chk_od_routes.setToolTip("Ağ üzerindeki gerçek en kısa yol rotalarını çizgi olarak üret")
         self.chk_od_routes.setChecked(True)
         f_od.addRow(self.chk_od_routes)
 
-        self.chk_od_desire = QCheckBox("Kuş uçuşu arzu hatları ve Detour Bariyer Analizini üret (> 1.35)")
+        self.chk_od_desire = QCheckBox("Arzu hatları ve bariyer analizi")
+        self.chk_od_desire.setToolTip("Kuş uçuşu arzu hatları ve Detour bariyer analizini üret (> 1.35)")
         self.chk_od_desire.setChecked(True)
         f_od.addRow(self.chk_od_desire)
 
         l_od.addLayout(f_od)
         lbl_od_hint = QLabel("💡 Detour Ratio = Ağ Mesafesi / Kuş Uçuşu. 1.35 üzerindeki akslar kopukluk/bariyer işaretidir.")
-        lbl_od_hint.setStyleSheet("color: #64748b; font-size: 8pt; font-style: italic;")
+        lbl_od_hint.setStyleSheet(text_css("subtle", "8pt", italic=True))
         l_od.addWidget(lbl_od_hint)
 
-        self.btn_run_od = QPushButton("  📍 OD Rotalarını ve Detour Bariyerlerini Üret")
+        self.btn_run_od = QPushButton("📍 OD Rotalarını Üret")
+        self.btn_run_od.setToolTip("OD rotalarını ve Detour bariyerlerini üret")
         self.btn_run_od.setObjectName("AccentButton")
         self.btn_run_od.setCursor(_POINTING_HAND)
         self.btn_run_od.clicked.connect(self._on_run_od_rotalama)
@@ -3104,7 +3457,7 @@ class TireNipDockWidget(QDockWidget):
 
         self.cmb_iso_facilities = QgsMapLayerComboBox()
         self.cmb_iso_facilities.setFilters(QgsMapLayerProxyModel.Filter.PointLayer | QgsMapLayerProxyModel.Filter.PolygonLayer)
-        f_iso.addRow("Donatı Katmanı (Okul, Sağlık, Park):", self.cmb_iso_facilities)
+        f_iso.addRow("Donatı katmanı:", self.cmb_iso_facilities)
 
         self.cmb_iso_roads = QgsMapLayerComboBox()
         self.cmb_iso_roads.setFilters(QgsMapLayerProxyModel.Filter.LineLayer)
@@ -3119,20 +3472,21 @@ class TireNipDockWidget(QDockWidget):
             "İçbükey Gövde (Concave Hull - İzokron Blobu)",
             "Dışbükey Gövde (Convex Hull - Zarf)"
         ])
-        f_iso.addRow("İzokron Geometri Yöntemi:", self.cmb_iso_method)
+        f_iso.addRow("İzokron yöntemi:", self.cmb_iso_method)
 
         l_iso.addLayout(f_iso)
         lbl_iso_hint = QLabel("💡 Virgülle ayrılmış mesafeler girilebilir (örn: 200, 400, 600 veya 400, 800, 1200). Pedshed < 0.40 izoledir.")
-        lbl_iso_hint.setStyleSheet("color: #64748b; font-size: 8pt; font-style: italic;")
+        lbl_iso_hint.setStyleSheet(text_css("subtle", "8pt", italic=True))
         l_iso.addWidget(lbl_iso_hint)
 
-        self.btn_run_iso = QPushButton("  🚶 Hizmet İzokronları ve Pedshed Karnesini Üret")
+        self.btn_run_iso = QPushButton("🚶 İzokronları Üret")
+        self.btn_run_iso.setToolTip("Hizmet izokronları ve Pedshed karnesini üret")
         self.btn_run_iso.setObjectName("SecondaryButton")
         self.btn_run_iso.setCursor(_POINTING_HAND)
         self.btn_run_iso.clicked.connect(self._on_run_hizmet_izokron)
         l_iso.addWidget(self.btn_run_iso)
         l_iso.addStretch()
-        sub_tabs.addTab(w_iso, "4. Hizmet İzokronları")
+        sub_tabs.addTab(w_iso, "4. İzokron")
 
         # -------------------------------------------------------------
         # Alt Sekme 5: 2SFCA Donatı Yeterliliği (Kapasite + Mesafe)
@@ -3143,29 +3497,29 @@ class TireNipDockWidget(QDockWidget):
 
         self.cmb_fca_facilities = QgsMapLayerComboBox()
         self.cmb_fca_facilities.setFilters(QgsMapLayerProxyModel.Filter.PointLayer | QgsMapLayerProxyModel.Filter.PolygonLayer)
-        f_fca.addRow("Donatı Katmanı (Okul, Sağlık):", self.cmb_fca_facilities)
+        f_fca.addRow("Donatı katmanı:", self.cmb_fca_facilities)
 
         self.cmb_fca_id_field = QgsFieldComboBox()
         self.cmb_fca_id_field.setAllowEmptyFieldName(True)
-        f_fca.addRow("Donatı Ad / Kimlik Sütunu:", self.cmb_fca_id_field)
+        f_fca.addRow("Ad / kimlik sütunu:", self.cmb_fca_id_field)
 
         self.cmb_fca_cap_field = QgsFieldComboBox()
         self.cmb_fca_cap_field.setAllowEmptyFieldName(True)
-        f_fca.addRow("Kapasite Sütunu (Boşsa Sabit):", self.cmb_fca_cap_field)
+        f_fca.addRow("Kapasite sütunu:", self.cmb_fca_cap_field)
 
         self.spn_fca_default_cap = QDoubleSpinBox()
         self.spn_fca_default_cap.setRange(1.0, 1000000.0)
         self.spn_fca_default_cap.setValue(100.0)
-        self.spn_fca_default_cap.setSuffix(" birim/öğrenci")
-        f_fca.addRow("Varsayılan Kapasite (Sütun Boşsa):", self.spn_fca_default_cap)
+        self.spn_fca_default_cap.setSuffix(" birim")
+        f_fca.addRow("Varsayılan kapasite:", self.spn_fca_default_cap)
 
         self.cmb_fca_demand = QgsMapLayerComboBox()
         self.cmb_fca_demand.setFilters(QgsMapLayerProxyModel.Filter.PointLayer | QgsMapLayerProxyModel.Filter.PolygonLayer)
-        f_fca.addRow("Talep / Ada Nüfus Katmanı:", self.cmb_fca_demand)
+        f_fca.addRow("Talep (nüfus) katmanı:", self.cmb_fca_demand)
 
         self.cmb_fca_pop_field = QgsFieldComboBox()
         self.cmb_fca_pop_field.setAllowEmptyFieldName(True)
-        f_fca.addRow("Nüfus Sütunu (Boşsa 1 Kişi):", self.cmb_fca_pop_field)
+        f_fca.addRow("Nüfus sütunu:", self.cmb_fca_pop_field)
 
         self.cmb_fca_roads = QgsMapLayerComboBox()
         self.cmb_fca_roads.setFilters(QgsMapLayerProxyModel.Filter.LineLayer)
@@ -3175,10 +3529,10 @@ class TireNipDockWidget(QDockWidget):
         self.spn_fca_cost.setRange(50.0, 10000.0)
         self.spn_fca_cost.setValue(800.0)
         self.spn_fca_cost.setSuffix(" metre")
-        f_fca.addRow("Maksimum Servis Mesafesi:", self.spn_fca_cost)
+        f_fca.addRow("Azami servis mesafesi:", self.spn_fca_cost)
 
-        self.cmb_fca_facilities.layerChanged.connect(self._on_fca_fac_layer_changed)
-        self.cmb_fca_demand.layerChanged.connect(self._on_fca_dem_layer_changed)
+        self.cmb_fca_facilities.layerChanged.connect(self._fca_fac_combo_changed)
+        self.cmb_fca_demand.layerChanged.connect(self._fca_dem_combo_changed)
 
         if self.cmb_fca_facilities.currentLayer():
             self._on_fca_fac_layer_changed(self.cmb_fca_facilities.currentLayer())
@@ -3187,16 +3541,17 @@ class TireNipDockWidget(QDockWidget):
 
         l_fca.addLayout(f_fca)
         lbl_fca_hint = QLabel("💡 E2SFCA yöntemiyle aşırı yüklü (Overloaded) ve hizmet alamayan (Uncovered) nüfus tespit edilir.")
-        lbl_fca_hint.setStyleSheet("color: #64748b; font-size: 8pt; font-style: italic;")
+        lbl_fca_hint.setStyleSheet(text_css("subtle", "8pt", italic=True))
         l_fca.addWidget(lbl_fca_hint)
 
-        self.btn_run_fca = QPushButton("  ⚖️ 2SFCA Kapasite ve Aşırı Yük Analizini Çalıştır")
+        self.btn_run_fca = QPushButton("⚖️ 2SFCA Çalıştır")
+        self.btn_run_fca.setToolTip("2SFCA kapasite ve aşırı yük analizini çalıştır")
         self.btn_run_fca.setObjectName("AccentButton")
         self.btn_run_fca.setCursor(_POINTING_HAND)
         self.btn_run_fca.clicked.connect(self._on_run_2sfca)
         l_fca.addWidget(self.btn_run_fca)
         l_fca.addStretch()
-        sub_tabs.addTab(w_fca, "5. 2SFCA Yeterlilik")
+        sub_tabs.addTab(w_fca, "5. 2SFCA")
 
         # -------------------------------------------------------------
         # Alt Sekme 6: A/B Senaryosu (Mevcut vs Meri Plan Kıyası)
@@ -3207,30 +3562,31 @@ class TireNipDockWidget(QDockWidget):
 
         self.cmb_scen_road_a = QgsMapLayerComboBox()
         self.cmb_scen_road_a.setFilters(QgsMapLayerProxyModel.Filter.LineLayer)
-        f_scen.addRow("Senaryo A: Mevcut Yol Ağı:", self.cmb_scen_road_a)
+        f_scen.addRow("A: Mevcut yol ağı:", self.cmb_scen_road_a)
 
         self.cmb_scen_road_b = QgsMapLayerComboBox()
         self.cmb_scen_road_b.setFilters(QgsMapLayerProxyModel.Filter.LineLayer)
-        f_scen.addRow("Senaryo B: Meri / Öneri Plan Yol Ağı:", self.cmb_scen_road_b)
+        f_scen.addRow("B: Öneri yol ağı:", self.cmb_scen_road_b)
 
         self.spn_scen_radius = QDoubleSpinBox()
         self.spn_scen_radius.setRange(200.0, 5000.0)
         self.spn_scen_radius.setValue(800.0)
         self.spn_scen_radius.setSuffix(" metre")
-        f_scen.addRow("Space Syntax Karşılaştırma Yarıçapı:", self.spn_scen_radius)
+        f_scen.addRow("Kıyas yarıçapı:", self.spn_scen_radius)
 
         l_scen.addLayout(f_scen)
         lbl_scen_hint = QLabel("💡 Delta NACH, Delta NAIN ve 4 Temel Plan Karar Başlığı (Kademelenme, Yayalaştırma vb.) otomatik üretilir.")
-        lbl_scen_hint.setStyleSheet("color: #64748b; font-size: 8pt; font-style: italic;")
+        lbl_scen_hint.setStyleSheet(text_css("subtle", "8pt", italic=True))
         l_scen.addWidget(lbl_scen_hint)
 
-        self.btn_run_scen = QPushButton("  🔄 A/B Fark Haritası ve Plan Kararlarını Üret")
+        self.btn_run_scen = QPushButton("🔄 A/B Fark Haritası")
+        self.btn_run_scen.setToolTip("A/B fark haritası ve plan kararlarını üret")
         self.btn_run_scen.setObjectName("PrimaryButton")
         self.btn_run_scen.setCursor(_POINTING_HAND)
         self.btn_run_scen.clicked.connect(self._on_run_scenario_compare)
         l_scen.addWidget(self.btn_run_scen)
         l_scen.addStretch()
-        sub_tabs.addTab(w_scen, "6. A/B Senaryo")
+        sub_tabs.addTab(w_scen, "6. A/B")
 
         # -------------------------------------------------------------
         # Alt Sekme 7: Ada/Bina Ön Cephe ve Servis Noktası Bulucu
@@ -3241,7 +3597,7 @@ class TireNipDockWidget(QDockWidget):
 
         self.cmb_cephe_poly = QgsMapLayerComboBox()
         self.cmb_cephe_poly.setFilters(QgsMapLayerProxyModel.Filter.PolygonLayer)
-        f_cephe.addRow("Ada / Parsel / Bina Katmanı:", self.cmb_cephe_poly)
+        f_cephe.addRow("Ada / parsel / bina:", self.cmb_cephe_poly)
 
         self.cmb_cephe_road = QgsMapLayerComboBox()
         self.cmb_cephe_road.setFilters(QgsMapLayerProxyModel.Filter.LineLayer)
@@ -3251,10 +3607,11 @@ class TireNipDockWidget(QDockWidget):
         self.spn_cephe_dist.setRange(5.0, 500.0)
         self.spn_cephe_dist.setValue(100.0)
         self.spn_cephe_dist.setSuffix(" metre")
-        f_cephe.addRow("Maksimum Arama Mesafesi:", self.spn_cephe_dist)
+        f_cephe.addRow("Azami arama mesafesi:", self.spn_cephe_dist)
 
         l_cephe.addLayout(f_cephe)
-        self.btn_run_cephe = QPushButton("  🏢 Ön Cephe Segmentlerini ve Servis Noktalarını Üret")
+        self.btn_run_cephe = QPushButton("🏢 Ön Cepheleri Üret")
+        self.btn_run_cephe.setToolTip("Ön cephe segmentlerini ve servis noktalarını üret")
         self.btn_run_cephe.setObjectName("SecondaryButton")
         self.btn_run_cephe.setCursor(_POINTING_HAND)
         self.btn_run_cephe.clicked.connect(self._on_run_on_cephe)

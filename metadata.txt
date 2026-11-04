@@ -3,29 +3,31 @@ name=PLN3113 NİP ve Kentsel Analiz Stüdyosu
 qgisMinimumVersion=3.22
 qgisMaximumVersion=4.99
 description=Turkish-language studio for 1/5000 master plans (Nazım İmar Planı) in Turkey: population and MPYY amenity standards, DOP land readjustment, urban morphology, space syntax and accessibility.
-version=1.1.6
+version=1.2.0
 author=Geophilo
 email=yusuf.eminoglu@deu.edu.tr
 about=PLN3113 NİP ve Kentsel Analiz Stüdyosu, 1/5000 Nazım İmar Planı çalışmasının analiz ve hesap yükünü tek bir panelde toplar. MPYY normlarına, 3194 sayılı İmar Kanunu 18. maddeye ve PlanX kentsel analitik motoruna dayanır; şehir planlama stüdyoları, öğrenciler ve araştırmacılar için hazırlanmıştır.
-    Altı çalışma alanı: geometri temizliği, geçersiz poligon onarımı ve mükerrer parsel ayıklama; MPYY 1.1.7 şablonlu GeoPackage plan veritabanı ve tek tıkla resmî lejant; yol hiyerarşisi, bordür ve kaldırım ofsetleri, yaylı kavşaklar ve poligonlaştırma; brüt plan nüfusu, Ek-2 donatı yeterlilik bilançosu, DOP/nDOP mülkiyet dengesi ve nüfus projeksiyonları; TAKS, KAKS/emsal, kat adedi, açık alan oranı, yapı nizamı ve Spacematrix doku tipolojisi; Space Syntax NACH/NAIN, merkezilik, OD arzu hatları, yürüme izokronları, 2SFCA donatı erişilebilirliği ve A/B senaryo farkı.
-    15 Processing aracı model tasarımcısında zincirlenebilir. Arayüz Türkçedir.
+    Çalışma alanları: geometri temizliği, geçersiz poligon onarımı ve mükerrer parsel ayıklama; MPYY 1.1.7 şablonlu GeoPackage plan veritabanı ve tek tıkla resmî lejant; yol hiyerarşisi, bordür ve kaldırım ofsetleri, yaylı kavşaklar ve poligonlaştırma; brüt plan nüfusu, Ek-2 donatı yeterlilik bilançosu ve DOP/nDOP mülkiyet dengesi; TAKS, KAKS/emsal, kat adedi, açık alan oranı, yapı nizamı ve Spacematrix doku tipolojisi; segment açısal Space Syntax (NACH/NAIN), merkezilik, OD arzu hatları, yürüme izokronları, 2SFCA donatı erişilebilirliği ve A/B senaryo farkı.
+    Nüfus ve kırılganlık: altı trend yöntemiyle nüfus projeksiyonu (aritmetik, geometrik, İller Bankası, en küçük kareler, polinom, lojistik; R² ve geriye dönük sınama ile), 17 yaş grubu ve iki cinsiyetle 5 yıllık kohort-bileşen projeksiyonu (bağımlılık oranları, yaşlanma endeksi, medyan yaş, yaş piramidi tablosu), ekonomik taban göçü, hedef nüfusun mahallelere oransal, bölge payına göre ya da kapasite sınırlı dağıtımı, pay/payda yöntemiyle deprem, sel ve aşırı sıcak kırılganlık endeksleri ile bileşik endeks.
+    19 Processing aracı model tasarımcısında zincirlenebilir. Arayüz Türkçedir. Projeksiyon, dağıtım ve kırılganlık araçları Kent Öngörü v1.0.0 (Berkay Memiş, GPL-2.0-or-later) temel alınarak yeniden yazılmıştır; pay/payda yöntemi PLN3113 stüdyosundandır. Kohort aracının varsayılan sağkalım ve doğurganlık değerleri model yer tutucularıdır, resmî TÜİK tablolarıyla değiştirin. Ek-2 değerlerini yürürlükteki yönetmelik metniyle karşılaştırarak kullanın.
     Kılavuz: https://geophilo.com/pln3113_nip/
 repository=https://github.com/YusufEminoglu/pln3113_nip
 tracker=https://github.com/YusufEminoglu/pln3113_nip/issues
 homepage=https://geophilo.com/pln3113_nip/
 category=Vector
-tags=urban-planning,master-plan,nazim-imar-plani,nip,mpyy,turkey,spatial-analytics,urban-morphology,spacematrix,taks,kaks,gsi,fsi,dop,land-readjustment,social-infrastructure,demography,population-projection,space-syntax,centrality,isochrones,concave-hull,pedshed,2sfca,facility-adequacy,accessibility,od-matrix,road-network,intersection-fillet,cad-gis,pln3113,turkish,geophilo
+tags=urban-planning,master-plan,nazim-imar-plani,nip,mpyy,turkey,spatial-analytics,urban-morphology,spacematrix,taks,kaks,gsi,fsi,dop,land-readjustment,social-infrastructure,demography,population-projection,space-syntax,centrality,isochrones,concave-hull,pedshed,2sfca,facility-adequacy,accessibility,od-matrix,road-network,intersection-fillet,cad-gis,pln3113,turkish,geophilo,nüfus projeksiyonu,kohort,cohort-component,kırılganlık,vulnerability,nazım imar planı,space syntax,mahalle dağıtımı
 experimental=False
 deprecated=False
 hasProcessingProvider=yes
 license=GPL-2.0-or-later
 icon=icons/icon.png
 changelog=
+    1.2.0 - Nüfus projeksiyonu, kohort-bileşen projeksiyonu, mahalle dağıtımı ve kırılganlık endeksi araçları eklendi (Kent Öngörü v1.0.0 temel alınarak yeniden yazıldı); Processing araç sayısı 19 oldu. Space Syntax motoru PlanX 4.23.0 ile güncellendi (NAIN ve yönlü seçim düzeltildi, senaryo eşikleri yeniden belirlendi; 1.1.6 sonuçlarını yeniden hesaplayın). İptal edilen koşu yarım çıktı yazmaz. Farklı koordinat sistemindeki sınır ve yol katmanları dönüştürülür; alanlar her zaman elipsoid üzerinde ölçülür; elenen adalar ve boş değerler bildirilir; fit birimli projeksiyonlar reddedilir; plan sınırı olmadan DOP yalnızca tahmini verilir, yasal değerlendirme yapılmaz. Tire'ye özgü sabitler parametre oldu. Panel daraldı ve üç QGIS temasında okunur.
     1.1.6 - Help opens the online guide on geophilo.com instead of a copy bundled in the plugin package; the plugin no longer ships documentation HTML.
     1.1.5 - Hub listing text rewritten; author Geophilo; university affiliation removed; documentation links use the standard geophilo.com pages (manual.html, guide/); manual HTML no longer ships in the plugin package.
     1.1.4 - GitHub repo adi ve tum kaynak linkleri pln3113_nip (paket/klasor adi) ile tam esitlendi.
- 1.1.3 - Kapsamli Metodoloji ve Cikti Sozlugu: 7 modulu ve 15 analitik araci adim adim aciklayan ayrintili kilavuz, tum cikti sutunlarini planlama ve juri baglaminda aciklayan sozluk, MPYY normlari ve evrensel Turkiye SBP calisma alani uyarlamasi.
- 1.1.2 - Dinamik Izokron ve Icbukey Govde: Kullanici tanimli mesafe araliklariyla (orn: 200, 400, 600m) tam eslesen dinamik lejant ve renk skalasi, icbukey govde (Concave Hull) tek aks/dogrusal nokta dejenere geometri korumasi ve buyuk poligonlarin kucukleri ortmesini engelleyen siralama motoru.
- 1.1.1 - Kararlilik: Disaridan halihazir/CAD katman yuklemelerinde GUI kilitlenmesini onleme (GDI siniri korumasi), NoGeometry tablolarinda bos CRS standardi, dinamik surum etiketi ve cift katman ekleme korumasi.
- 1.1.0 - Kentsel Ag ve Erisim Analizleri Suiti (Space Syntax, Primal Merkezilik, OD Rotasi, Hizmet Izokronlari, 2SFCA Tesis Yeterliligi, A/B Senaryo Farki ve On Cephe Servis Noktasi).
- 1.0.0 - Ilk resmi surum: MPYY standartlarinda 1/5000 NIP nufus, Ek-2 donati yeterliligi, DOP/nDOP kurallar tablosu, ada/bina bazli TAKS, KAKS, Spacematrix OSR, Yapi Nizami metrikleri, 1-tikla tematik harita motoru ve kapsamli metodoloji rehberi.
+    1.1.3 - Kapsamli Metodoloji ve Cikti Sozlugu: 7 modulu ve 15 analitik araci adim adim aciklayan ayrintili kilavuz, tum cikti sutunlarini planlama ve juri baglaminda aciklayan sozluk, MPYY normlari ve evrensel Turkiye SBP calisma alani uyarlamasi.
+    1.1.2 - Dinamik Izokron ve Icbukey Govde: Kullanici tanimli mesafe araliklariyla (orn: 200, 400, 600m) tam eslesen dinamik lejant ve renk skalasi, icbukey govde (Concave Hull) tek aks/dogrusal nokta dejenere geometri korumasi ve buyuk poligonlarin kucukleri ortmesini engelleyen siralama motoru.
+    1.1.1 - Kararlilik: Disaridan halihazir/CAD katman yuklemelerinde GUI kilitlenmesini onleme (GDI siniri korumasi), NoGeometry tablolarinda bos CRS standardi, dinamik surum etiketi ve cift katman ekleme korumasi.
+    1.1.0 - Kentsel Ag ve Erisim Analizleri Suiti (Space Syntax, Primal Merkezilik, OD Rotasi, Hizmet Izokronlari, 2SFCA Tesis Yeterliligi, A/B Senaryo Farki ve On Cephe Servis Noktasi).
+    1.0.0 - Ilk resmi surum: MPYY standartlarinda 1/5000 NIP nufus, Ek-2 donati yeterliligi, DOP/nDOP kurallar tablosu, ada/bina bazli TAKS, KAKS, Spacematrix OSR, Yapi Nizami metrikleri, 1-tikla tematik harita motoru ve kapsamli metodoloji rehberi.

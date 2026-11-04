@@ -19,9 +19,9 @@
 
 ---
 
-## 🛠️ Modül ve Araç Envanteri (7 Temel Sekme & 15 Processing Algoritması)
+## 🛠️ Modül ve Araç Envanteri (19 Processing Algoritması)
 
-Eklenti arayüzü 7 ana navigasyon sekmesinden oluşur ve arka planda 15 bağımsız QGIS Processing algoritması barındırır:
+Eklenti paneli 8 sayfadan oluşur (Geometri, Veritabanı, Yol/Kavşak, Nüfus, NİP & DOP, Saha/Yapı, Network, Rehber). Hesaplar 7 grupta toplanan 19 QGIS Processing algoritmasıyla yapılır; hepsi `pln3113` sağlayıcısı altında Processing araç kutusunda ve model tasarımcısında da kullanılabilir.
 
 ### 1. 🧹 Geometri Onarımı ve Topolojik Temizlik
 - **Self-Intersection & Geçersizlik Onarımı:** Dışarıdan içe aktarılan veya çizim sırasında bozulan plan poligonlarını GEOS `makeValid` ve hassas tampon toleranslarıyla topolojik olarak onarır.
@@ -43,9 +43,33 @@ Eklenti arayüzü 7 ana navigasyon sekmesinden oluşur ve arka planda 15 bağım
 - **Dinamik Yoğunluk Eşleme:** Plan lejantındaki fonksiyonları (`Ort__Detay`, `Ort_Detay`, `nipfonksiyon`) tanıyarak `ALT_SNR` ve `UST_SNR` brüt yoğunluklarını (kişi/hektar) otomatik atar.
 - **Karma Kullanım (Ticaret-Konut) Kuralı:** Mekânsal komşuluğundaki en yakın konut adalarının yoğunluğunun %30'unu karma konut yoğunluğu olarak modele katar.
 - **Dinamik Kurallar Tablosu (9 Sütun):** Plan fonksiyonu, DOP Dahil?, DOP Türü (Özel Tahsis / Kamu Kesintisi / nDOP), İstihdam Dahil?, m²/Çalışan, Verim Oranı, Araç/Yaya Katsayılarını hücre bazında düzenleme imkanı.
-- **3194 / Madde 18 DOP Dengesi:** Düzenleme ortaklık payını hesaplar, yasal %45 tavanına uygunluğunu test eder.
-- **MPYY Ek-2 Asgari Donatı Karnesi:** Eğitim, Sağlık, Sosyal/Kültürel, Yeşil Alan, Teknik Altyapı ve İbadet donatıları için kişi başı düşen m² miktarını yasal eşiklerle kıyaslar.
-- **Demografik Projeksiyon Motoru:** Doğrusal (Aritmetik), Geometrik (Bileşik), Üstel ve İller Bankası formülüyle hedef yıl projeksiyonları sunar.
+- **3194 / Madde 18 DOP Dengesi:** Düzenleme ortaklık payını hesaplar ve yasal %45 tavanını aşıp aşmadığını gösterir. Panelde %45 "yasal tavan" olarak yazılır: bir hedef değil, aşılmaması gereken üst sınırdır.
+- **Plan Sınırı Olmadan DOP:** Plan onama sınırı katmanı verilmezse yol alanı adalar toplamının belirli bir payı olarak tahmin edilir (varsayılan 0,18; parametre olarak değiştirilebilir). Sonuç "TAHMİNİ DOP ORANI" olarak etiketlenir ve yasal uygunluk kararı verilmez.
+- **MPYY Ek-2 Asgari Donatı Karnesi:** Eğitim, Sağlık, Sosyal/Kültürel, Yeşil Alan, Teknik Altyapı ve İbadet donatıları için kişi başı düşen m² miktarını eklentideki eşik tablosuyla kıyaslar. Spor alanları yeşil alan standardına sayılmaz; adında "ÖZEL" geçen tesisler (özel sağlık, özel eğitim vb.) kamu donatı standardına sayılmaz.
+- **Bölgeye Özgü Ayarlar:** Kırsal nüfus eki ve nüfus kıyaslama değerleri sabit değildir, parametre olarak girilir (kırsal nüfus eki varsayılanı 0). Tire yalnızca örnek ön ayar olarak durur.
+- **Boş Değerler ve Elenen Adalar:** Boş ya da geçersiz geometri, sıfır alan veya plan sınırı dışında kaldığı için hesaptan çıkarılan adalar ve fonksiyon değeri boş olan adalar sayılıp uyarı olarak bildirilir. 2SFCA donatı yeterliliği aracında nüfusu boş (NULL) olan talep noktaları 0 kişi, kapasitesi boş olan donatılar varsayılan kapasiteyle hesaba girer; her iki durumda kayıt sayısı uyarı olarak verilir.
+
+> [!IMPORTANT]
+> **Ek-2 değerlerini kontrol edin.** Eklentideki Ek-2 donatı eşikleri resmî yönetmelik metniyle henüz satır satır karşılaştırılmamıştır. Plan raporunda kullanmadan önce değerleri yürürlükteki Mekânsal Planlar Yapım Yönetmeliği Ek-2 tablosuyla karşılaştırın.
+
+### 4a. 📈 Nüfus Projeksiyonu, Kohort, Mahalle Dağıtımı ve Kırılganlık
+Bu dört araç Processing araç kutusunda "07. Nüfus Projeksiyonu, Dağıtım ve Kırılganlık" grubundadır ve paneldeki Nüfus sayfasından açılabilir.
+
+- **Trend Projeksiyonu** (`pln3113:nufus_projeksiyonu`): Aritmetik, geometrik, İller Bankası, en küçük kareler (doğrusal regresyon), 2. derece polinom ve lojistik yöntemler. Her yöntem için R² ve geriye dönük sınama hatası (son gözlem çıkarılarak kurulan modelin o yıldaki yüzde hatası) verilir; sonuçlar özet tablo ve yıllık seri tablosu olarak yazılır.
+  İller Bankası yönteminde yıllık artış hızı varsayılan olarak %1-%3 aralığına çekilir ve çekildiğinde uyarı verilir. Lojistik yöntemde doygunluk nüfusu (K) verilmezse hatayı en küçükleyen K aranır; arama sınırına dayanırsa uyarı verilir. Pearl-Reed üç nokta biçimi isteğe bağlıdır.
+  "Üstel" yöntem yoktur: iki gözlem noktasında geometrik yöntemle aynı sonucu verir.
+- **Panelle Bağlantı:** Paneldeki Nüfus sayfasında hesaplanan projeksiyon sonucu NİP hedef nüfus kutusuna (50 milyona kadar) aktarılabilir; hedef nüfusu elle girmek de mümkündür.
+- **Kohort-Bileşen Projeksiyonu** (`pln3113:kohort_projeksiyonu`): 17 beş yaşlık grup (0-4 ... 80+), iki cinsiyet ve beşer yıllık adımlarla çalışır. Doğumlar 0-4 yaş grubuna doğumdan 0-4'e yaşama oranıyla aktarılır; hedef yıl beşlik adıma düşmüyorsa komşu adımlar arasında ara değer hesaplanır.
+  Varsayılan sağkalım oranları (Sx), yaşa özel doğurganlık hızları (ASFR) ve göç yaş profili kaynak notlarıyla birlikte `core/data/kohort_varsayilan.json` dosyasındadır. Bunlar resmî TÜİK tablosu değil, model yer tutucularıdır: Sx, TÜİK doğumda beklenen yaşam süresine (erkek 75,9, kadın 81,3 yıl) ayarlanmış Gompertz-Makeham model hayat tablosundan, ASFR toplamı TÜİK 2023 toplam doğurganlık hızı 1,51'e ölçeklenmiştir. Yerel çalışmada resmî tablolarla değiştirin; araçta kendi değerlerinizi de girebilirsiniz.
+  Net göç yıllık oran ya da yıllık kişi sayısı olarak girilir ve yaş profiline göre dağıtılır. Çıktılar: yaş piramidi tablosu (her adım ve hedef yıl için yaş grubu × cinsiyet) ve gösterge tablosu (bağımlılık oranları, yaşlanma endeksi, medyan yaş, doğum, net göç).
+- **Ekonomik Taban Göçü:** Trend projeksiyonu aracında isteğe bağlıdır. Yeni istihdam "çalışan başına nüfus" katsayısıyla (varsayılan 2,7 kişi/çalışan) göç eden nüfusa çevrilir ve her yöntemin sonucuna ayrıca eklenir.
+- **Mahalle Dağıtımı** (`pln3113:mahalle_dagitimi`): Hedef nüfus mahallelere oransal, planlama bölgesi payına göre ya da kapasite sınırlı olarak dağıtılır; kapasitesi dolan mahalleye düşen fazla pay diğer mahallelere yeniden dağıtılır, hiçbir yere sığmayan nüfus "dağıtılamayan" olarak bildirilir.
+  En büyük kalan yöntemiyle yapılan tam sayı yuvarlaması toplamı korur; sonuç seçilen anahtar alanla mahalle katmanına bağlanır.
+- **Kırılganlık Endeksi** (`pln3113:kirilganlik_endeksi`): Her gösterge 1-5 puanlanır; kırılganlığı artıran göstergeler (maruziyet, hassasiyet) pay, uyum kapasitesini gösterenler paydada yer alır (pay/payda yöntemi). Deprem (K_D), sel ve taşkın (K_Y) ve aşırı sıcak (K_S) için hazır endeksler vardır; bunlar PLN3113 stüdyosunun Tire eşiklerine dayanır, başka yerleşimde gözden geçirin. Kendi göstergelerinizle özel endeks (varsayılan kodu K_O) de tanımlanabilir.
+  Endeksler 0-100 aralığına ölçeklenip ağırlıklı ortalamayla bileşik endeks hesaplanır; varsayılan ağırlıklar K_D 0,40, K_Y 0,35, K_S 0,25 ve K_O 0,25'tir ve değiştirilebilir.
+  Kategori değerleri Türkçe karakter ve büyük/küçük harften bağımsız eşleşir ("YIĞMA" = "yığma"). Bir bölgede göstergenin değeri yoksa uydurma değer konmaz: puan 1 (çarpımda etkisiz) alınır ve bölgenin eksik gösterge sayısına yazılır.
+  Nüfus göstergesi mutlak kişi sayısıyla değil yoğunlukla (kişi/ha) puanlanır. Sel ve taşkın endeksinde dereye yakınlık, düşük göreli yükseklik ve düşük eğim kırılganlığı artırır.
+  Sınıflar Jenks (doğal kırılma), eşit sayılı (quantile), eşit aralıklı ya da geometrik aralıklı olarak ayrılır; sonuç anahtar alanla katmana bağlanır. İsteğe bağlı HTML raporundaki metinler kaçışlanarak (escape) yazılır.
 
 ### 5. 🏠 Saha Morfolojisi, Bina Tipolojisi ve Fiili Nüfus
 - **Kadastro & Bina Entegrasyonu:** Adalar ile bina kütlelerini mekânsal birleştirir (`Spatial Join`).
@@ -60,18 +84,29 @@ Eklenti arayüzü 7 ana navigasyon sekmesinden oluşur ve arka planda 15 bağım
 - **1-Tıkla Tematik Harita Motoru:** Nüfus, TAKS, KAKS, Kat Sayısı, Açık Alan ve Yapı Nizamı tematik paftalarını anında stillendirir.
 
 ### 6. 🚶 Kentsel Ağ, Yaya Erişimi ve Space Syntax Suiti
-- **Space Syntax (Aksiyel Entegrasyon):** NACH (Normalized Angular Choice) ve NAIN (Normalized Angular Integration) metrikleri ile kentin omurga koridorlarını modeller.
+- **Space Syntax (Segment Açısal Analiz):** Yol ağını segmentlere ayırarak açısal NACH (Normalized Angular Choice) ve NAIN (Normalized Angular Integration) değerlerini hesaplar.
+  Motor PlanX 4.23.0 ile aynıdır: NAIN = NC^1.2 / (TD + 2) ve seçim (choice) yönlü segment uçları üzerinden sayılır, bu yüzden çıkmaz sokak segmentleri seçim değeri almaz. Analiz yarıçapları yer metresidir.
+  1.1.6 ve öncesiyle üretilen değerler bu sürümle karşılaştırılamaz; yeniden hesaplayın. İşlem iptal edilirse yarım sonuç yazılmaz.
 - **Primal Ağ Merkeziliği:** Closeness (Yakınlık) ve Betweenness (Aradalık) merkezilik analizleri.
 - **Yol Eğimi Analizi:** DEM rasterından her yol segmentinin eğim yüzdesini hesaplar ve engelli/yaya erişilebilirlik sınırlarını kademelendirir.
 - **Bina Ön Cephe & Servis Noktası:** Ada veya bina poligonlarının yol ağına en uygun cephe/giriş kapı noktalarını otomatik bulur.
 - **OD Arzu Hatları ve Dijkstra Rotalama:** Konut odaklarından donatılara en kısa yol ve kuş uçuşu arzu hatlarını çizer; 1.35 üzerindeki Detour Ratio değerlerini bariyerli aks olarak raporlar.
 - **Dinamik Yürüme İzokronları (Concave Hull Pedshed):** Kullanıcı tanımlı eşiklerle (örn: 200m, 400m, 600m veya 400m, 800m, 1200m) yürüyüş havzaları üretir. Büyük poligonların küçükleri örtmesini engelleyen çizim sırası ve collinear dejenere geometri koruması barındırır.
 - **2SFCA (İki Aşamalı Yüzen Havza Modeli):** Donatı kapasiteleri ve nüfus talebini ağ mesafesiyle ağırlıklandırarak donatı yeterliliğini (Yeterli, Aşırı Yüklü, Kullanılmayan) hem nokta hem bina/ada poligonu düzeyinde modeller.
-- **A/B Senaryo Karşılaştırması:** Yeni açılan yol veya donatı senaryolarının erişim farklarını delta metrikleriyle ortaya koyar.
+- **A/B Senaryo Karşılaştırması:** Yeni açılan yol veya donatı senaryolarının erişim farklarını delta metrikleriyle ortaya koyar; sınıflama eşikleri yeni NACH ve NAIN ölçeğine göre yeniden belirlenmiştir (|ΔNACH| 0,077, |ΔNAIN| 0,047; yeni yol için NACH 0,734 ve NAIN 0,391).
 
-### 7. 📚 İnteraktif Teorik & Metodolojik El Kitabı
-- Eklenti panelinden doğrudan tarayıcıda açılabilen 70+ KB zengin içerikli teorik kılavuz:
-  - Formüller, MPYY Ek-2 katsayıları, DOP hesaplama tabloları, jüri sunum stratejileri ve 15 analitik aracın adım adım uygulama senaryoları.
+### 7. 📚 Teorik ve Metodolojik Kılavuz
+- Paneldeki Yardım düğmesi çevrimiçi kılavuzu açar: [geophilo.com/pln3113_nip](https://geophilo.com/pln3113_nip/). Kılavuz eklenti paketinde yer almaz.
+  - Formüller, MPYY Ek-2 katsayıları, DOP hesaplama tabloları, jüri sunum stratejileri ve analitik araçların adım adım uygulama senaryoları.
+
+---
+
+## 📐 Birimler ve Koordinat Sistemi Kuralları
+- **Metre birimli projeksiyon kullanın.** Ağ analizleri (Space Syntax, merkezilik, OD, izokron, 2SFCA, senaryo farkı), erişim havzası ve saha/bina analizi metre birimli projeksiyonlu bir koordinat sistemi (örneğin TUREF/TM dilimleri) ister; coğrafi (derece) ve fit (feet) birimli sistemler reddedilir.
+- **Katmanlar aynı sistemde olmak zorunda değildir.** NİP nüfus aracında plan sınırı ve yol katmanı ada katmanından farklı bir koordinat sistemindeyse ada katmanının sistemine dönüştürülür.
+- **Coğrafi (derece) koordinatlı veri:** NİP nüfus aracı alanları her zaman elipsoid üzerinde m² olarak ölçer. Proje elipsoidi "Yok" ise koordinat sisteminin kendi elipsoidi, o da yoksa WGS 84 elipsoidi (EPSG:7030) kullanılır.
+  Diğer araçlar için verileri metre birimli projeksiyona aktarmanız gerekir.
+- **Birimler:** Alanlar m² ve hektar, mesafeler metre, brüt yoğunluklar kişi/hektar, donatı standartları kişi başına m² olarak verilir.
 
 ---
 
@@ -93,3 +128,9 @@ Eklenti arayüzü 7 ana navigasyon sekmesinden oluşur ve arka planda 15 bağım
 * **Mekânsal Planlar Yapım Yönetmeliği (MPYY)** (Ek-2 Kentsel Sosyal ve Teknik Altyapı Standartları)
 * **Planlı Alanlar İmar Yönetmeliği (PAİY)** (Yapılaşma şartları, TAKS, KAKS ve çekme mesafeleri)
 * **PlanX Kentsel Analitik Motoru** (Açık kaynak mekânsal analiz ve morfoloji algoritmaları)
+
+---
+
+## 🙏 Teşekkür ve Kaynak
+Nüfus projeksiyonu, dağıtım ve kırılganlık özellikleri [Kent Öngörü](https://github.com/berkaymemis/kent_ongoru) v1.0.0 (Berkay Memiş, GPL-2.0-or-later) temel alınarak yeniden yazıldı; pay/payda yöntemi PLN3113 stüdyosundan.
+Kent Öngörü'nün kodu kopyalanmamıştır; yöntemler bu eklentinin yapısına göre baştan yazılmış ve sayısal sınamalarla (`tests/test_projection.py`, `tests/test_new_algorithms_qgis.py`) denetlenmiştir.

@@ -151,6 +151,71 @@ class TestTireConstants(unittest.TestCase):
         self.assertIn("HARİÇ", turu_m)
 
 
+class TestNipValuesPure(unittest.TestCase):
+    """Elle hesaplanmış gerçek sayılar (N4): DOP, ada nüfusu, Ek-2."""
+
+    def test_ada_nufusu_orta_gelisme_1ha(self):
+        from pln3113_nip.core.tire_constants import ada_nufusu
+        alt, ust = resolve_nip_density("Gelişme Konut Alanı (Orta Yoğunluk)")[:2]
+        # 1 ha x 121-250 kişi/ha
+        self.assertEqual(ada_nufusu(1.0, alt, ust), (121.0, 250.0))
+        # 2,5 ha mevcut yüksek (301-600) -> 752,5 - 1500
+        a2, u2 = resolve_nip_density("Mevcut Konut Alanı (Yüksek)")[:2]
+        self.assertAlmostEqual(ada_nufusu(2.5, a2, u2)[0], 752.5)
+        self.assertAlmostEqual(ada_nufusu(2.5, a2, u2)[1], 1500.0)
+
+    def test_dop_orani_elle(self):
+        from pln3113_nip.core.tire_constants import dop_orani_hesapla
+        # Denetim fikstürü: kamu poligon 10000 + yol 7200 = 17200; DOP esas 37200 -> %46,24
+        self.assertEqual(dop_orani_hesapla(10000.0, 7200.0, 37200.0), 46.24)
+        # 30 + 10 / 100 -> %40
+        self.assertEqual(dop_orani_hesapla(30.0, 10.0, 100.0), 40.0)
+
+    def test_dop_uygunluk_sinirsiz_tahmini(self):
+        from pln3113_nip.core.tire_constants import dop_uygunluk_metni
+        self.assertEqual(dop_uygunluk_metni(46.24, True), "YASAL SINIRI AŞIYOR")
+        self.assertEqual(dop_uygunluk_metni(45.0, True), "YASAL SINIRDA (UYGUN)")
+        tahmini = dop_uygunluk_metni(46.24, False)
+        self.assertIn("TAHMİNİ", tahmini)
+        self.assertNotIn("AŞIYOR", tahmini)
+        self.assertNotIn("UYGUN", tahmini)
+
+    def test_ek2_standartlari_ve_alanlar(self):
+        from pln3113_nip.core.tire_constants import MPYY_DONATI_STANDARTLARI as S, ek2_degerlendir
+        # Mevcut değerler (yönetmeliğe karşı doğrulanmalı; burada değişmeleri yakalanır)
+        beklenen = {"EGITIM": 6.5, "SAGLIK": 1.5, "SOSYAL_KULTUREL": 1.0,
+                    "YESIL_ALAN": 10.0, "TEKNIK_ALTYAPI": 1.25, "IBADET": 0.5}
+        self.assertEqual({k: v["standart_m2_kisi"] for k, v in S.items()}, beklenen)
+        # 10.000 kişi için eğitim: gerekli 65.000 m²; 50.000 m² mevcut -> 15.000 m² açık
+        r = ek2_degerlendir(50000.0, S["EGITIM"]["standart_m2_kisi"], 10000)
+        self.assertEqual(r["gerekli_m2"], 65000.0)
+        self.assertEqual(r["fark_m2"], -15000.0)
+        self.assertEqual(r["kisi_basi_m2"], 5.0)
+        self.assertEqual(r["durum"], "YETERSİZ")
+        # 121 kişi için 1 ha yeşil alan: gerekli 1210 m², kişi başı 82,64 m²
+        y = ek2_degerlendir(10000.0, S["YESIL_ALAN"]["standart_m2_kisi"], 121)
+        self.assertEqual((y["gerekli_m2"], y["fark_m2"], y["kisi_basi_m2"], y["durum"]),
+                         (1210.0, 8790.0, 82.64, "YETERLİ"))
+
+    def test_spor_ve_ozel_saglik_kamu_standardi_degil(self):
+        from pln3113_nip.core.tire_constants import get_tucbs_info
+        self.assertIsNone(identify_facility_category("Spor Alanı"))
+        self.assertIsNone(identify_facility_category("Semt Spor Alanı"))
+        self.assertIsNone(identify_facility_category("sporKompleksiAlani"))
+        self.assertIsNone(identify_facility_category("Özel Sağlık Alanı"))
+        self.assertEqual(identify_facility_category("Sağlık Alanı"), "SAGLIK")
+        self.assertEqual(identify_facility_category("Park ve Yeşil Alan"), "YESIL_ALAN")
+        # Özel sağlık DOP'ta özel tahsistir (kamu kesintisi değil)
+        self.assertEqual(get_tucbs_info("Özel Sağlık Alanı")["dop_turu"], "DOP İÇİ - ÖZEL (TAHSİS)")
+        self.assertEqual(get_tucbs_info("Sağlık Alanı")["dop_turu"], "DOP İÇİ - KAMU (KESİNTİ)")
+
+    def test_tire_yalniz_ornek_onayar(self):
+        from pln3113_nip.core.tire_constants import NUFUS_KIYAS_ONAYARLARI, TIRE_KIRSAL_NUFUS_ORNEK
+        self.assertEqual(NUFUS_KIYAS_ONAYARLARI["yok"], {})
+        self.assertIs(NUFUS_KIYAS_ONAYARLARI["tire"], TIRE_POPULATION_BENCHMARKS)
+        self.assertEqual(TIRE_KIRSAL_NUFUS_ORNEK, 26000)
+
+
 class TestQt6EnumSafety(unittest.TestCase):
     """Eklenti kodunda bare Qt.* enum kullanımının olmadığını doğrular."""
 

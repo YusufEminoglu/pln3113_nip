@@ -21,6 +21,10 @@ from .algorithms.alg_od_matrix import ODMatrixAlgorithm
 from .algorithms.alg_service_areas import ServiceAreasAlgorithm
 from .algorithms.alg_facility_adequacy import FacilityAdequacyAlgorithm
 from .algorithms.alg_scenario_compare import ScenarioCompareAlgorithm
+from .algorithms.alg_nufus_projeksiyonu import NufusProjeksiyonuAlgorithm
+from .algorithms.alg_kohort_projeksiyonu import KohortProjeksiyonuAlgorithm
+from .algorithms.alg_mahalle_dagitimi import MahalleDagitimiAlgorithm
+from .algorithms.alg_kirilganlik_endeksi import KirilganlikEndeksiAlgorithm
 
 PLUGIN_DIR = os.path.dirname(__file__)
 
@@ -54,6 +58,12 @@ class NipEklentiProvider(QgsProcessingProvider):
         self.addAlgorithm(ServiceAreasAlgorithm())
         self.addAlgorithm(FacilityAdequacyAlgorithm())
         self.addAlgorithm(ScenarioCompareAlgorithm())
+
+        # 07. Nüfus Projeksiyonu, Dağıtım ve Kırılganlık (Kent Öngörü temelli)
+        self.addAlgorithm(NufusProjeksiyonuAlgorithm())
+        self.addAlgorithm(KohortProjeksiyonuAlgorithm())
+        self.addAlgorithm(MahalleDagitimiAlgorithm())
+        self.addAlgorithm(KirilganlikEndeksiAlgorithm())
 
     def id(self):
         return 'pln3113'

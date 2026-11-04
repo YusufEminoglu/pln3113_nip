@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """1/5000 Nazım İmar Planı (NİP) Çizim Veritabanı ve Şablonu Oluşturma Algoritması.
 
-PLN3113 - Tire NİP Analiz Stüdyosu
+PLN3113 - NİP Analiz Stüdyosu
 """
 from __future__ import annotations
 

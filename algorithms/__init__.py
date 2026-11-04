@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""PLN3113 Tire NİP ve Kentsel Analiz Stüdyosu Processing Algoritmaları."""
+"""PLN3113 NİP ve Kentsel Analiz Stüdyosu Processing Algoritmaları."""
 from .alg_geometry_clean import GeometryCleanAlgorithm
 from .alg_nip_workspace import NipWorkspaceAlgorithm
 from .alg_yol_platform import YolPlatformAlgorithm
@@ -15,6 +15,10 @@ from .alg_od_matrix import ODMatrixAlgorithm
 from .alg_service_areas import ServiceAreasAlgorithm
 from .alg_facility_adequacy import FacilityAdequacyAlgorithm
 from .alg_scenario_compare import ScenarioCompareAlgorithm
+from .alg_nufus_projeksiyonu import NufusProjeksiyonuAlgorithm
+from .alg_kohort_projeksiyonu import KohortProjeksiyonuAlgorithm
+from .alg_mahalle_dagitimi import MahalleDagitimiAlgorithm
+from .alg_kirilganlik_endeksi import KirilganlikEndeksiAlgorithm
 
 __all__ = [
     "GeometryCleanAlgorithm",
@@ -32,4 +36,8 @@ __all__ = [
     "ServiceAreasAlgorithm",
     "FacilityAdequacyAlgorithm",
     "ScenarioCompareAlgorithm",
+    "NufusProjeksiyonuAlgorithm",
+    "KohortProjeksiyonuAlgorithm",
+    "MahalleDagitimiAlgorithm",
+    "KirilganlikEndeksiAlgorithm",
 ]

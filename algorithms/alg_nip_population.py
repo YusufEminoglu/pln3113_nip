@@ -1,19 +1,17 @@
 # -*- coding: utf-8 -*-
-"""2. Tire NİP Nüfus, Donatı, Kamu-Özel, DOP ve Ulaşım Analizi Processing Algoritması.
+"""2. NİP Nüfus, Donatı, Kamu-Özel, DOP ve Ulaşım Analizi Processing Algoritması.
 
-PLN3113 - Tire NİP Analiz Stüdyosu
+PLN3113 - NİP Analiz Stüdyosu (Türkiye geneli; Tire yalnız örnek ön ayardır)
 """
 from __future__ import annotations
 
 from qgis.core import (
     NULL,
     QgsCoordinateReferenceSystem,
-    QgsDistanceArea,
     QgsFeature,
     QgsFeatureSink,
     QgsField,
     QgsFields,
-    QgsGeometry,
     QgsProcessing,
     QgsProcessingAlgorithm,
     QgsProcessingException,
@@ -26,7 +24,19 @@ from qgis.core import (
 )
 from qgis.PyQt.QtCore import QVariant
 
-from ..core.nip_calculator import NipCalculatorEngine
+from ..core.nip_calculator import (
+    NipCalculatorEngine,
+    HesapIptalEdildi,
+    build_distance_area,
+    prepare_boundary_and_roads,
+)
+from ..core.tire_constants import NUFUS_KIYAS_ONAYARLARI
+
+KIYAS_SECENEKLERI = [
+    ("yok", "Yok (yalnız hesaplanan nüfus - Türkiye geneli varsayılan)"),
+    ("tire", "Tire örneği (1997 planı, TÜİK 2015 ve 2025 referansları)"),
+]
+
 
 class NipPopulationAlgorithm(QgsProcessingAlgorithm):
     INPUT = 'INPUT'
@@ -37,6 +47,9 @@ class NipPopulationAlgorithm(QgsProcessingAlgorithm):
     SINIR_MODU = 'SINIR_MODU'
     YOL_LAYER = 'YOL_LAYER'
     PROJ_NUFUS = 'PROJ_NUFUS'
+    KIRSAL_NUFUS = 'KIRSAL_NUFUS'
+    KIYAS_REFERANSI = 'KIYAS_REFERANSI'
+    TAHMINI_YOL_PAYI = 'TAHMINI_YOL_PAYI'
     OUTPUT_LAYER = 'OUTPUT_LAYER'
     OUTPUT_EK2 = 'OUTPUT_EK2'
     OUTPUT_DOP = 'OUTPUT_DOP'
@@ -116,6 +129,33 @@ class NipPopulationAlgorithm(QgsProcessingAlgorithm):
             )
         )
         self.addParameter(
+            QgsProcessingParameterNumber(
+                self.KIRSAL_NUFUS,
+                'Kırsal / Plan Dışı Nüfus Eki (Kişi; ilçe toplamı için, 0 = eklenmez; Tire örneği 26000)',
+                QgsProcessingParameterNumber.Type.Integer,
+                defaultValue=0,
+                minValue=0
+            )
+        )
+        self.addParameter(
+            QgsProcessingParameterEnum(
+                self.KIYAS_REFERANSI,
+                'Tarihsel Nüfus Kıyas Referansları',
+                options=[label for _, label in KIYAS_SECENEKLERI],
+                defaultValue=0
+            )
+        )
+        self.addParameter(
+            QgsProcessingParameterNumber(
+                self.TAHMINI_YOL_PAYI,
+                'Sınır Yokken Tahmini Yol Payı (adalar toplamına oran; sonuç TAHMİNİ etiketlenir)',
+                QgsProcessingParameterNumber.Type.Double,
+                defaultValue=0.18,
+                minValue=0.0,
+                maxValue=1.0
+            )
+        )
+        self.addParameter(
             QgsProcessingParameterFeatureSink(
                 self.OUTPUT_LAYER,
                 'NİP Nüfus, Donatı ve Ulaşım Analiz Katmanı (Vektör)',
@@ -157,7 +197,7 @@ class NipPopulationAlgorithm(QgsProcessingAlgorithm):
         self.addParameter(
             QgsProcessingParameterFeatureSink(
                 self.OUTPUT_KIYAS,
-                'Tire Tarihsel Nüfus Kıyaslama Tablosu',
+                'Tarihsel Nüfus Kıyaslama Tablosu',
                 QgsProcessing.SourceType.TypeVector,
                 optional=True
             )
@@ -181,37 +221,53 @@ class NipPopulationAlgorithm(QgsProcessingAlgorithm):
         analysis_mode = "TUCBS" if mode_idx == 1 else "NIP"
         secondary_fonk_col = sec_col.strip() if sec_col and sec_col.strip() else None
 
-        da = QgsDistanceArea()
-        da.setSourceCrs(layer.sourceCrs(), context.transformContext())
-        if context.project():
-            da.setEllipsoid(context.project().ellipsoid())
-        else:
-            da.setEllipsoid('WGS84')
+        kirsal_nufus = self.parameterAsInt(parameters, self.KIRSAL_NUFUS, context) if self.KIRSAL_NUFUS in parameters else 0
+        kiyas_idx = self.parameterAsEnum(parameters, self.KIYAS_REFERANSI, context) if self.KIYAS_REFERANSI in parameters else 0
+        kiyas_key = KIYAS_SECENEKLERI[kiyas_idx][0] if 0 <= kiyas_idx < len(KIYAS_SECENEKLERI) else "yok"
+        yol_payi = (self.parameterAsDouble(parameters, self.TAHMINI_YOL_PAYI, context)
+                    if self.TAHMINI_YOL_PAYI in parameters else 0.18)
 
-        sinir_geom = None
-        if sinir_layer:
-            geoms = [f.geometry() for f in sinir_layer.getFeatures() if f.geometry() and not f.geometry().isEmpty()]
-            if geoms:
-                sinir_geom = QgsGeometry.unaryUnion(geoms)
+        # Alanlar her zaman elipsoit üzerinde (proje elipsoidi 'NONE' ise KRS elipsoidi / EPSG:7030)
+        crs = layer.sourceCrs()
+        proje_elipsoidi = context.project().ellipsoid() if context.project() else None
+        da, elipsoit, sabit = build_distance_area(crs, context.transformContext(), proje_elipsoidi)
+        if sabit or (crs.isGeographic() and (proje_elipsoidi or "NONE").upper() in ("", "NONE")):
+            feedback.pushWarning(
+                f"Proje elipsoidi tanımsız; alanlar {elipsoit} elipsoidi üzerinde m² olarak ölçülüyor.")
 
-        yol_uzunlugu_m = 0.0
-        if yol_layer:
-            for yf in yol_layer.getFeatures():
-                yg = yf.geometry()
-                if yg and not yg.isEmpty():
-                    yol_uzunlugu_m += da.measureLength(yg)
+        # Sınır ve yol katmanları ada KRS'sine dönüştürülür (farklı KRS = tüm adaların elenmesi hatası)
+        sinir_geom, yol_uzunlugu_m, hazirlik_uyarilari = prepare_boundary_and_roads(
+            crs, context.transformContext(), da, sinir_layer=sinir_layer, yol_layer=yol_layer)
+        for u in hazirlik_uyarilari:
+            feedback.pushInfo(u)
 
         feedback.pushInfo(f"Analiz Başlatılıyor ({analysis_mode}): Sütun={fonk_col}, İkincil={secondary_fonk_col}...")
 
-        feats = list(layer.getFeatures())
-        parsed_items, summary = NipCalculatorEngine.calculate(
-            feats, layer.fields(), fonk_col, proj_nufus, da,
-            sinir_geom=sinir_geom,
-            sinir_modu=sinir_modu,
-            yol_uzunlugu_m=yol_uzunlugu_m,
-            secondary_fonk_col=secondary_fonk_col,
-            analysis_mode=analysis_mode
-        )
+        feats = []
+        for f in layer.getFeatures():
+            if feedback.isCanceled():
+                raise QgsProcessingException("İşlem kullanıcı tarafından iptal edildi; çıktı yazılmadı.")
+            feats.append(f)
+        try:
+            parsed_items, summary = NipCalculatorEngine.calculate(
+                feats, layer.fields(), fonk_col, proj_nufus, da,
+                sinir_geom=sinir_geom,
+                sinir_modu=sinir_modu,
+                yol_uzunlugu_m=yol_uzunlugu_m,
+                secondary_fonk_col=secondary_fonk_col,
+                analysis_mode=analysis_mode,
+                kirsal_nufus=kirsal_nufus,
+                kiyas_referanslari=NUFUS_KIYAS_ONAYARLARI.get(kiyas_key, {}),
+                tahmini_yol_payi=yol_payi,
+                feedback=feedback
+            )
+        except HesapIptalEdildi:
+            raise QgsProcessingException("İşlem kullanıcı tarafından iptal edildi; çıktı yazılmadı.")
+        if feedback.isCanceled():
+            raise QgsProcessingException("İşlem kullanıcı tarafından iptal edildi; çıktı yazılmadı.")
+
+        for u in summary.get("uyarilar", []):
+            feedback.pushWarning(u)
 
         dop = summary["dop_ozet"]
         s_stats = summary.get("sinir_filtre_ozet")
@@ -224,7 +280,8 @@ class NipPopulationAlgorithm(QgsProcessingAlgorithm):
         feedback.pushInfo(f"Hesaplanan Toplam Alt Nüfus: {summary['toplam_alt_nufus']:,} Kişi")
         feedback.pushInfo(f"Hesaplanan Toplam Üst Nüfus: {summary['toplam_ust_nufus']:,} Kişi")
         feedback.pushInfo(f"Düzenleme Sahası (DOP Esas Alan): {dop['dop_esas_alan_m2']:,.2f} m²")
-        feedback.pushInfo(f"Hesaplanan DOP Oranı: %{dop['dop_orani']} ({dop['dop_uygunluk']})")
+        dop_etiket = "Tahmini DOP Oranı" if dop.get("tahmini") else "Hesaplanan DOP Oranı"
+        feedback.pushInfo(f"{dop_etiket}: %{dop['dop_orani']} ({dop['dop_uygunluk']})")
 
         # 1. Çıktı Katmanı Oluştur
         out_fields = QgsFields(layer.fields())
@@ -290,20 +347,38 @@ class NipPopulationAlgorithm(QgsProcessingAlgorithm):
             if sink_dop:
                 p_m2 = dop["toplam_plan_alani_m2"]
                 e_m2 = dop["dop_esas_alan_m2"]
-                sinir_aciklama = "Plan Onama Sınırına Göre Kesin" if dop.get("sinir_katmani_kullanildi") else "İmar Adaları Toplamı Esas Alındı"
+                tahmini = bool(dop.get("tahmini"))
+                if tahmini:
+                    pay = (dop.get("tahmini_yol_payi") or 0.0) * 100.0
+                    sinir_aciklama = f"Tahmini: plan onama sınırı yok (adalar + %{pay:.0f} varsayılan yol payı)"
+                    yol_satir = ("Net Yol ve Ulaşım Ağı Alanı (Tahmini)",
+                                 f"Tahmini: adalar toplamının %{pay:.0f}'i (sınır gerekli)")
+                    dop_satir = "TAHMİNİ DOP ORANI (%)"
+                else:
+                    sinir_aciklama = "Plan Onama Sınırına Göre Kesin"
+                    yol_satir = ("Net Yol ve Ulaşım Ağı Alanı", "Plan Sınırı - İmar Adaları Boşluğu")
+                    dop_satir = "HESAPLANAN DOP ORANI (%)"
 
                 rows_dop = [
-                    ("Plan Onama Sınırı / Toplam Alan", p_m2, dop["toplam_plan_alani_ha"], 100.0, sinir_aciklama),
+                    ("Plan Onama Sınırı / Toplam Alan" + (" (Tahmini)" if tahmini else ""), p_m2, dop["toplam_plan_alani_ha"], 100.0, sinir_aciklama),
                     ("İmar Adaları (Kullanım Poligonları)", dop["adalar_toplam_m2"], dop["adalar_toplam_ha"], round(dop["adalar_toplam_m2"]/max(1, p_m2)*100.0, 2), "Plan Fonksiyon Blokları"),
-                    ("Net Yol ve Ulaşım Ağı Alanı", dop["hesaplanan_yol_m2"], dop["hesaplanan_yol_ha"], dop["yol_orani_yuzde"], "Plan Sınırı - İmar Adaları Boşluğu"),
+                    (yol_satir[0], dop["hesaplanan_yol_m2"], dop["hesaplanan_yol_ha"], dop["yol_orani_yuzde"], yol_satir[1]),
                     ("DOP Dışı Alanlar (Harice Ayrılan)", dop["dop_disi_alan_m2"], round(dop["dop_disi_alan_m2"]/10000.0, 2), round(dop["dop_disi_alan_m2"]/max(1, p_m2)*100.0, 2), "Orman, Tarım, Su, Sit vb."),
                     ("Düzenleme Sahası (DOP Esas Alan)", e_m2, round(e_m2/10000.0, 2), round(e_m2/max(1, p_m2)*100.0, 2), "Düzenlemeye Giren Net Saha"),
                     ("Toplam Özel Mülkiyet (Tahsis)", dop["toplam_ozel_tahsis_m2"], round(dop["toplam_ozel_tahsis_m2"]/10000.0, 2), round(dop["toplam_ozel_tahsis_m2"]/max(1, e_m2)*100.0, 2), "Konut, Ticaret, Sanayi vb."),
                     ("Kamu Poligon Donatıları", dop["kamu_poligonlar_m2"], round(dop["kamu_poligonlar_m2"]/10000.0, 2), round(dop["kamu_poligonlar_m2"]/max(1, e_m2)*100.0, 2), "Eğitim, Sağlık, Yeşil vb."),
                     ("Toplam Kamu Alanı (Kesinti + Yol)", dop["toplam_kamu_kesinti_m2"], round(dop["toplam_kamu_kesinti_m2"]/10000.0, 2), dop["dop_orani"], "Donatılar + Hesaplanan Yol"),
                     ("Kamu / Özel Mülkiyet Oranı", 0.0, 0.0, dop["kamu_ozel_orani"], "Kamu Kesintisi / Özel Tahsis Oranı"),
-                    ("HESAPLANAN DOP ORANI (%)", 0.0, 0.0, dop["dop_orani"], dop["dop_uygunluk"])
+                    (dop_satir, 0.0, 0.0, dop["dop_orani"], dop["dop_uygunluk"])
                 ]
+                elenen = summary.get("elenen_ada", {})
+                elenen_toplam = sum(elenen.get(k, 0) for k in ("bos_geometri", "sifir_alan", "sinir_disi"))
+                if elenen_toplam or elenen.get("fonksiyonu_bos"):
+                    rows_dop.append((
+                        "Hesaba Katılmayan / Eksik Veri Ada Sayısı", 0.0, 0.0, float(elenen_toplam),
+                        f"Boş geometri={elenen.get('bos_geometri', 0)}, sıfır alan={elenen.get('sifir_alan', 0)}, "
+                        f"sınır dışı={elenen.get('sinir_disi', 0)}, fonksiyonu NULL={elenen.get('fonksiyonu_bos', 0)}"
+                    ))
                 if dop.get("ortalama_yol_genisligi_m"):
                     rows_dop.insert(3, ("Ortalama Fiili Yol Genişliği (m)", 0.0, 0.0, dop["ortalama_yol_genisligi_m"], f"{dop['yol_agi_uzunlugu_km']} km Yol Ağı / Yol Alanı"))
                 for p, m2, ha, pct, desc in rows_dop:

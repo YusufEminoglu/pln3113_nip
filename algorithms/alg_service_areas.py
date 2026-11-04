@@ -37,17 +37,23 @@ from ..core.planx_engine.planx_base import (
     INT,
     STRING,
     PlanXBaseAlgorithm,
+    check_cancel,
+    layer_units_per_metre,
+    parse_number_list,
 )
 
 ALL_LABEL = "TUM_DONATILAR"
+#: Bu uzunluğun (yer metresi) altındaki kırpılmış yol parçaları kayan nokta
+#: gürültüsüdür, sokak parçası değil (PlanX 4.23.0: eşikte sıfır uzunluklu
+#: parça yazılmaz).
+MIN_PIECE_M = 1e-3
 
 
 def parse_breaks(text: str):
-    vals = sorted({float(t) for t in text.replace(";", ",").split(",") if t.strip()})
-    if not vals or any(v <= 0 for v in vals):
-        raise QgsProcessingException(
-            "Eşik değerleri virgülle ayrılmış pozitif sayılar olmalıdır (örn: 400, 800, 1200).")
-    return vals
+    """Eşikleri sıralı ve tekil sayılara çevirir; "on dakika" düz bir Türkçe hata verir."""
+    vals = parse_number_list(text, "Yürüme mesafesi eşikleri", "400, 800, 1200",
+                             unit_suffixes=("m",))
+    return sorted(set(vals))
 
 
 class ServiceAreasAlgorithm(PlanXBaseAlgorithm):
@@ -80,7 +86,11 @@ class ServiceAreasAlgorithm(PlanXBaseAlgorithm):
             "PlanX gömülü Dijkstra motoru ile caddeler mid-street (tam bütçenin bittiği metrede) "
             "hassas olarak kırpılır. Her eşik için ayrıca mevzuattaki dairesel etki tamponu (circle) "
             "çizilir ve PEDSHED ORANI (Ağ Havzası Alanı / Daire Alanı) hesaplanır.\n\n"
-            "0.40 altındaki pedshed değerleri kopuk/izole donatı olarak sınıflandırılır."
+            "0.40 altındaki pedshed değerleri kopuk/izole donatı olarak sınıflandırılır.\n\n"
+            "Eşikler ve tampon genişliği yer metresidir ve uzunlukla yönlendirmede katmanın birimine "
+            "çevrilir (EPSG:3857 gibi ölçekli sistemlerde de doğru; feet birimli KRS reddedilir); alanlar m², uzunluklar m olarak yazılır. "
+            "Hazır maliyet sütunları (cost_fwd/cost_rev) varsa eşikler o maliyetin birimindedir. "
+            "NULL, sıfır ya da negatif maliyet işlemi durdurur. İptal edilen koşu çıktı yazmaz."
         )
 
     def initAlgorithm(self, config=None):
@@ -204,6 +214,22 @@ class ServiceAreasAlgorithm(PlanXBaseAlgorithm):
         crs = network.sourceCrs()
 
         graph, polylines, line_feats = self.network_graph(network)
+        field_names = [fld.name().lower() for fld in network.fields()]
+        has_prepared_cost = any(
+            name == "cost_fwd" or (name.startswith("cost_fwd_") and name[9:].isdigit())
+            for name in field_names)
+        # Uzunlukla yönlendirmede eşikler yer metresidir ve katman birimine
+        # çevrilir; hazır maliyet sütunlarında (dakika olabilir) çevrilmez.
+        unit = 1.0
+        if not has_prepared_cost:
+            unit = layer_units_per_metre(crs, network.sourceExtent(), context.transformContext())
+            if abs(unit - 1.0) > 0.01:
+                feedback.pushInfo(
+                    f"Eşikler yer metresidir; bu katmanda 1 m = {unit:.4g} katman birimi, "
+                    "eşikler çevrildi.")
+        len_scale = 1.0 / unit
+        area_scale = len_scale * len_scale
+        buffer_u = buffer_w * unit
         f_xy, f_feats = self.source_points(facilities, crs, context.transformContext())
         n_fac = len(f_xy)
         if n_fac == 0:
@@ -233,7 +259,7 @@ class ServiceAreasAlgorithm(PlanXBaseAlgorithm):
             qf.setGeometry(g)
             sp_index.addFeature(qf)
 
-        max_break = breaks[-1]
+        max_break = breaks[-1] * unit
         entries = []
         node_src = []
         node_off = []
@@ -264,11 +290,11 @@ class ServiceAreasAlgorithm(PlanXBaseAlgorithm):
             graph.indptr, graph.adj_node, graph.adj_cost, graph.num_nodes,
             node_src_a, node_off_a, cutoff=max_break)
 
+        check_cancel(feedback)
         scopes = [(ALL_LABEL, dist_all, entries, None)]
         if per_facility:
             for i in range(n_fac):
-                if feedback.isCanceled():
-                    break
+                check_cancel(feedback)
                 s_i, o_i = per_sources[i]
                 d_i, _ = paths.multi_source_offset(
                     graph.indptr, graph.adj_node, graph.adj_cost, graph.num_nodes,
@@ -280,11 +306,10 @@ class ServiceAreasAlgorithm(PlanXBaseAlgorithm):
         reach = {}
         for si, (lab, dist, ent, _fi) in enumerate(scopes):
             for brk in breaks:
-                if feedback.isCanceled():
-                    break
+                check_cancel(feedback)
                 reach[(lab, brk)] = isochrone.reach_intervals(
                     dist, graph.edge_from, graph.edge_to, graph.edge_cost,
-                    brk, entries=ent, reverse_cost=graph.edge_rev_cost,
+                    brk * unit, entries=ent, reverse_cost=graph.edge_rev_cost,
                     directions=graph.edge_direction)
 
         def pieces_geoms(lab, brk):
@@ -300,7 +325,7 @@ class ServiceAreasAlgorithm(PlanXBaseAlgorithm):
         def street_len(lab, brk):
             return float(sum(
                 isochrone.interval_length(iv) * float(graph.edge_len[e])
-                for e, iv in reach.get((lab, brk), {}).items()))
+                for e, iv in reach.get((lab, brk), {}).items())) * len_scale
 
         # 1. EDGES SINK
         edge_fields = self.make_fields(
@@ -317,6 +342,9 @@ class ServiceAreasAlgorithm(PlanXBaseAlgorithm):
                 band_iv = iv if prev is None else isochrone.subtract_intervals(
                     iv, reach[(ALL_LABEL, prev)].get(e, []))
                 for lo, hi in band_iv:
+                    piece_len = float(graph.edge_len[e]) * (hi - lo) * len_scale
+                    if piece_len < MIN_PIECE_M:
+                        continue  # kayan nokta kırıntısı, sokak parçası değil
                     arr = isochrone.cut_polyline(polylines[e], lo, hi)
                     if arr is None:
                         continue
@@ -324,12 +352,11 @@ class ServiceAreasAlgorithm(PlanXBaseAlgorithm):
                     db = float(dist_all[graph.edge_to[e]])
                     win = label_all[graph.edge_from[e] if da <= db else graph.edge_to[e]]
                     fac_lab = labels[source_owner[int(win)]] if win >= 0 and int(win) < len(source_owner) else ""
-                    piece_len = float(graph.edge_len[e]) * (hi - lo)
                     out = QgsFeature(edge_fields)
                     out.setGeometry(QgsGeometry.fromPolylineXY(
                         [QgsPointXY(x, y) for x, y in arr]))
                     sure = round(float(brk) / (4800.0 / 60.0), 1)
-                    out.setAttributes([fac_lab, float(brk), sure, round(piece_len, 2)])
+                    out.setAttributes([fac_lab, float(brk), sure, round(piece_len, 3)])
                     edge_sink.addFeature(out, QgsFeatureSink.Flag.FastInsert)
 
         # 2. CIRCLES SINK
@@ -343,24 +370,24 @@ class ServiceAreasAlgorithm(PlanXBaseAlgorithm):
             discs = []
             sure = round(float(brk) / (4800.0 / 60.0), 1)
             for i in range(n_fac):
-                disc = QgsGeometry.fromPointXY(QgsPointXY(*f_xy[i])).buffer(brk, 64)
+                disc = QgsGeometry.fromPointXY(QgsPointXY(*f_xy[i])).buffer(brk * unit, 64)
                 discs.append(disc)
-                circle_area[(labels[i], brk)] = float(disc.area())
+                circle_area[(labels[i], brk)] = float(disc.area()) * area_scale
                 if per_facility:
                     f = QgsFeature(circle_fields)
                     disc_multi = QgsGeometry(disc)
                     if not disc_multi.isMultipart():
                         disc_multi.convertToMultiType()
                     f.setGeometry(disc_multi)
-                    f.setAttributes([labels[i], float(brk), sure, float(disc.area())])
+                    f.setAttributes([labels[i], float(brk), sure, float(disc.area()) * area_scale])
                     circle_sink.addFeature(f, QgsFeatureSink.Flag.FastInsert)
             merged = QgsGeometry.unaryUnion(discs)
-            circle_area[(ALL_LABEL, brk)] = float(merged.area())
+            circle_area[(ALL_LABEL, brk)] = float(merged.area()) * area_scale
             f = QgsFeature(circle_fields)
             if not merged.isMultipart():
                 merged.convertToMultiType()
             f.setGeometry(merged)
-            f.setAttributes([ALL_LABEL, float(brk), sure, float(merged.area())])
+            f.setAttributes([ALL_LABEL, float(brk), sure, float(merged.area()) * area_scale])
             circle_sink.addFeature(f, QgsFeatureSink.Flag.FastInsert)
 
         # 3. AREAS SINK
@@ -377,26 +404,25 @@ class ServiceAreasAlgorithm(PlanXBaseAlgorithm):
             fac_pts = ([QgsPointXY(*f_xy[i]) for i in range(n_fac)]
                        if fi is None else [QgsPointXY(*f_xy[fi])])
             for bi, brk in enumerate(breaks):
-                if feedback.isCanceled():
-                    break
+                check_cancel(feedback)
                 pieces = pieces_geoms(lab, brk)
                 geom = None
                 if pieces:
                     if method == 0:
                         geom = QgsGeometry.unaryUnion(
-                            [g.buffer(buffer_w, 8) for g in pieces])
+                            [g.buffer(buffer_u, 8) for g in pieces])
                     else:
                         pts = list(fac_pts)
-                        step = max(brk / 32.0, 1.0)
+                        step = max(brk * unit / 32.0, unit)
                         for g in pieces:
                             dense = g.densifyByDistance(step)
                             pts.extend(QgsPointXY(v.x(), v.y())
                                        for v in dense.vertices())
-                        geom = self._hull(pts, method, hull_detail, buffer_w)
+                        geom = self._hull(pts, method, hull_detail, buffer_u)
                         # Concave / Convex hull poligon üretemezse yol tamponuna geri dön
                         if geom is None or geom.isEmpty() or geom.type() != QgsWkbTypes.GeometryType.PolygonGeometry:
                             geom = QgsGeometry.unaryUnion(
-                                [g.buffer(buffer_w, 8) for g in pieces])
+                                [g.buffer(buffer_u, 8) for g in pieces])
 
                 if geom is None or geom.isEmpty():
                     cum_area[(lab, brk)] = 0.0
@@ -409,7 +435,7 @@ class ServiceAreasAlgorithm(PlanXBaseAlgorithm):
                         geom = geom.makeValid()
 
                 c_a = circle_area.get((lab, brk), 1.0)
-                n_a = float(geom.area())
+                n_a = float(geom.area()) * area_scale
                 cum_area[(lab, brk)] = n_a
                 ratio = n_a / c_a if c_a > 0 else 0.0
                 durum = "İzole (<0.40)" if ratio < 0.40 else "Erişilebilir (>=0.40)"
@@ -430,7 +456,8 @@ class ServiceAreasAlgorithm(PlanXBaseAlgorithm):
 
                 f = QgsFeature(area_fields)
                 f.setGeometry(out_geom)
-                f.setAttributes([lab, float(brk), sure, float(out_geom.area()), round(ratio, 3), durum])
+                f.setAttributes([lab, float(brk), sure, float(out_geom.area()) * area_scale,
+                                 round(ratio, 3), durum])
                 area_sink.addFeature(f, QgsFeatureSink.Flag.FastInsert)
                 prev_geom = geom
 
@@ -456,6 +483,7 @@ class ServiceAreasAlgorithm(PlanXBaseAlgorithm):
                                  round(ratio, 3), durum, round(street_len(lab, brk), 1)])
                 sum_sink.addFeature(f, QgsFeatureSink.Flag.FastInsert)
 
+        check_cancel(feedback)
         feedback.pushInfo(self.tr("Hizmet alanları ve pedshed analizi başarıyla tamamlandı."))
         return {
             self.AREAS: areas_dest,

@@ -6,6 +6,9 @@ PLN3113 - nip_eklenti_01
 from __future__ import annotations
 
 from qgis.core import (
+    QgsCoordinateTransform,
+    QgsCsException,
+    QgsGeometry,
     QgsSpatialIndex,
     QgsVectorLayer,
     QgsProcessingFeedback
@@ -31,9 +34,28 @@ class FieldEstimatorEngine:
         hanehalki_buyuklugu: float = 2.85,
         ortalama_daire_m2: float = 110.0,
         net_oran: float = 0.85,
-        feedback: QgsProcessingFeedback = None
+        feedback: QgsProcessingFeedback = None,
+        distance_area=None,
+        transform_context=None
     ) -> tuple[list[dict], dict]:
-        """Binaları adalarla mekânsal eşleştirir ve ada bazında fiili değerleri toplar."""
+        """Binaları adalarla mekânsal eşleştirir ve ada bazında fiili değerleri toplar.
+
+        distance_area: ada KRS'sinde elipsoidal ölçüm (verilmezse düzlemsel alan).
+        transform_context: bina katmanı farklı KRS'deyse ada KRS'sine dönüştürmek için.
+        """
+        def _alan(g):
+            return distance_area.measureArea(g) if distance_area else g.area()
+
+        def _cevre(g):
+            return distance_area.measurePerimeter(g) if distance_area else g.length()
+
+        eksik = {"kat_bos": 0, "bina_donusum_hatasi": 0, "ada_eslesmeyen_bina": 0}
+        bina_xform = None
+        if bina_layer.crs().isValid() and ada_layer.crs().isValid() and bina_layer.crs() != ada_layer.crs():
+            if transform_context is None:
+                from qgis.core import QgsProject
+                transform_context = QgsProject.instance().transformContext()
+            bina_xform = QgsCoordinateTransform(bina_layer.crs(), ada_layer.crs(), transform_context)
 
         # 1. Adaların spatial index'ini kur
         ada_index = QgsSpatialIndex()
@@ -76,9 +98,9 @@ class FieldEstimatorEngine:
                 try:
                     alan_m2 = float(f[idx_alan])
                 except (ValueError, TypeError):
-                    alan_m2 = geom.area()
+                    alan_m2 = _alan(geom)
             else:
-                alan_m2 = geom.area()
+                alan_m2 = _alan(geom)
 
             # Nüfus yaşayabilir mi? Sadece konut ve karma kullanımda yaşayan nüfus hesaplanır
             is_karma = ("karma" in tucbs) or ("karma" in tanim.lower())
@@ -139,6 +161,13 @@ class FieldEstimatorEngine:
             b_geom = b_feat.geometry()
             if not b_geom or b_geom.isEmpty():
                 continue
+            if bina_xform is not None:
+                b_geom = QgsGeometry(b_geom)
+                try:
+                    b_geom.transform(bina_xform)
+                except QgsCsException:
+                    eksik["bina_donusum_hatasi"] += 1
+                    continue
 
             # Bina centroid'i üzerinden hızlı nokta sorgusu
             c_pt = b_geom.centroid().asPoint() if b_geom.centroid() else None
@@ -153,6 +182,7 @@ class FieldEstimatorEngine:
                     break
 
             if matched_ada_id is None:
+                eksik["ada_eslesmeyen_bina"] += 1
                 continue
 
             ada_info = ada_dict[matched_ada_id]
@@ -164,18 +194,23 @@ class FieldEstimatorEngine:
                 try:
                     taban_m2 = float(b_feat[idx_bina_alan])
                 except (ValueError, TypeError):
-                    taban_m2 = b_geom.area()
+                    taban_m2 = _alan(b_geom)
             else:
-                taban_m2 = b_geom.area()
+                taban_m2 = _alan(b_geom)
 
             ada_info["toplam_bina_taban_m2"] += taban_m2
 
+            # Kat sayısı NULL/geçersizse 1 kat kabul edilir ama sayılır ve uyarılır
             kat = 1
+            kat_gecerli = False
             if idx_kat != -1 and b_feat[idx_kat]:
                 try:
                     kat = max(1, int(b_feat[idx_kat]))
+                    kat_gecerli = True
                 except (ValueError, TypeError):
                     kat = 1
+            if idx_kat != -1 and not kat_gecerli:
+                eksik["kat_bos"] += 1
 
             bagimsiz = 0
             if idx_bagimsiz != -1 and b_feat[idx_bagimsiz]:
@@ -192,7 +227,7 @@ class FieldEstimatorEngine:
             ada_info["toplam_insaat_m2"] += insaat_m2
 
             # Bina Kompaklığı (IPQ - Isoperimetric Quotient)
-            perim = b_geom.length()
+            perim = _cevre(b_geom)
             if perim > 0:
                 ipq = (4.0 * 3.141592653589793 * taban_m2) / (perim * perim)
                 ada_info["toplam_ipq"] += max(0.0, min(1.0, ipq))
@@ -394,7 +429,21 @@ class FieldEstimatorEngine:
             "ortalama_kat": round(toplam_insaat_tum / max(1.0, toplam_taban_tum), 1) if toplam_taban_tum > 0 else 0.0,
             "ortalama_acik_alan_yuzde": round(max(0.0, (toplam_alan_tum - toplam_taban_tum) / max(1.0, toplam_alan_tum) * 100.0), 1),
             "ortalama_hanehalki": hanehalki_buyuklugu,
-            "ortalama_daire_m2": ortalama_daire_m2
+            "ortalama_daire_m2": ortalama_daire_m2,
+            "eksik_veri": eksik,
+            "iptal_edildi": bool(feedback and feedback.isCanceled()),
+            "uyarilar": []
         }
+        if idx_kat == -1:
+            stats["uyarilar"].append("Bina katmanında kat sayısı sütunu bulunamadı; tüm binalar 1 katlı sayıldı.")
+        if eksik["kat_bos"]:
+            stats["uyarilar"].append(
+                f"{eksik['kat_bos']} binada kat sayısı boş (NULL) veya geçersiz; 1 kat kabul edildi.")
+        if eksik["bina_donusum_hatasi"]:
+            stats["uyarilar"].append(
+                f"{eksik['bina_donusum_hatasi']} bina ada KRS'sine dönüştürülemedi ve atlandı.")
+        if eksik["ada_eslesmeyen_bina"]:
+            stats["uyarilar"].append(
+                f"{eksik['ada_eslesmeyen_bina']} bina hiçbir adanın içinde değil ve hesaba katılmadı.")
 
         return result_list, stats

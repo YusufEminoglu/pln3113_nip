@@ -22,11 +22,18 @@ from qgis.core import (
 )
 
 from ..core.planx_engine.planx_base import (
+    CANCELLED_MESSAGE,
     DOUBLE,
     INT,
     PlanXBaseAlgorithm,
+    check_cancel,
+    layer_units_per_metre,
+    parse_number_list,
 )
 from ..core.planx_engine import graphs, syntax
+
+#: Bu segment sayısından itibaren global yarıçap uzun sürebilir (PlanX 4.23.0).
+SLOW_GLOBAL_SEGMENTS = 5000
 
 
 class SpaceSyntaxAlgorithm(PlanXBaseAlgorithm):
@@ -48,8 +55,14 @@ class SpaceSyntaxAlgorithm(PlanXBaseAlgorithm):
             "Her yarıçap için hesaplanan temel metrikler:\n"
             "- NAIN: Normalleştirilmiş Entegrasyon (Varış / Hedef Potansiyeli). Yüksek NAIN merkezleri ve yaya canlılığını gösterir.\n"
             "- NACH: Normalleştirilmiş Seçim (Geçiş / Akış Potansiyeli). Yüksek NACH ana omurga/koridorları gösterir.\n"
-            "- CH: Ham Seçim (Choice), TD: Toplam Derinlik, MD: Ortalama Derinlik, NC: Erişilen Düğüm Sayısı.\n\n"
-            "Yarıçaplar metrik metre cinsindendir. '400, 800' yaya ölçeği; '1200' mahalle ölçeği; 'n' tüm kent ölçeğidir."
+            "- CH: Ham Seçim (Choice), TD: Toplam Derinlik, MD: Ortalama Derinlik, NC: Erişilen Segment Sayısı (kendisi dahil).\n\n"
+            "PlanX 4.23.0 motoru: seçim yönlü segment uçları üzerinde hesaplanır (bir rota segmente bir uçtan "
+            "girer, öbür uçtan çıkar; çıkmaz sokağın seçimi 0'dır). NAIN = NC^1.2 / (TD + 2), "
+            "NACH = log10(CH + 1) / log10(TD + 3) (Hillier, Yang & Turner 2012). "
+            "1.1.6 ve öncesindeki NAIN/NACH değerleriyle karşılaştırılamaz.\n\n"
+            "Yarıçaplar yer metresidir ve katmanın birimine çevrilir (EPSG:3857 gibi ölçekli sistemlerde de doğru; "
+            "feet birimli KRS reddedilir). '400, 800' yaya ölçeği; '1200' mahalle ölçeği; 'n' tüm kent ölçeğidir. "
+            "İptal edilen koşu çıktı yazmaz."
         )
 
     def initAlgorithm(self, config=None):
@@ -77,15 +90,30 @@ class SpaceSyntaxAlgorithm(PlanXBaseAlgorithm):
 
     def processAlgorithm(self, parameters, context, feedback):
         network = self.parameterAsSource(parameters, self.NETWORK, context)
+        if network is None:
+            raise QgsProcessingException("Yol ağı katmanı verilmedi.")
         self.require_projected(network, "Yol ağı")
-        try:
-            radii = syntax.parse_radii(self.parameterAsString(parameters, self.RADII, context))
-        except ValueError as exc:
-            raise QgsProcessingException(str(exc))
+        radii = parse_number_list(
+            self.parameterAsString(parameters, self.RADII, context),
+            "Analiz yarıçapları", "400, 800, n", allow_global=True, unit_suffixes=("m",))
+        # Yarıçaplar yer metresidir; segment grafı katmanın kendi biriminde ölçer.
+        per_metre = 1.0
+        if any(r is not None for r in radii):
+            per_metre = layer_units_per_metre(
+                network.sourceCrs(), network.sourceExtent(), context.transformContext())
+        if abs(per_metre - 1.0) > 0.01:
+            feedback.pushInfo(
+                f"Katman birimi burada yer metresi değil: 1 m = {per_metre:.4g} katman birimi; "
+                "yarıçaplar çevrildi.")
 
         polylines, line_feats = self.source_polylines(network)
         seg_graph = graphs.build_segment_graph(polylines)
         feedback.pushInfo(f"Segment grafı oluşturuldu: {seg_graph.n} segment.")
+        if seg_graph.n > SLOW_GLOBAL_SEGMENTS and any(r is None for r in radii):
+            feedback.pushWarning(
+                f"{seg_graph.n} segmentte global yarıçap uzun sürebilir (20 000 segmentte "
+                "yaklaşık 30 dakika). Yalnızca metrik yarıçapları kullanmayı ya da ağı "
+                "çalışma alanı artı bir yarıçapla kırpmayı düşünün.")
 
         specs = [("connectivity", INT)]
         for r in radii:
@@ -99,17 +127,21 @@ class SpaceSyntaxAlgorithm(PlanXBaseAlgorithm):
 
         results = []
         for ri, r in enumerate(radii):
-            if feedback.isCanceled():
-                break
+            check_cancel(feedback)
             feedback.pushInfo(f"Yarıçap R = {syntax.radius_label(r)} hesaplanıyor...")
             base_pct = 100.0 * ri / len(radii)
             span_pct = 100.0 / len(radii)
             res = syntax.segment_angular_analysis(
-                seg_graph, radius=r,
+                seg_graph, radius=None if r is None else r * per_metre,
                 cancel=feedback.isCanceled,
                 progress=lambda p, b=base_pct, s=span_pct: feedback.setProgress(int(b + s * p))
             )
+            if res.get("cancelled"):
+                # Motor yarıda durdu: diziler yalnızca işlenen başlangıçları
+                # kapsar ve asla sonuç olarak yazılmamalıdır.
+                raise QgsProcessingException(CANCELLED_MESSAGE)
             results.append(res)
+        check_cancel(feedback)
 
         sink, dest = self.parameterAsSink(
             parameters, self.OUTPUT, context, fields,
@@ -132,6 +164,7 @@ class SpaceSyntaxAlgorithm(PlanXBaseAlgorithm):
             f.setAttributes(attrs)
             sink.addFeature(f, QgsFeatureSink.Flag.FastInsert)
 
+        check_cancel(feedback)
         return {self.OUTPUT: dest}
 
     def createInstance(self):

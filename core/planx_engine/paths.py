@@ -1,16 +1,26 @@
 # -*- coding: utf-8 -*-
-"""En kısa yol, OD matrisi ve çoklu kaynak Dijkstra algoritmaları.
+"""Shortest-path kernels.
 
-PlanX Ulaşım ve Ağ Analiz Motoru
+Port of PlanX 4.23.0 ``engine/paths.py``. Against the pre-4.23.0 copy:
+``many_to_many`` polls ``cancel`` on the SciPy path too and raises
+:class:`Cancelled` (rows not reached are ``inf``, never uninitialised);
+``multi_source_tree``/``path_to_root`` added; ``shortest_path`` kept.
+
+SciPy's ``sparse.csgraph`` is used when available (C speed); otherwise a
+pure-Python binary-heap Dijkstra produces identical distances. All functions
+take raw CSR arrays so they work for both the primal and the dual graph.
 """
 from __future__ import annotations
 
 import heapq
+
 import numpy as np
 
-from . import HAS_SCIPY
+from . import HAS_SCIPY, Cancelled
 
 INF = float("inf")
+# Sources per SciPy call when a cancel callback has to be polled.
+_CANCEL_BLOCK = 256
 
 
 def _to_scipy(indptr, adj, weights, n):
@@ -18,6 +28,7 @@ def _to_scipy(indptr, adj, weights, n):
     return csr_matrix((weights, adj, indptr), shape=(n, n))
 
 
+# --------------------------------------------------------------------------- #
 def _heap_dijkstra(indptr, adj, weights, n, source, cutoff=None):
     dist = np.full(n, INF)
     dist[source] = 0.0
@@ -38,25 +49,43 @@ def _heap_dijkstra(indptr, adj, weights, n, source, cutoff=None):
 
 
 def many_to_many(indptr, adj, weights, n, sources, cutoff=None, cancel=None):
-    """Her kaynaktan tüm düğümlere olan en kısa mesafeler: (len(sources), n) dizisi."""
+    """Distances from each source to every node: (len(sources), n) array.
+
+    ``cancel`` (optional callable) is polled between sources (between blocks
+    of ``_CANCEL_BLOCK`` sources on the SciPy path). When it returns True the
+    function raises :class:`engine.Cancelled`; its ``partial`` is the matrix
+    with every row not yet computed filled with ``inf`` (unreachable) - never
+    uninitialised memory - so a half-finished matrix cannot pass for a
+    result.
+    """
     sources = np.asarray(sources, dtype=np.int64)
+    out = np.full((len(sources), n), INF)
     if HAS_SCIPY:
         from scipy.sparse import csgraph
-        return csgraph.dijkstra(
-            _to_scipy(indptr, adj, weights, n),
-            directed=True, indices=sources,
-            limit=INF if cutoff is None else float(cutoff),
-        )
-    out = np.empty((len(sources), n))
+        graph = _to_scipy(indptr, adj, weights, n)
+        limit = INF if cutoff is None else float(cutoff)
+        if cancel is None:
+            return csgraph.dijkstra(graph, directed=True, indices=sources, limit=limit)
+        for start in range(0, len(sources), _CANCEL_BLOCK):
+            if cancel():
+                raise Cancelled(out)
+            block = sources[start:start + _CANCEL_BLOCK]
+            out[start:start + len(block)] = csgraph.dijkstra(
+                graph, directed=True, indices=block, limit=limit)
+        return out
     for i, s in enumerate(sources):
         if cancel is not None and cancel():
-            break
+            raise Cancelled(out)
         out[i] = _heap_dijkstra(indptr, adj, weights, n, int(s), cutoff)
     return out
 
 
 def multi_source(indptr, adj, weights, n, sources, cutoff=None):
-    """Herhangi bir kaynaktan olan minimum maliyet ve en yakın kaynak indeksi."""
+    """Min cost from *any* source: returns (dist[n], nearest_source_pos[n]).
+
+    ``nearest_source_pos`` holds the position in ``sources`` of the winning
+    source (-1 where unreachable).
+    """
     sources = np.asarray(sources, dtype=np.int64)
     if HAS_SCIPY:
         from scipy.sparse import csgraph
@@ -70,7 +99,6 @@ def multi_source(indptr, adj, weights, n, sources, cutoff=None):
         label = np.array([pos.get(int(s), -1) for s in src_node], dtype=np.int64)
         label[~np.isfinite(dist)] = -1
         return dist, label
-
     dist = np.full(n, INF)
     label = np.full(n, -1, dtype=np.int64)
     heap = []
@@ -99,7 +127,15 @@ def multi_source(indptr, adj, weights, n, sources, cutoff=None):
 
 def shortest_path_tree(indptr, adj_node, adj_edge, weights, n, source,
                        cutoff=None):
-    """Dijkstra with predecessor tracking for route reconstruction."""
+    """Dijkstra with predecessor tracking for route reconstruction.
+
+    Returns ``(dist, pred_node, pred_edge)``: for every node its cost from
+    ``source``, the previous node on the shortest path and the id of the
+    edge used to arrive (both -1 at the source and where unreachable).
+    Pure heapq on purpose - it must report *which* parallel edge was taken,
+    which the SciPy kernel cannot; distances are identical to
+    :func:`many_to_many`.
+    """
     dist = np.full(n, INF)
     pred_node = np.full(n, -1, dtype=np.int64)
     pred_edge = np.full(n, -1, dtype=np.int64)
@@ -123,7 +159,11 @@ def shortest_path_tree(indptr, adj_node, adj_edge, weights, n, source,
 
 
 def reconstruct_path(pred_node, pred_edge, source, target):
-    """Walk predecessor arrays back from target to source."""
+    """Walk the predecessor arrays back from ``target`` to ``source``.
+
+    Returns ``(nodes, edges)`` in travel order (nodes has one more entry
+    than edges); both empty when the target is unreachable.
+    """
     if target == source:
         return [int(source)], []
     if pred_node[target] < 0:
@@ -135,15 +175,22 @@ def reconstruct_path(pred_node, pred_edge, source, target):
         edges.append(int(pred_edge[cur]))
         cur = int(pred_node[cur])
         nodes.append(cur)
-        if len(nodes) > len(pred_node):
+        if len(nodes) > len(pred_node):  # corrupt input guard
             return [], []
     nodes.reverse()
     edges.reverse()
     return nodes, edges
 
 
-def multi_source_offset(indptr, adj, weights, n, sources, offsets, cutoff=None):
-    """Min over sources of offset_s + path cost to every node."""
+def multi_source_offset(indptr, adj, weights, n, sources, offsets,
+                        cutoff=None):
+    """Min over sources of ``offset_s + path cost`` to every node.
+
+    Like :func:`multi_source` but each source enters the heap at its own
+    initial cost - the egress kernel of transit accessibility (offset =
+    arrival time at a stop, weights = walking seconds). Pure heapq.
+    Returns (cost[n], winning_source_pos[n] with -1 where unreachable).
+    """
     sources = np.asarray(sources, dtype=np.int64)
     offsets = np.asarray(offsets, dtype=np.float64)
     dist = np.full(n, INF)
@@ -175,18 +222,13 @@ def multi_source_offset(indptr, adj, weights, n, sources, offsets, cutoff=None):
     return dist, label
 
 
-def shortest_path(indptr, adj_node, adj_edge, weights, n, source, target, cutoff=None):
-    """Tek bir kaynak ve hedef arasındaki en kısa yolu (düğümler ve kenarlar) bulur."""
-    source, target = int(source), int(target)
-    if source == target:
-        return [source], []
-    dist, pred_node, pred_edge = shortest_path_tree(indptr, adj_node, adj_edge, weights, n, source, cutoff=cutoff)
-    return reconstruct_path(pred_node, pred_edge, source, target)
-
-
-
 def dijkstra_pruned(indptr, adj, w_cost, w_prune, n, source, radius):
-    """Açısal maliyeti minimize ederken metrik yarıçapta budama (Space Syntax)."""
+    """Dijkstra minimizing ``w_cost`` while pruning expansion once the
+    accumulated ``w_prune`` of the settled path exceeds ``radius``.
+
+    This is the standard idiom of space syntax segment analysis: minimize
+    *angular* cost within a *metric* radius. Returns (cost[n], prune_dist[n]).
+    """
     cost = np.full(n, INF)
     prune = np.full(n, INF)
     cost[source] = 0.0
@@ -207,3 +249,88 @@ def dijkstra_pruned(indptr, adj, w_cost, w_prune, n, source, radius):
                 prune[v] = np_
                 heapq.heappush(heap, (nc, np_, v))
     return cost, prune
+
+
+def multi_source_tree(indptr, adj_node, adj_edge, weights, n, sources,
+                      cutoff=None):
+    """Multi-source Dijkstra with predecessor tracking.
+
+    Same relaxation and tie behaviour as ``multi_source`` (labels win by
+    strict improvement only, so on an exact tie the earlier-settled source
+    keeps the node), but additionally records for every node the previous
+    node and the edge id used to arrive. Returns
+    ``(dist, label, pred_node, pred_edge)``; ``label`` indexes into
+    ``sources``; ``pred_node``/``pred_edge`` are -1 at the sources and at
+    unreachable nodes. ``dist`` and ``label`` must be numerically IDENTICAL
+    to ``multi_source`` for the same inputs (unit-tested).
+    """
+    sources = np.asarray(sources, dtype=np.int64)
+    dist = np.full(n, INF)
+    label = np.full(n, -1, dtype=np.int64)
+    pred_node = np.full(n, -1, dtype=np.int64)
+    pred_edge = np.full(n, -1, dtype=np.int64)
+    heap = []
+    for i, s in enumerate(sources):
+        s = int(s)
+        if dist[s] > 0.0:
+            dist[s] = 0.0
+            label[s] = i
+            heap.append((0.0, s, i))
+    heapq.heapify(heap)
+    while heap:
+        d, u, lab = heapq.heappop(heap)
+        if d > dist[u]:
+            continue
+        for k in range(indptr[u], indptr[u + 1]):
+            v = adj_node[k]
+            nd = d + weights[k]
+            if cutoff is not None and nd > cutoff:
+                continue
+            if nd < dist[v]:
+                dist[v] = nd
+                label[v] = lab
+                pred_node[v] = u
+                pred_edge[v] = adj_edge[k]
+                heapq.heappush(heap, (nd, v, lab))
+    return dist, label, pred_node, pred_edge
+
+
+def path_to_root(pred_node, pred_edge, target):
+    """Walk predecessors from ``target`` back to its source root.
+
+    Returns ``(nodes, edges)`` in ROOT->TARGET travel order (nodes has one
+    more entry than edges). ``([target], [])`` when target is itself a root
+    (pred -1 but finite dist is the caller's check); ``([], [])`` when the
+    walk exceeds len(pred_node) (corrupt input guard, same as
+    reconstruct_path).
+    """
+    target = int(target)
+    if pred_node[target] < 0:
+        return [target], []
+    nodes = [target]
+    edges = []
+    cur = target
+    while pred_node[cur] >= 0:
+        edges.append(int(pred_edge[cur]))
+        cur = int(pred_node[cur])
+        nodes.append(cur)
+        if len(nodes) > len(pred_node):
+            return [], []
+    nodes.reverse()
+    edges.reverse()
+    return nodes, edges
+
+
+def shortest_path(indptr, adj_node, adj_edge, weights, n, source, target, cutoff=None):
+    """One source-target route as ``(nodes, edges)`` in travel order.
+
+    PLN3113 NİP addition (not in PlanX): a thin wrapper over
+    :func:`shortest_path_tree` and :func:`reconstruct_path` used by the OD
+    matrix tool. Both lists are empty when ``target`` is unreachable.
+    """
+    source, target = int(source), int(target)
+    if source == target:
+        return [source], []
+    _dist, pred_node, pred_edge = shortest_path_tree(
+        indptr, adj_node, adj_edge, weights, n, source, cutoff=cutoff)
+    return reconstruct_path(pred_node, pred_edge, source, target)

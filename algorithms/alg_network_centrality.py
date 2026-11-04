@@ -27,8 +27,22 @@ from ..core.planx_engine.planx_base import (
     DOUBLE,
     INT,
     PlanXBaseAlgorithm,
+    check_cancel,
 )
 from ..core.planx_engine import centrality, graphs
+
+
+def sample_sources(n, samples):
+    """Betweenness örneklemi için deterministik kaynak düğümler.
+
+    1.1.6 rastgele örneklem alıyordu: aynı girdi her koşuda farklı
+    sonuç veriyordu ve Hub güvenlik taraması rastgeleliği reddeder. Düğüm
+    dizini boyunca eşit aralıklı ``samples`` düğüm alınır; ``None`` tam
+    hesap demektir.
+    """
+    if samples <= 0 or samples >= n:
+        return None
+    return np.unique(np.linspace(0, n - 1, int(samples)).round().astype(np.int64))
 
 
 class NetworkCentralityAlgorithm(PlanXBaseAlgorithm):
@@ -52,7 +66,10 @@ class NetworkCentralityAlgorithm(PlanXBaseAlgorithm):
             "- Closeness (Yakınlık): Ağdaki tüm noktalara olan ortalama erişim kolaylığı (Wasserman-Faust ve Harmonik).\n"
             "- Straightness (Doğrusallık): Ağ rotalarının kuş uçuşu düz çizgilere ne kadar yakın olduğu (Şebeke dolaysızlığı).\n"
             "- Betweenness (Aradalık): En kısa yolların kavşak ve sokaklardan geçme sıklığı (Brandes 2001).\n\n"
-            "Yarıçap (Radius): Analizi yerel bir yürüme (örn: 800m) veya taşıt (örn: 5000m) havzası ile sınırlar. 0 = Global ağ ölçeği.\n"
+            "Yarıçap (Radius): Analizi yerel bir yürüme (örn: 800m) veya taşıt (örn: 5000m) havzası ile sınırlar. 0 = Global ağ ölçeği. "
+            "Maliyet alanı seçilirse yarıçap o alanın biriminde okunur.\n"
+            "Maliyet alanında NULL, sıfır ya da negatif değer varsa işlem durur (uzunluk yerine konmaz). "
+            "Örneklem kaynakları deterministiktir (eşit aralıklı); iptal edilen koşu çıktı yazmaz.\n"
             "Hem sokak aksları (Line) hem de kavşak noktaları (Point) üretilir."
         )
 
@@ -120,6 +137,7 @@ class NetworkCentralityAlgorithm(PlanXBaseAlgorithm):
         feedback.pushInfo(f"Graf inşa edildi: {n} düğüm / {graph.num_edges} kenar.")
 
         feedback.pushInfo("Closeness ve Straightness hesaplanıyor...")
+        check_cancel(feedback)
         clo = centrality.closeness_straightness(
             graph.indptr, graph.adj_node, graph.adj_cost, n,
             node_xy=graph.node_xy, radius=radius,
@@ -127,10 +145,10 @@ class NetworkCentralityAlgorithm(PlanXBaseAlgorithm):
             progress=lambda p: feedback.setProgress(int(45 * p))
         )
 
+        # Motor iptalde döngüden çıkar; yarım diziler yazılmadan önce durdur.
+        check_cancel(feedback)
         feedback.pushInfo("Betweenness (Brandes) hesaplanıyor...")
-        sources = None
-        if samples > 0 and samples < n:
-            sources = np.random.choice(n, size=samples, replace=False)
+        sources = sample_sources(n, samples)
 
         node_bc, edge_bc, _ = centrality.brandes_betweenness(
             graph.indptr, graph.adj_node, graph.adj_cost, n,
@@ -140,9 +158,11 @@ class NetworkCentralityAlgorithm(PlanXBaseAlgorithm):
             progress=lambda p: feedback.setProgress(int(45 + 50 * p))
         )
 
+        check_cancel(feedback)
         feedback.pushInfo("Eigenvector merkeziliği hesaplanıyor...")
         eigen = centrality.eigenvector(graph.indptr, graph.adj_node, n)
 
+        check_cancel(feedback)
         results = {}
         crs = network.sourceCrs()
 

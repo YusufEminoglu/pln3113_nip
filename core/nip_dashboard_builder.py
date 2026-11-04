@@ -5,13 +5,18 @@ Mekânsal Planlar Yapım Yönetmeliği (MPYY), 3194 sayılı İmar Kanunu Md. 18
 ve PAİY Md. 9 standartlarını içeren; Plotly.js + Leaflet.js tabanlı,
 yayın kalitesinde zengin interaktif analiz dashboard raporu üretir.
 
-PLN3113 - tire_nip
+Raporun kendisi kullanıcının tarayıcısında plotly, Leaflet ve OpenStreetMap
+karolarını herkese açık sunuculardan yükler (EXTERNAL_HOSTS). Katman ve alan
+adları HTML'e kaçışlanarak (escape) yazılır.
+
+PLN3113 - pln3113_nip
 Geliştirici: Geophilo
 """
 from __future__ import annotations
 
 import contextlib
 from datetime import datetime
+import html
 import json
 import os
 import tempfile
@@ -28,6 +33,25 @@ from qgis.PyQt.QtGui import QDesktopServices
 PLOTLY_URL = "https://cdn.plot.ly/plotly-2.27.0.min.js"
 LEAFLET_JS_URL = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
 LEAFLET_CSS_URL = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+OSM_TILE_URL = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+
+# Hosts the saved report loads from in the user's browser (said so in the dock).
+EXTERNAL_HOSTS = ("cdn.plot.ly", "unpkg.com", "tile.openstreetmap.org")
+
+
+def _escape_strings(value):
+    """Return ``value`` with every string HTML-escaped (dicts and lists walked).
+
+    The report inserts names with innerHTML and as Plotly labels; a layer or
+    field value such as ``<img onerror=...>`` must arrive as text.
+    """
+    if isinstance(value, str):
+        return html.escape(value, quote=True)
+    if isinstance(value, dict):
+        return {k: _escape_strings(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_escape_strings(v) for v in value]
+    return value
 
 
 def build_nip_dashboard_html(summary: dict, parsed_items: list[dict],
@@ -144,7 +168,15 @@ def build_nip_dashboard_html(summary: dict, parsed_items: list[dict],
     # Akıllı Öneri Metni Derleme
     oneri_metinleri = []
     dop_pct = dop.get("dop_orani", 0.0)
-    if dop_pct > ideal_dop:
+    tahmini = bool(dop.get("tahmini"))
+    if tahmini:
+        # Plan onama sınırı yok: yol alanı tahmin edildi, yasal değerlendirme yapılmaz.
+        oneri_metinleri.append(
+            f"ℹ️ <b>Tahmini DOP — plan sınırı olmadan yasal değerlendirme yapılmaz:</b> Hesaplanan oran "
+            f"(%{dop_pct:.2f}) tahmini bir yol payına dayanır. Yasal sınır (%{ideal_dop:.0f}) karşılaştırması için "
+            f"plan onama sınırı katmanını seçip analizi yeniden çalıştırın."
+        )
+    elif dop_pct > ideal_dop:
         fazla_m2 = (dop_pct - ideal_dop) / 100.0 * dop.get("dop_esas_alan_m2", 1.0)
         oneri_metinleri.append(
             f"⚠️ <b>DOP Oranı Aşımı Uyarısı:</b> Plan genelindeki DOP kesinti oranı (%{dop_pct:.2f}), "
@@ -177,7 +209,7 @@ def build_nip_dashboard_html(summary: dict, parsed_items: list[dict],
             f"yasal %75.0 asgari koşulunu karşılamaktadır."
         )
 
-    yetersiz_donatilar = [r["kategori_adi"] for r in ek2 if r.get("durum_ust") == "YETERSİZ"]
+    yetersiz_donatilar = [html.escape(str(r["kategori_adi"])) for r in ek2 if r.get("durum_ust") == "YETERSİZ"]
     if yetersiz_donatilar:
         oneri_metinleri.append(
             f"❗ <b>MPYY Ek-2 Asgari Standart Açığı:</b> Üst sınır nüfusa ({summary.get('toplam_ust_nufus', 0):,} kişi) göre "
@@ -192,22 +224,23 @@ def build_nip_dashboard_html(summary: dict, parsed_items: list[dict],
         )
 
     data_payload = {
-        "summary": summary,
-        "dop": dop,
+        "summary": _escape_strings(summary),
+        "dop": _escape_strings(dop),
         "acik_yesil_dop_pct": acik_yesil_dop_pct,
         "yesil_alan_m2": round(yesil_alan_m2, 1),
         "ideal_dop": ideal_dop,
-        "ek2_kategoriler": ek2_kategoriler,
+        "dop_tahmini": bool(dop.get("tahmini")),
+        "ek2_kategoriler": _escape_strings(ek2_kategoriler),
         "ek2_planlanan": ek2_planlanan,
         "ek2_standart": ek2_standart,
         "ek2_fark": ek2_fark,
-        "ek2_durum": ek2_durum,
-        "top_fonk_isim": [f.get("fonksiyon", "") for f in sorted_fonk],
+        "ek2_durum": _escape_strings(ek2_durum),
+        "top_fonk_isim": _escape_strings([f.get("fonksiyon", "") for f in sorted_fonk]),
         "top_fonk_alan": [f.get("alan_m2", 0.0) for f in sorted_fonk],
         "top_fonk_yuzde": [f.get("tum_plan_yuzdesi", 0.0) for f in sorted_fonk],
         "oneri_html": "<br/><br/>".join(oneri_metinleri),
         "rapor_zamani": datetime.now().strftime("%d.%m.%Y %H:%M:%S"),
-        "ada_geojson": {"type": "FeatureCollection", "features": ada_features},
+        "ada_geojson": {"type": "FeatureCollection", "features": _escape_strings(ada_features)},
         "plan_sinir_geojson": {"type": "Feature", "geometry": plan_sinir_gj, "properties": {}} if plan_sinir_gj else None
     }
 
@@ -238,6 +271,7 @@ def _RENDER_DASHBOARD_HTML(data_json: str, ideal_dop: float) -> str:
     return _HTML_TEMPLATE.replace('__PLOTLY_URL__', PLOTLY_URL) \
         .replace('__LEAFLET_JS_URL__', LEAFLET_JS_URL) \
         .replace('__LEAFLET_CSS_URL__', LEAFLET_CSS_URL) \
+        .replace('__OSM_TILE_URL__', OSM_TILE_URL) \
         .replace('__IDEAL_DOP__', str(ideal_dop)) \
         .replace('"__DATA_JSON__"', data_json)
 
@@ -280,6 +314,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helve
 .status-pill.success { background: #dcfce7; color: #15803d; }
 .status-pill.warning { background: #fef3c7; color: #b45309; }
 .status-pill.danger { background: #fee2e2; color: #b91c1c; }
+.status-pill.neutral { background: #e2e8f0; color: #334155; }
 #map { height: 560px; border-radius: 8px; border: 1px solid #cbd5e1; }
 .tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 .tbl th { background: #f8fafc; color: #475569; padding: 10px 12px; text-align: left; font-weight: 700; border-bottom: 2px solid #e2e8f0; }
@@ -421,16 +456,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helve
       <div class="legal-box">
         "Düzenleme ortaklık payına tabi çocuk bahçesi, oyun alanı, park, meydan ve semt spor alanları oranı toplamı <b>%75'in altına düşürülemez.</b>"
       </div>
-      <h3>Mekânsal Planlar Yapım Yönetmeliği (MPYY) Ek-2 Standartları</h3>
-      <div class="legal-box">
-        Nüfus büyüklüğüne göre kişi başına ayrılması zorunlu asgari donatı alanları:<br/>
-        • Eğitim Tesisleri Alanı: 5.00 m²/kişi<br/>
-        • Sağlık Tesisleri Alanı: 2.00 m²/kişi<br/>
-        • Açık ve Yeşil Alanlar (Park/Çocuk Bahçesi/Meydan): 10.00 m²/kişi<br/>
-        • Sosyal ve Kültürel Tesis Alanı: 1.50 m²/kişi<br/>
-        • İbadet Alanı: 0.50 m²/kişi<br/>
-        • Teknik Altyapı: 0.50 m²/kişi
-      </div>
+      <h3>Bu Raporda Kullanılan Ek-2 Kişi Başı Asgari Donatı Değerleri</h3>
+      <div class="legal-box" id="box_ek2_standart"></div>
     </div>
   </div>
 
@@ -458,7 +485,10 @@ document.getElementById('kpi_haric_alan').innerText = 'Hariç: ' + fmt(DATA.dop.
 document.getElementById('kpi_dop_orani').innerText = '%' + DATA.dop.dop_orani.toFixed(2);
 
 const pill = document.getElementById('pill_dop_durum');
-if (DATA.dop.dop_orani <= IDEAL_DOP) {
+if (DATA.dop_tahmini) {
+  pill.className = 'status-pill neutral';
+  pill.innerText = 'Tahmini DOP — plan sınırı olmadan yasal değerlendirme yapılmaz';
+} else if (DATA.dop.dop_orani <= IDEAL_DOP) {
   pill.className = 'status-pill success';
   pill.innerText = 'YASAL SINIRDA (UYGUN)';
 } else {
@@ -467,6 +497,9 @@ if (DATA.dop.dop_orani <= IDEAL_DOP) {
 }
 
 document.getElementById('box_oneri').innerHTML = DATA.oneri_html;
+document.getElementById('box_ek2_standart').innerHTML = DATA.ek2_kategoriler.length
+  ? DATA.ek2_kategoriler.map((k, i) => '• ' + k + ': ' + DATA.ek2_standart[i].toFixed(2) + ' m²/kişi').join('<br/>')
+  : 'Ek-2 karşılaştırması bu analizde üretilmedi.';
 
 // Tab Değiştirme
 document.querySelectorAll('.tab').forEach(t => {
@@ -484,8 +517,20 @@ document.querySelectorAll('.tab').forEach(t => {
 
 const cfg = { displayModeBar: false, responsive: true };
 
-// 1. DOP GAUGE
-Plotly.newPlot('chart_dop_gauge', [{
+// 1. DOP GAUGE (tahminde nötr: renkli bölge ve ok yok; %45 yalnızca referans çizgisi)
+const dopGauge = DATA.dop_tahmini ? {
+  type: 'indicator',
+  mode: 'gauge+number',
+  value: DATA.dop.dop_orani,
+  title: { text: 'Tahmini DOP — yasal tavan (referans) %' + IDEAL_DOP, font: { size: 13 } },
+  gauge: {
+    axis: { range: [0, 80], tickwidth: 1, tickcolor: '#64748b' },
+    bar: { color: '#64748b', thickness: 0.35 },
+    steps: [],
+    threshold: { line: { color: '#334155', width: 2 }, thickness: 0.85, value: IDEAL_DOP }
+  },
+  number: { suffix: '%', valueformat: '.2f' }
+} : {
   type: 'indicator',
   mode: 'gauge+number+delta',
   value: DATA.dop.dop_orani,
@@ -501,7 +546,8 @@ Plotly.newPlot('chart_dop_gauge', [{
     threshold: { line: { color: '#000', width: 3 }, thickness: 0.85, value: IDEAL_DOP }
   },
   number: { suffix: '%', valueformat: '.2f' }
-}], { margin: { t: 30, b: 10, l: 30, r: 30 } }, cfg);
+};
+Plotly.newPlot('chart_dop_gauge', [dopGauge], { margin: { t: 30, b: 10, l: 30, r: 30 } }, cfg);
 
 // 2. ALAN DONUT
 const donutLabels = ['Özel Mülkiyet (Tahsis)', 'Yol Terkleri', 'Kamu Donatıları'];
@@ -636,7 +682,7 @@ document.getElementById('tbl_fonksiyonlar').innerHTML = fonkHtml;
 // 8. LEAFLET HARİTASI
 const map = L.map('map');
 window._map = map;
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+L.tileLayer('__OSM_TILE_URL__', {
   attribution: '© OpenStreetMap katkıcıları',
   maxZoom: 19
 }).addTo(map);
@@ -671,9 +717,9 @@ if (DATA.ada_geojson && DATA.ada_geojson.features.length > 0) {
   }
 
   try { map.fitBounds(adaLayer.getBounds(), { padding: [20, 20] }); }
-  catch (e) { map.setView([38.08, 27.73], 13); }
+  catch (e) { map.setView([39.0, 35.0], 6); }
 } else {
-  map.setView([38.08, 27.73], 13);
+  map.setView([39.0, 35.0], 6);
 }
 </script>
 </body>

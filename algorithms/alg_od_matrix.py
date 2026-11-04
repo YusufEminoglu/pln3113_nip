@@ -18,6 +18,7 @@ from qgis.core import (
     QgsGeometry,
     QgsPointXY,
     QgsProcessing,
+    QgsProcessingException,
     QgsProcessingParameterFeatureSink,
     QgsProcessingParameterFeatureSource,
     QgsProcessingParameterField,
@@ -26,12 +27,14 @@ from qgis.core import (
 )
 
 from ..core.planx_engine.planx_base import (
+    CANCELLED_MESSAGE,
+    check_cancel,
     DOUBLE,
     INT,
     PlanXBaseAlgorithm,
     STRING,
 )
-from ..core.planx_engine import graphs, paths
+from ..core.planx_engine import Cancelled, graphs, paths
 
 
 class ODCostMatrixAlgorithm(PlanXBaseAlgorithm):
@@ -192,10 +195,14 @@ class ODCostMatrixAlgorithm(PlanXBaseAlgorithm):
 
         feedback.pushInfo(f"OD Analizi: {len(o_nodes)} orijin x {len(d_nodes)} destinasyon...")
         unique_o_nodes, orig_map = np.unique(o_nodes, return_inverse=True)
-        dmat = paths.many_to_many(
-            graph.indptr, graph.adj_node, graph.adj_cost, n,
-            unique_o_nodes, cutoff=cutoff, cancel=feedback.isCanceled
-        )
+        try:
+            dmat = paths.many_to_many(
+                graph.indptr, graph.adj_node, graph.adj_cost, n,
+                unique_o_nodes, cutoff=cutoff, cancel=feedback.isCanceled
+            )
+        except Cancelled:
+            # Hesaplanmayan satırlar inf'tir; yarım matris sonuç olarak yazılmaz.
+            raise QgsProcessingException(CANCELLED_MESSAGE) from None
 
         matrix_fields = self.make_fields(
             ("origin_id", STRING),
@@ -244,8 +251,7 @@ class ODCostMatrixAlgorithm(PlanXBaseAlgorithm):
         barrier_count = 0
 
         for i, u_idx in enumerate(orig_map):
-            if feedback.isCanceled():
-                break
+            check_cancel(feedback)
             s_node = int(o_nodes[i])
             s_xy = o_xy[i]
             s_id = o_ids[i]
@@ -293,9 +299,14 @@ class ODCostMatrixAlgorithm(PlanXBaseAlgorithm):
                     )
                     if r_edges:
                         route_lines = []
-                        for edge_id in r_edges:
-                            pts = [QgsPointXY(float(x), float(y)) for x, y in polylines[edge_id]]
-                            route_lines.extend(pts)
+                        for step, edge_id in enumerate(r_edges):
+                            coords = polylines[edge_id]
+                            # Kenar ters yönde geçildiyse koordinatları çevir;
+                            # yoksa rota zikzak çizer.
+                            if int(graph.edge_from[edge_id]) != int(r_nodes[step]):
+                                coords = coords[::-1]
+                            pts = [QgsPointXY(float(x), float(y)) for x, y in coords]
+                            route_lines.extend(pts if not route_lines else pts[1:])
                         if len(route_lines) >= 2:
                             rf = QgsFeature(line_fields)
                             rf.setGeometry(QgsGeometry.fromPolylineXY(route_lines))
@@ -306,6 +317,7 @@ class ODCostMatrixAlgorithm(PlanXBaseAlgorithm):
                 if done % 100 == 0:
                     feedback.setProgress(int(100.0 * done / max(1, total_pairs)))
 
+        check_cancel(feedback)
         feedback.pushInfo(
             f"OD Matrisi tamamlandı: {done} çift hesaplandı. "
             f"Detour >= {barrier_threshold} olan {barrier_count} kritik engel aksı tespit edildi."

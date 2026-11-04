@@ -34,6 +34,25 @@ from ..core.planx_engine.planx_base import (
 )
 
 
+def parse_number(value):
+    """Öznitelik değerini sayıya çevirir; NULL/boş/geçersiz/NaN için None döndürür."""
+    if value is None:
+        return None
+    is_null = getattr(value, "isNull", None)
+    if callable(is_null) and is_null():
+        return None
+    text = str(value).strip()
+    if text == "" or text.upper() == "NULL":
+        return None
+    try:
+        number = float(text.replace(",", ".")) if isinstance(value, str) else float(value)
+    except (TypeError, ValueError):
+        return None
+    if number != number:  # NaN
+        return None
+    return number
+
+
 class FacilityAdequacyAlgorithm(PlanXBaseAlgorithm):
     GROUP = GROUP_STANDARDS
     NETWORK = "NETWORK"
@@ -77,7 +96,7 @@ class FacilityAdequacyAlgorithm(PlanXBaseAlgorithm):
             self.DEMAND, self.tr("Talep / Nüfus Noktaları (Ada Merkezleri veya Binalar)"),
             [QgsProcessing.SourceType.TypeVectorAnyGeometry]))
         self.addParameter(QgsProcessingParameterField(
-            self.POP_FIELD, self.tr("Nüfus Alanı (Boşsa her nokta 1 kişi)"),
+            self.POP_FIELD, self.tr("Nüfus Alanı (seçilmezse her nokta 1 kişi; NULL değerler 0 sayılır ve uyarılır)"),
             parentLayerParameterName=self.DEMAND, optional=True,
             type=QgsProcessingParameterField.DataType.Any))
         self.addParameter(QgsProcessingParameterFeatureSource(
@@ -149,16 +168,21 @@ class FacilityAdequacyAlgorithm(PlanXBaseAlgorithm):
             graph.indptr, graph.adj_node, graph.adj_cost,
             graph.num_nodes, unique_nodes, cutoff=max_cost)
 
+        sayac = {"nufus_bos": 0, "nufus_negatif": 0, "kapasite_bos": 0, "kapasite_negatif": 0}
+
         def pop_of(feat):
+            # Nüfus alanı seçilmediyse her nokta 1 kişidir (parametre açıklamasında belirtilir).
+            # Seçildiyse NULL/geçersiz değer sessizce 1 sayılmaz: 0 kişi sayılır ve uyarılır.
             if pop_idx < 0:
                 return 1.0
-            try:
-                v = feat.attributes()[pop_idx]
-                if v is None or str(v).strip() == "":
-                    return 1.0
-                return max(0.0, float(v))
-            except (TypeError, ValueError):
-                return 1.0
+            v = parse_number(feat.attributes()[pop_idx])
+            if v is None:
+                sayac["nufus_bos"] += 1
+                return 0.0
+            if v < 0:
+                sayac["nufus_negatif"] += 1
+                return 0.0
+            return v
 
         f_ids = []
         for i, f in enumerate(f_feats):
@@ -172,16 +196,30 @@ class FacilityAdequacyAlgorithm(PlanXBaseAlgorithm):
         capacity_values = []
         for i, feature in enumerate(f_feats):
             if cap_idx >= 0:
-                try:
-                    v = feature.attributes()[cap_idx]
-                    if v is None or str(v).strip() == "":
-                        capacity_values.append(default_cap)
-                    else:
-                        capacity_values.append(max(1.0, float(v)))
-                except (TypeError, ValueError):
+                v = parse_number(feature.attributes()[cap_idx])
+                if v is None:
+                    sayac["kapasite_bos"] += 1
                     capacity_values.append(default_cap)
+                elif v < 0:
+                    sayac["kapasite_negatif"] += 1
+                    capacity_values.append(0.0)
+                else:
+                    capacity_values.append(v)
             else:
                 capacity_values.append(default_cap)
+
+        if sayac["nufus_bos"]:
+            feedback.pushWarning(
+                f"{sayac['nufus_bos']} talep noktasında nüfus değeri boş (NULL) veya sayı değil; "
+                "bu noktalar 0 kişi sayıldı.")
+        if sayac["nufus_negatif"]:
+            feedback.pushWarning(f"{sayac['nufus_negatif']} talep noktasında nüfus negatif; 0 kişi sayıldı.")
+        if sayac["kapasite_bos"]:
+            feedback.pushWarning(
+                f"{sayac['kapasite_bos']} donatıda kapasite değeri boş (NULL) veya sayı değil; "
+                f"varsayılan kapasite ({default_cap:g}) kullanıldı.")
+        if sayac["kapasite_negatif"]:
+            feedback.pushWarning(f"{sayac['kapasite_negatif']} donatıda kapasite negatif; 0 kabul edildi.")
 
         # Facility to demand distance matrix (f x d)
         facility_dist = paths.many_to_many(

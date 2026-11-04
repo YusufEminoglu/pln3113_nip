@@ -21,6 +21,7 @@ from qgis.core import (
 from qgis.PyQt.QtCore import QVariant
 
 from ..core.field_estimator import FieldEstimatorEngine
+from ..core.nip_calculator import build_distance_area, metre_birimli_mi
 
 class SahaBinaAnalysisAlgorithm(QgsProcessingAlgorithm):
     ADA_LAYER = 'ADA_LAYER'
@@ -42,14 +43,14 @@ class SahaBinaAnalysisAlgorithm(QgsProcessingAlgorithm):
         self.addParameter(
             QgsProcessingParameterVectorLayer(
                 self.BINA_LAYER,
-                'Bina Katmanı (tire_bina.gpkg)',
+                'Bina Katmanı (örn. tire_bina.gpkg)',
                 [QgsProcessing.SourceType.TypeVectorPolygon]
             )
         )
         self.addParameter(
             QgsProcessingParameterNumber(
                 self.HANEHALKI,
-                'TÜİK Ortalama Hanehalkı Büyüklüğü (Tire ~ 2.85)',
+                'TÜİK Ortalama Hanehalkı Büyüklüğü (il/ilçe değerinizi girin; Tire örneği 2.85)',
                 QgsProcessingParameterNumber.Type.Double,
                 defaultValue=2.85,
                 minValue=1.0,
@@ -101,11 +102,31 @@ class SahaBinaAnalysisAlgorithm(QgsProcessingAlgorithm):
         if not ada_layer or not bina_layer:
             raise QgsProcessingException("Ada veya bina katmanı yüklenemedi!")
 
+        # Bitişiklik eşiği (0,35) ve morfoloji metrikleri metre birimli KRS gerektirir;
+        # coğrafi ve feet KRS'ler reddedilir.
+        ada_crs = ada_layer.sourceCrs()
+        if not metre_birimli_mi(ada_crs):
+            raise QgsProcessingException(
+                f"Ada katmanı metre birimli projeksiyonlu bir KRS'de olmalı ({ada_crs.authid() or 'tanımsız'} "
+                "coğrafi veya feet birimli). Lütfen katmanı örn. EPSG:5253 (TUREF / TM27) KRS'sine dönüştürün."
+            )
+
+        proje_elipsoidi = context.project().ellipsoid() if context.project() else None
+        da, _, _ = build_distance_area(ada_crs, context.transformContext(), proje_elipsoidi)
+
         feedback.pushInfo(f"Saha ve Bina Entegrasyonu Başlatılıyor: Ada={ada_layer.featureCount()}, Bina={bina_layer.featureCount()}...")
+        if bina_layer.sourceCrs() != ada_crs:
+            feedback.pushInfo(
+                f"Bina katmanı {bina_layer.sourceCrs().authid()} -> {ada_crs.authid()} KRS'sine dönüştürülüyor.")
 
         result_items, stats = FieldEstimatorEngine.estimate_ada_population(
-            ada_layer, bina_layer, hh, daire_m2, net_oran, feedback
+            ada_layer, bina_layer, hh, daire_m2, net_oran, feedback,
+            distance_area=da, transform_context=context.transformContext()
         )
+        if feedback.isCanceled() or stats.get("iptal_edildi"):
+            raise QgsProcessingException("İşlem kullanıcı tarafından iptal edildi; çıktı yazılmadı.")
+        for u in stats.get("uyarilar", []):
+            feedback.pushWarning(u)
 
         feedback.pushInfo(f"Eşleşen Toplam Bina Sayısı: {stats['toplam_eslesen_bina']:,}")
         feedback.pushInfo(f"Tahmini Konut Birim Sayısı: {stats['toplam_konut_birimi']:,}")

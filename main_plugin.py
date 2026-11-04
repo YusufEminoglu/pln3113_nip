@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
-"""nip_eklenti_01 main plugin entry point.
+"""pln3113_nip main plugin entry point.
 
-PLN3113 - Tire NİP Analiz Stüdyosu
+PLN3113 - NİP Analiz Stüdyosu
 """
 from __future__ import annotations
 
@@ -14,9 +14,10 @@ from qgis.core import QgsApplication
 from .provider import NipEklentiProvider
 
 PLUGIN_DIR = os.path.dirname(__file__)
+MENU_NAME = "&PLN3113 NİP Stüdyosu"
 
 class NipEklentiPlugin:
-    """Tire NİP ve Kentsel Analiz Eklentisi Ana Sınıfı."""
+    """PLN3113 NİP ve Kentsel Analiz Eklentisi Ana Sınıfı."""
 
     def __init__(self, iface):
         self.iface = iface
@@ -38,20 +39,20 @@ class NipEklentiPlugin:
         icon_path = os.path.join(PLUGIN_DIR, "icons", "icon.png")
         icon = QIcon(icon_path) if os.path.exists(icon_path) else QIcon()
 
-        self.action = QAction(icon, "Tire NİP ve Kentsel Analiz Stüdyosu", self.iface.mainWindow())
+        self.action = QAction(icon, "PLN3113 NİP ve Kentsel Analiz Stüdyosu", self.iface.mainWindow())
         self.action.setObjectName("actionTireNipStudio")
-        self.action.setToolTip("PLN3113 Tire NİP Nüfus, Donatı ve Mevcut Kent Analiz Panelini Aç")
+        self.action.setToolTip("PLN3113 NİP nüfus, donatı ve mevcut kent analiz panelini aç")
         self.action.triggered.connect(self.open_dock)
 
         self.iface.addToolBarIcon(self.action)
-        self.iface.addPluginToMenu("&Tire NİP Stüdyosu", self.action)
+        self.iface.addPluginToMenu(MENU_NAME, self.action)
 
         # Metodoloji ve Teorik Rehber Menüsü
         self.action_guide = QAction("📚 Metodoloji ve Stüdyo Rehberi", self.iface.mainWindow())
         self.action_guide.setObjectName("actionTireNipGuide")
-        self.action_guide.setToolTip("A'dan Z'ye Tire NİP Analiz ve Metodoloji El Kitabını Aç")
+        self.action_guide.setToolTip("A'dan Z'ye NİP analiz ve metodoloji el kitabını aç")
         self.action_guide.triggered.connect(self.open_guide)
-        self.iface.addPluginToMenu("&Tire NİP Stüdyosu", self.action_guide)
+        self.iface.addPluginToMenu(MENU_NAME, self.action_guide)
 
     def open_dock(self):
         """Dock panelini ekrana getirir."""
@@ -72,12 +73,12 @@ class NipEklentiPlugin:
     def unload(self):
         """Eklenti kapatılırken temizlik yapar."""
         if self.action_guide:
-            self.iface.removePluginMenu("&Tire NİP Stüdyosu", self.action_guide)
+            self.iface.removePluginMenu(MENU_NAME, self.action_guide)
             del self.action_guide
             self.action_guide = None
 
         if self.action:
-            self.iface.removePluginMenu("&Tire NİP Stüdyosu", self.action)
+            self.iface.removePluginMenu(MENU_NAME, self.action)
             self.iface.removeToolBarIcon(self.action)
             del self.action
             self.action = None

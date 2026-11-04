@@ -23,6 +23,7 @@ from qgis.core import (
     QgsField,
     QgsFields,
     QgsGeometry,
+    QgsPointXY,
     QgsProcessing,
     QgsProcessingAlgorithm,
     QgsProcessingException,
@@ -35,6 +36,9 @@ from qgis.core import (
     QgsVectorLayer,
     QgsWkbTypes
 )
+
+from ..core.nip_calculator import metre_birimli_mi
+from ..core.planx_engine.planx_base import check_cancel, layer_units_per_metre
 
 
 class ErismeHavzasiAlgorithm(QgsProcessingAlgorithm):
@@ -75,7 +79,10 @@ class ErismeHavzasiAlgorithm(QgsProcessingAlgorithm):
             "2. MPYY Mevzuat Geometrik Etki Çapı: Mekânsal Planlar Yapım Yönetmeliği standart yarıçaplarına "
             "göre (örn: 500m yürüme mesafesi) dairesel ve çözülmüş (dissolved) servis etki poligonları üretir.\n\n"
             "Çıktı poligonlarında Pedshed Kapsama Oranı (Ağ Alanı / MPYY Dairesel Alanı %), "
-            "erişilen yol uzunluğu ve donatı bilgileri yer alır."
+            "erişilen yol uzunluğu ve donatı bilgileri yer alır.\n\n"
+            "Mesafeler yol katmanının biriminde (metre) girilir; "
+            "mesafe_m, alanlar (ha) ve yol uzunluğu yer metresine çevrilerek yazılır (EPSG:3857 gibi ölçekli sistemlerde de doğru). "
+            "Coğrafi (derece) ya da feet birimli koordinat sistemli yol katmanı reddedilir. İptal edilen koşu çıktı yazmaz."
         )
 
     def initAlgorithm(self, config=None):
@@ -212,6 +219,17 @@ class ErismeHavzasiAlgorithm(QgsProcessingAlgorithm):
             raise QgsProcessingException("Gerekli girdi katmanları bulunamadı!")
 
         roads_crs = source_roads.sourceCrs()
+        # Coğrafi CRS'te mesafe derecedir (500 "metre" = 500 derece): reddedilir.
+        # Mesafe parametresi katman birimindedir; raporlanan metre/ha değerleri
+        # yer metresine çevrilir (ayak ya da EPSG:3857 katmanında da doğru).
+        unit = layer_units_per_metre(roads_crs, source_roads.sourceExtent(),
+                                     context.transformContext())
+        if not metre_birimli_mi(roads_crs):
+            raise QgsProcessingException(
+                f"Yol katmanının harita birimi metre değil ({roads_crs.authid()}, ör. feet). "
+                "Erişim analizleri metre birimli projeksiyonlu bir sistem gerektirir; "
+                "katmanı örn. EPSG:5253 TUREF / TM27'ye dönüştürün.")
+        distance_m = distance / unit
 
         # Eğer girdi poligon ise centroid noktalarına dönüştür
         fac_geom_type = source_fac.wkbType()
@@ -228,6 +246,7 @@ class ErismeHavzasiAlgorithm(QgsProcessingAlgorithm):
             fac_points = fac_input
 
         results = {}
+        check_cancel(feedback)
 
         # 1. MPYY Mevzuat Tamponu
         if do_buffer:
@@ -260,6 +279,7 @@ class ErismeHavzasiAlgorithm(QgsProcessingAlgorithm):
                 results[self.OUTPUT_MPYY_INDIVIDUAL] = buff_ind_res['OUTPUT']
 
         # 2. Yol Ağı Tabanlı Servis Alanı ve Erişim Havzası
+        check_cancel(feedback)
         if do_network:
             # Gerekirse yol akslarını hassas ağ analizi için böl
             if split_len > 0:
@@ -293,6 +313,7 @@ class ErismeHavzasiAlgorithm(QgsProcessingAlgorithm):
                 'OUTPUT_LINES': parameters[self.OUTPUT_SERVICE_ROADS] if (self.OUTPUT_SERVICE_ROADS in parameters and parameters[self.OUTPUT_SERVICE_ROADS]) else 'TEMPORARY_OUTPUT'
             }, context=context, feedback=feedback, is_child_algorithm=True)
 
+            check_cancel(feedback)
             srv_lines_lyr = service_res['OUTPUT_LINES']
             if self.OUTPUT_SERVICE_ROADS in parameters and parameters[self.OUTPUT_SERVICE_ROADS]:
                 results[self.OUTPUT_SERVICE_ROADS] = srv_lines_lyr
@@ -333,10 +354,11 @@ class ErismeHavzasiAlgorithm(QgsProcessingAlgorithm):
                             grouped[s_key] = []
                         grouped[s_key].append(feat)
 
-                mpyy_circle_ha = (math.pi * (distance ** 2)) / 10000.0
+                mpyy_circle_ha = (math.pi * (distance_m ** 2)) / 10000.0
                 hull_feats = []
 
                 for s_key, feats in grouped.items():
+                    check_cancel(feedback)
                     geoms = [f.geometry() for f in feats if f.hasGeometry()]
                     if not geoms:
                         continue
@@ -348,18 +370,26 @@ class ErismeHavzasiAlgorithm(QgsProcessingAlgorithm):
                     elif hull_method == 1:
                         # Concave Hull
                         hull = None
+                        # 1.1.6 bir QgsGeometry'yi katman yerine veriyordu: çağrı
+                        # her zaman düşüyor ve sessizce dışbükey örtüye dönüyordu.
+                        vert_lyr = QgsVectorLayer(f"Point?crs={roads_crs.authid()}", "verts", "memory")
+                        vert_feats = []
+                        for v in merged.vertices():
+                            vf = QgsFeature()
+                            vf.setGeometry(QgsGeometry.fromPointXY(QgsPointXY(v.x(), v.y())))
+                            vert_feats.append(vf)
+                        vert_lyr.dataProvider().addFeatures(vert_feats)
+                        vert_lyr.updateExtents()
                         with contextlib.suppress(Exception):
-                            pts_res = processing.run("native:extractvertices", {
-                                'INPUT': merged,
-                                'OUTPUT': 'TEMPORARY_OUTPUT'
-                            }, context=context, feedback=feedback, is_child_algorithm=True)
                             conc_res = processing.run("native:concavehull", {
-                                'INPUT': pts_res['OUTPUT'],
+                                'INPUT': vert_lyr,
                                 'ALPHA': 0.3,
                                 'HOLES': False,
                                 'OUTPUT': 'TEMPORARY_OUTPUT'
                             }, context=context, feedback=feedback, is_child_algorithm=True)
                             conc_lyr = conc_res['OUTPUT']
+                            if isinstance(conc_lyr, str):
+                                conc_lyr = QgsProcessingUtils.mapLayerFromString(conc_lyr, context)
                             for cf in conc_lyr.getFeatures():
                                 hull = cf.geometry()
                                 break
@@ -371,15 +401,15 @@ class ErismeHavzasiAlgorithm(QgsProcessingAlgorithm):
                         # Koridor Tamponu
                         hull = merged.buffer(30.0, 8)
 
-                    total_road_len = sum(f.geometry().length() for f in feats)
-                    area_m2 = hull.area()
+                    total_road_len = sum(f.geometry().length() for f in feats) / unit
+                    area_m2 = hull.area() / (unit * unit)
                     area_ha = area_m2 / 10000.0
                     pedshed = (area_ha / mpyy_circle_ha) * 100.0 if mpyy_circle_ha > 0 else 0.0
 
                     poly_feat = QgsFeature(temp_hulls_layer.fields())
                     poly_feat.setGeometry(hull)
                     poly_feat.setAttribute("start", s_key)
-                    poly_feat.setAttribute("mesafe_m", float(distance))
+                    poly_feat.setAttribute("mesafe_m", round(float(distance_m), 2))
                     poly_feat.setAttribute("ag_alan_ha", round(area_ha, 2))
                     poly_feat.setAttribute("mpyy_alan_ha", round(mpyy_circle_ha, 2))
                     poly_feat.setAttribute("pedshed_orani", round(pedshed, 1))
@@ -388,6 +418,7 @@ class ErismeHavzasiAlgorithm(QgsProcessingAlgorithm):
 
                 dp.addFeatures(hull_feats)
                 temp_hulls_layer.updateExtents()
+                check_cancel(feedback)
 
                 if self.OUTPUT_SERVICE_POLYGONS in parameters and parameters[self.OUTPUT_SERVICE_POLYGONS]:
                     if do_dissolve and len(hull_feats) > 0:
@@ -416,6 +447,7 @@ class ErismeHavzasiAlgorithm(QgsProcessingAlgorithm):
                     }, context=context, feedback=feedback, is_child_algorithm=True)
                     results[self.OUTPUT_DISSOLVED_POLYGONS] = diss_res2['OUTPUT']
 
+        check_cancel(feedback)
         return results
 
     def createInstance(self):
