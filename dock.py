@@ -20,6 +20,7 @@ from qgis.PyQt.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
     QComboBox,
+    QDialog,
     QDockWidget,
     QDoubleSpinBox,
     QFileDialog,
@@ -81,8 +82,11 @@ from .core.nip_workspace import (
     SCHEMA_MPYY_117,
     SCHEMA_YEREL_NIP,
     create_nip_drawing_workspace,
+    find_mpyy_layer,
     load_nip_drawing_layers,
 )
+from .core.mpyy_road import YolProfili
+from .maptools.mpyy_road_tool import MpyyYolCizimAraci, YolProfilDialog
 from .core.symbology_manager import (
     apply_mpyy_qml_style,
     style_detour_barrier,
@@ -90,6 +94,7 @@ from .core.symbology_manager import (
     style_fca_demand_points,
     style_front_facade,
     style_isochrone_bands,
+    style_nip_denetim,
     style_od_and_centrality,
     style_road_junctions,
     style_road_platform,
@@ -949,6 +954,15 @@ class TireNipDockWidget(QDockWidget):
         self.btn_create_db.clicked.connect(self._on_create_database)
         layout.addWidget(self.btn_create_db)
 
+        self.btn_nip_audit = QPushButton("🔍 NİP Denetimi")
+        self.btn_nip_audit.setToolTip(
+            "Yüklü MPYY 1.1.7 NİP veritabanını baştan sona denetler; bulguları haritaya ekler. "
+            "Her katmanın öznitelik tablosundaki ⚠ Kontrol sütunu da nesne başına sorunu gösterir.")
+        self.btn_nip_audit.setObjectName("SecondaryButton")
+        self.btn_nip_audit.setCursor(_POINTING_HAND)
+        self.btn_nip_audit.clicked.connect(self._on_run_nip_audit)
+        layout.addWidget(self.btn_nip_audit)
+
         # Bilgilendirme Kartı: Üretilecek Katman Şeması
         self.box_schema = QGroupBox("Oluşturulacak Katmanlar")
         schema_lay = QVBoxLayout(self.box_schema)
@@ -1093,6 +1107,32 @@ class TireNipDockWidget(QDockWidget):
         info_lay.addWidget(d_lbl)
         layout.addWidget(card_info)
 
+        # MPYY 1.1.7 NİP: orta akstan Yolorta + DigerYolNesneleri + AdaKenari
+        box_mpyy = QGroupBox("MPYY 1.1.7 NİP Yolu")
+        box_mpyy.setToolTip("Ek-1e: NİP yolları Yolorta + AdaKenari + DigerYolNesneleri olarak birlikte çizilir")
+        lay_mpyy = QVBoxLayout(box_mpyy)
+        lay_mpyy.setSpacing(6)
+        lbl_mpyy = QLabel(
+            "Yol profilini (şerit, refüj, kaldırım) girin, orta aksı haritada çizin. Yolorta, "
+            "taşıt yolu/refüj/kaldırım poligonları ve ada kenarları birlikte yazılır; kesişen "
+            "yollarda kavşak açılır.")
+        lbl_mpyy.setWordWrap(True)
+        lbl_mpyy.setStyleSheet(text_css("subtle", "8.5pt"))
+        lay_mpyy.addWidget(lbl_mpyy)
+        self.btn_mpyy_road = QPushButton("🛣 MPYY Yol Çiz")
+        self.btn_mpyy_road.setToolTip("Sol tık: nokta, Backspace: geri al, Sağ tık/Enter: bitir, Esc: iptal")
+        self.btn_mpyy_road.setObjectName("PrimaryButton")
+        self.btn_mpyy_road.setCursor(_POINTING_HAND)
+        self.btn_mpyy_road.clicked.connect(self._on_mpyy_road_draw)
+        lay_mpyy.addWidget(self.btn_mpyy_road)
+        self.btn_mpyy_platform = QPushButton("🧱 Yolorta'dan Platform")
+        self.btn_mpyy_platform.setToolTip("YolGenisligi değerinden platformu olmayan akslar için platform üretir")
+        self.btn_mpyy_platform.setObjectName("SecondaryButton")
+        self.btn_mpyy_platform.setCursor(_POINTING_HAND)
+        self.btn_mpyy_platform.clicked.connect(self._on_mpyy_platform_batch)
+        lay_mpyy.addWidget(self.btn_mpyy_platform)
+        layout.addWidget(box_mpyy)
+
         # 1. Bölüm: Yol Platformu & Bordür Üretici
         box_plat = QGroupBox("1. Aşama: Yol Platformu")
         box_plat.setToolTip("Yol platformu, refüj ve bordür/kaldırım üretimi")
@@ -1200,6 +1240,78 @@ class TireNipDockWidget(QDockWidget):
         self._on_road_layer_changed()
 
         return tab
+
+    def _on_mpyy_road_draw(self):
+        katmanlar, eksik = MpyyYolCizimAraci.katmanlari_bul()
+        if eksik:
+            QMessageBox.warning(
+                self, "MPYY Yol",
+                "Projede bulunamayan katman: " + ", ".join(eksik)
+                + "\n\nÖnce 'NİP Veritabanı' sekmesinden Resmî MPYY 1.1.7 veritabanını oluşturup yükleyin.")
+            return
+        dlg = YolProfilDialog(self, getattr(self, "_mpyy_profil", None) or YolProfili())
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+        self._mpyy_profil = dlg.profil()
+        hatalar = self._mpyy_profil.dogrula()
+        if hatalar:
+            QMessageBox.warning(self, "MPYY Yol", "\n".join(hatalar))
+            return
+        if not self.iface:
+            return
+        self._mpyy_road_tool = MpyyYolCizimAraci(self.iface, self._mpyy_profil)
+        self._mpyy_road_tool.mesaj.connect(lambda text: self.iface.statusBarIface().showMessage(text))
+        self.iface.mapCanvas().setMapTool(self._mpyy_road_tool)
+
+    def _on_mpyy_platform_batch(self):
+        katmanlar, eksik = MpyyYolCizimAraci.katmanlari_bul()
+        if eksik:
+            QMessageBox.warning(self, "MPYY Yol", "Projede bulunamayan katman: " + ", ".join(eksik))
+            return
+        processing.execAlgorithmDialog("pln3113:nip_mpyy_yol_platform", {
+            "YOLORTA": katmanlar["Yolorta"],
+            "DIGER": katmanlar["DigerYolNesneleri"],
+            "ADA": katmanlar["AdaKenari"],
+        })
+
+    def _on_run_nip_audit(self):
+        ref = find_mpyy_layer("GelismeKonut") or find_mpyy_layer("PlanSiniri")
+        gpkg = ref.source().split("|")[0] if ref is not None else self.txt_db_path.text().strip()
+        if not gpkg or not os.path.exists(gpkg):
+            QMessageBox.warning(self, "NİP Denetimi", "Denetlenecek MPYY 1.1.7 NİP GeoPackage bulunamadı.")
+            return
+        project = QgsProject.instance()
+        unsaved = [lyr.name() for lyr in project.mapLayers().values()
+                   if isinstance(lyr, QgsVectorLayer) and lyr.isModified() and lyr.source().split("|")[0] == gpkg]
+        if unsaved:
+            QMessageBox.information(
+                self, "NİP Denetimi",
+                "Denetim kayıtlı veriyi okur; şu katmanlarda kaydedilmemiş düzenleme var:\n- "
+                + "\n- ".join(unsaved[:10]) + "\n\nSonuç bu düzenlemeleri içermeyecek.")
+        try:
+            self.btn_nip_audit.setEnabled(False)
+            res = processing.run("pln3113:nip_mpyy_denetim", {"INPUT": gpkg, "OUTPUT": "TEMPORARY_OUTPUT"})
+        except Exception as exc:
+            QMessageBox.critical(self, "NİP Denetimi", f"Denetim çalıştırılamadı:\n{exc}")
+            return
+        finally:
+            self.btn_nip_audit.setEnabled(True)
+        out = res.get("OUTPUT")
+        if isinstance(out, str):
+            out = QgsVectorLayer(out, "NİP Denetim Bulguları", "ogr")
+        for old in project.mapLayersByName("NİP Denetim Bulguları"):
+            project.removeMapLayer(old.id())
+        out.setName("NİP Denetim Bulguları")
+        style_nip_denetim(out)
+        project.addMapLayer(out)
+        count = int(res.get("BULGU_SAYISI") or 0)
+        if count:
+            QMessageBox.information(
+                self, "NİP Denetimi",
+                f"{count} bulgu 'NİP Denetim Bulguları' katmanına eklendi.\n"
+                "Katmanın öznitelik tablosunda bir satırı seçip 'Seçili nesneye yakınlaştır' ile yerine gidebilirsiniz.")
+        else:
+            QMessageBox.information(self, "NİP Denetimi", "Bulgu yok: çizim denetimden geçti.")
 
     def _on_road_layer_changed(self):
         if not hasattr(self, "cmb_road_width_field"):

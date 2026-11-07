@@ -8,6 +8,8 @@ from qgis.PyQt.QtGui import QIcon
 
 from .algorithms.alg_geometry_clean import GeometryCleanAlgorithm
 from .algorithms.alg_nip_workspace import NipWorkspaceAlgorithm
+from .algorithms.alg_nip_denetim import NipDenetimAlgorithm
+from .algorithms.alg_mpyy_yol_platform import MpyyYolPlatformAlgorithm
 from .algorithms.alg_yol_platform import YolPlatformAlgorithm
 from .algorithms.alg_yol_kavsak import YolKavsakTrimAlgorithm
 from .algorithms.alg_yol_poligonlasma import YolPoligonlasmaAlgorithm
@@ -37,8 +39,10 @@ class NipEklentiProvider(QgsProcessingProvider):
 
         # 02. NİP Çizim Veritabanı ve Şablonu
         self.addAlgorithm(NipWorkspaceAlgorithm())
+        self.addAlgorithm(NipDenetimAlgorithm())
 
         # 03. Yol Platformu ve Geometri Üretimi
+        self.addAlgorithm(MpyyYolPlatformAlgorithm())
         self.addAlgorithm(YolPlatformAlgorithm())
         self.addAlgorithm(YolKavsakTrimAlgorithm())
         self.addAlgorithm(YolPoligonlasmaAlgorithm())
