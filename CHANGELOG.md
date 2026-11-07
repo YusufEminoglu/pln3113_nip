@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-11-07
+
+### Eklendi
+- MPYY 1.1.7 NİP katmanlarında **⚠ Kontrol** sütunu: geçersiz geometri, 50 m²'den küçük parça, 1 m'den kısa çizgi, boş zorunlu öznitelik, aynı katmanda ya da arazi kullanım katmanları ve yol platformu (DigerYolNesneleri) arasında çakışma (ortak alan ≥ 1 m²), plan sınırı dışına taşma ve platformu üretilmemiş Yolorta nesne başına yazılır. Kayıt engellenmez: uyarı (soft) kısıtı formda, koşullu stil öznitelik tablosunda sorunlu satırı gösterir. Kurallar GeoPackage'taki varsayılan katman stiline kaydedilir; veri tablolarına sütun eklenmez. Yükleyici, katman başvurularını katman kimliğiyle yeniler.
+- **MPYY Yol Çiz** harita aracı (Yol/Kavşak sayfası): yol profili girilir, orta aks çizilir; Yolorta, DigerYolNesneleri (taşıt yolu, refüj, kaldırım) ve AdaKenari birlikte yazılır, kesişen yollarda kavşak açılır.
+- **Kavşak köşesi yuvarlama:** MPYY Yol Çiz ve Yolorta'dan Platform, yeni yolun var olan yolu kestiği her kavşakta ada kenarını R (varsayılan 8 m), bordürü eş merkezli R + kaldırım yarıçapıyla yuvarlar. Bordür dolgusu kaldırımdan taşıt yoluna, ada köşesi dolgusu kaldırıma katılır; ada kenarında köşe kolları silinip yay eklenir ve kollarla tek çizgi olur. Refüj korunur; kavşak bölgesine sığmayan ya da 3R²'den büyük dolgular (dar ada, yakın yol uçları) uygulanmaz. Tire'de 32 aks ve 28 kavşaklı bir bölgede platform parçaları çakışmasız ve geçerli kaldı.
+- Processing: `pln3113:nip_mpyy_denetim` (bütün GeoPackage'ın topoloji ve öznitelik denetimi; bulgular tek katmanda, panelde "NİP Denetimi" düğmesi) ve `pln3113:nip_mpyy_yol_platform` (var olan Yolorta akslarından platform).
+- Eklenti yüklüyken çakışma ve platform kontrolleri uzamsal dizinli `nip_cakisma` ve `nip_platform_orani` ifade işlevleriyle yapılır (katman başına dizin, düzenleme ve kayıtta yenilenir; geçersiz geometri onarılarak karşılaştırılır). Tire NİP verisinde (2250 ada) Kontrol sütunlu öznitelik tablosunun açılışı 41,9 s'den 2,6 s'ye indi. GeoPackage'a kaydedilen varsayılan stil eklentisiz açılışta çalışsın diye yalnız yerleşik QGIS işlevlerini kullanır.
+- NİP Denetimi katmanları varsayılan stil olmadan ve yalnız gereken sütunlarla okur (Tire verisinde 99 s yerine 4 s).
+- `tests/test_mpyy_checks_qgis.py`: kontrol metinleri, uyarı kısıtı, platform alanları, X kavşağında çakışmasızlık, denetim bulguları ve harita aracı için değer testleri (QGIS 3.44 ve 4.2).
+
 ## [1.2.2] - 2026-11-04
 
 Bu sürüm Ek-2 donatı bilançosunun sonuçlarını değiştirir. 1.2.x ile üretilmiş Ek-2 tablolarını yeniden hesaplayın.

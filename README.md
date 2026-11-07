@@ -19,9 +19,9 @@
 
 ---
 
-## 🛠️ Modül ve Araç Envanteri (19 Processing Algoritması)
+## 🛠️ Modül ve Araç Envanteri (21 Processing Algoritması)
 
-Eklenti paneli 8 sayfadan oluşur (Geometri, Veritabanı, Yol/Kavşak, Nüfus, NİP & DOP, Saha/Yapı, Network, Rehber). Hesaplar 7 grupta toplanan 19 QGIS Processing algoritmasıyla yapılır; hepsi `pln3113` sağlayıcısı altında Processing araç kutusunda ve model tasarımcısında da kullanılabilir.
+Eklenti paneli 8 sayfadan oluşur (Geometri, Veritabanı, Yol/Kavşak, Nüfus, NİP & DOP, Saha/Yapı, Network, Rehber). Hesaplar 7 grupta toplanan 21 QGIS Processing algoritmasıyla yapılır; hepsi `pln3113` sağlayıcısı altında Processing araç kutusunda ve model tasarımcısında da kullanılabilir.
 
 ### 1. 🧹 Geometri Onarımı ve Topolojik Temizlik
 - **Self-Intersection & Geçersizlik Onarımı:** Dışarıdan içe aktarılan veya çizim sırasında bozulan plan poligonlarını GEOS `makeValid` ve hassas tampon toleranslarıyla topolojik olarak onarır.
@@ -33,8 +33,12 @@ Eklenti paneli 8 sayfadan oluşur (Geometri, Veritabanı, Yol/Kavşak, Nüfus, N
   - **MPYY 1.1.7 Standart Veritabanı:** 87 resmî plan fonksiyon tablosu, MPGM kodlaması ve 1-tıkla resmî QML stil entegrasyonu.
   - **Yerel NİP İlişkisel Şablon:** 7 temel planlama tablosu (Arazi Kullanım, Ulaşım, Donatı, Kentsel Dönüşüm, Eşikler vb.), ilişkisel lookup indeksleri ve hazır tematik stiller.
 - **Taşınabilirlik:** Tek bir `.gpkg` dosyası üzerinden tüm stüdyo ekibinin aynı veri standardında çalışmasını garanti eder.
+- **⚠ Kontrol sütunu (MPYY 1.1.7):** Her çizim katmanının öznitelik tablosunun başında, nesnedeki sorunları yazan bir sanal alan bulunur: geçersiz geometri, 50 m²'den küçük parça, 1 m'den kısa çizgi, boş zorunlu öznitelik, aynı katmanda ya da başka bir arazi kullanımıyla/yol platformuyla çakışma (ortak alan ≥ 1 m²; kenar paylaşmak çakışma değildir), plan sınırı dışına taşma, platformu üretilmemiş Yolorta. Çizim engellenmez; sorunlu satırlar tabloda kırmızı, formda uyarı olarak görünür ve öğrenci tabloyu bu sütuna göre süzerek düzeltir. Kurallar katman stiliyle GeoPackage'a kaydedilir, XSD şemasına sütun eklenmez. Sınır, koruma, afet tehlike, havza ve mania gibi bindirme katmanları arazi kullanımıyla çakışabilir.
+- **NİP Denetimi (`pln3113:nip_mpyy_denetim`):** Bütün GeoPackage'ı birlikte tarar; geçersiz geometrinin yerini, çakışan ortak alanı, plan sınırı içinde hiçbir kullanıma ayrılmamış boşlukları ve diğer bulguları tek bir katmana yazar. Kayıtlı veriyi okur.
 
 ### 3. 🛣️ Yol Platformu, Bordür ve Kavşak Geometrisi
+- **MPYY Yol Çiz (planX CAD yol aracı mantığıyla):** Yol tipi, şerit sayısı ve genişliği, refüj ve kaldırım girilir, orta aks haritada çizilir (Backspace geri alır, sağ tık/Enter bitirir). Ek-1e'de NİP yolları üç tabloya birlikte çizilir: `Yolorta` (YolTip, YolGenisligi = toplam platform), `DigerYolNesneleri` (taşıt yolu, refüj, kaldırım poligonları) ve `AdaKenari` (platformun dış kenarları). Var olan bir yolu kesen yeni yolda kavşak açılır: platform parçaları birbiriyle çakışmaz, ada kenarları karşı platformda kesilir. Kavşak köşeleri yuvarlanır: ada kenarı "Kavşak köşe yarıçapı" R ile (varsayılan 8 m, 0 yazılırsa yuvarlanmaz), bordür onunla eş merkezli R + kaldırım yarıçapıyla; köşedeki kaldırım eşit genişlikte bir halka olarak kalır. Yuvarlama her açıda çalışır (morfolojik kapanış). Kavşak bölgesine sığmayan dolgular, örneğin iki yakın yol arasındaki dar bir adayı yutacak olanlar, uygulanmaz.
+- **Yolorta'dan Platform (`pln3113:nip_mpyy_yol_platform`):** Daha önce çizilmiş Yolorta akslarından, YolGenisligi ve verilen kaldırım/refüj ile platformu toplu üretir; platformu olan aksları atlar.
 - **Aks Hiyerarşisi:** 7m, 10m, 12m, 15m, 20m, 25m, 30m, 35m ve 50m'lik yol akslarına göre yol gövdesi, tretuvar, refüj ve bordür sınırlarını parametrik üretir.
 - **Teğet Yaylı (Fillet) Kavşak Yayları:** Kesişen yol akslarında EasyFillet motoruyla dönüş yarıçaplarına ($R=3m, 5m, 8m, 10m, 12m$) uygun pürüzsüz kavşak kavisleri çizer.
 - **Ada Sınırına Kapatma & Poligonlaştırma:** Çizilen yol bordür çizgilerinden imar adalarını otomatik poligonlaştırır (`Polygonize`).
