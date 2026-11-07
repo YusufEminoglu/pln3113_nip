@@ -559,3 +559,36 @@ class SymbologyManager:
     apply_scenario_diff_symbology = staticmethod(style_scenario_diff_network)
 
 
+
+
+# NİP denetim bulguları: önemli bulgular (çakışma, geçersiz geometri) dolu ve
+# koyu, plan içindeki boşluklar yalnız seyrek tarama; böylece yollar henüz
+# çizilmemiş bir planda boşluklar asıl hataları örtmez.
+NIP_DENETIM_STILLERI = (
+    ("geçersiz geometri", "Geçersiz geometri", {"color": "199,21,133,150", "outline_color": "#7a0b52", "outline_width": "0.9"}),
+    ("çakışma", "Arazi kullanımları çakışıyor", {"color": "220,38,38,170", "outline_color": "#7f1d1d", "outline_width": "0.5"}),
+    ("aynı katmanda çakışma", "Aynı katmanda çakışma", {"color": "234,88,12,150", "outline_color": "#7c2d12", "outline_width": "0.5"}),
+    ("plan sınırı dışında", "Plan sınırı dışında", {"color": "124,58,237,120", "outline_color": "#4c1d95", "outline_width": "0.5"}),
+    ("çok küçük parça", "Çok küçük parça", {"color": "0,0,0,0", "outline_color": "#c026d3", "outline_width": "0.9"}),
+    ("eksik öznitelik", "Eksik öznitelik", {"color": "0,0,0,0", "outline_color": "#2563eb", "outline_width": "0.6", "outline_style": "dash"}),
+    ("yol platformu üretilmemiş", "Platformsuz yol aksı", {"color": "0,0,0,0", "outline_color": "#0f766e", "outline_width": "0.8", "outline_style": "dash"}),
+)
+
+
+def style_nip_denetim(layer) -> None:
+    """NİP denetim bulgu katmanını kontrol türüne göre kategorili stillendirir."""
+    from qgis.core import QgsLinePatternFillSymbolLayer
+    categories = []
+    for value, label, props in NIP_DENETIM_STILLERI:
+        categories.append(QgsRendererCategory(value, QgsFillSymbol.createSimple(props), label))
+    gap = QgsFillSymbol.createSimple({"color": "0,0,0,0", "outline_color": "#b45309", "outline_width": "0.3"})
+    hatch = QgsLinePatternFillSymbolLayer()
+    hatch.setLineAngle(45)
+    hatch.setDistance(2.5)
+    hatch.setColor(QColor(180, 83, 9, 140))
+    hatch.setLineWidth(0.25)
+    gap.appendSymbolLayer(hatch)
+    categories.append(QgsRendererCategory("boşluk", gap, "Plan içinde kullanımı belirsiz boşluk"))
+    renderer = QgsCategorizedSymbolRenderer("kontrol", categories)
+    layer.setRenderer(renderer)
+    layer.triggerRepaint()
