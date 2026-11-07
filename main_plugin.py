@@ -35,6 +35,8 @@ class NipEklentiPlugin:
     def initGui(self):
         """Arayüz ikonlarını ve menü butonlarını oluşturur."""
         self.initProcessing()
+        from .core.nip_checks import register_functions
+        register_functions()
 
         icon_path = os.path.join(PLUGIN_DIR, "icons", "icon.png")
         icon = QIcon(icon_path) if os.path.exists(icon_path) else QIcon()
@@ -72,6 +74,8 @@ class NipEklentiPlugin:
 
     def unload(self):
         """Eklenti kapatılırken temizlik yapar."""
+        from .core.nip_checks import unregister_functions
+        unregister_functions()
         if self.action_guide:
             self.iface.removePluginMenu(MENU_NAME, self.action_guide)
             del self.action_guide

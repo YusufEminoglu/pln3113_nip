@@ -34,6 +34,8 @@ from qgis.PyQt.QtCore import QBuffer, QByteArray, QIODevice
 from qgis.PyQt.QtGui import QImage
 from qgis.PyQt.QtXml import QDomDocument
 
+from .nip_checks import apply_checks
+
 gdal.UseExceptions()
 
 RESOURCE_DIR = Path(__file__).resolve().parents[1] / "resources" / "mpyy_117"
@@ -52,6 +54,7 @@ SCHEMA_YEREL_NIP = "yerel_nip"
 KIND = "MPYY_XSD"
 SCHEMA_VERSION = 5
 GROUP_NAME = "MPYY 1.1.7 Nazım İmar Planı (NİP)"
+MPYY_TYPE_PROPERTY = "nip/mpyy_type"
 YEREL_GROUP_NAME = "PLN3113 1/5000 NİP (Yerel Şablon)"
 
 _OGR_GEOMETRY = {
@@ -117,6 +120,10 @@ def get_nip_hierarchy() -> list[dict]:
     with open(HIERARCHY_PATH, "r", encoding="utf-8") as f:
         data = json.load(f)
     return data["records"]
+
+
+def _expr_string(text: str) -> str:
+    return "'" + str(text).replace("'", "''") + "'"
 
 
 def _png_bytes(path: Path) -> bytes:
@@ -332,6 +339,10 @@ def create_mpyy_117_workspace(output_path: str, crs="EPSG:5253") -> str:
 
     # Katman stillerini ve form kurallarını derleyip GeoPackage içine kaydet
     codelists = schema["codelists"]
+    # Kayıtlı stilde katmanlara yükleyicinin verdiği adlarla başvurulur; dosya
+    # eklentisiz açıldığında da kontroller çalışır. load_mpyy_117_layers
+    # başvuruları katman kimlikleriyle yeniler (katman adı değişse de çalışır).
+    name_refs = {ft["name"]: _expr_string(caption(ft["name"])) for ft in schema["feature_types"] if ft["geometry"]}
     for ft in schema["feature_types"]:
         tname = ft["name"]
         lyr = QgsVectorLayer(f"{output}|layername={tname}", tname, "ogr")
@@ -339,6 +350,8 @@ def create_mpyy_117_workspace(output_path: str, crs="EPSG:5253") -> str:
             continue
         configure_nip_layer(lyr, ft, codelists)
         apply_sld_to_layer(lyr, tname)
+        if ft["geometry"]:
+            apply_checks(lyr, ft, name_refs, caption)
         with contextlib.suppress(Exception):
             lyr.saveStyleToDatabase("MPYY 1.1.7", "MPYY 1.1.7 NİP Şablon Formu", True, "")
         del lyr
@@ -611,6 +624,7 @@ def load_mpyy_117_layers(path: str, project: QgsProject | None = None, **kwargs)
     schema = get_nip_schema()
     codelists = schema["codelists"]
     loaded = []
+    typed = {}
 
     groups_def = [
         ("Alanlar (Poligonlar)", ("MultiPolygon", "Polygon")),
@@ -634,9 +648,17 @@ def load_mpyy_117_layers(path: str, project: QgsProject | None = None, **kwargs)
             if not layer.isValid():
                 continue
             configure_nip_layer(layer, ft, codelists)
+            layer.setCustomProperty(MPYY_TYPE_PROPERTY, tname)
             project.addMapLayer(layer, False)
             group.addLayer(layer)
             loaded.append(layer)
+            typed[tname] = (layer, ft)
+
+    id_refs = {tname: _expr_string(layer.id()) for tname, (layer, _) in typed.items()}
+    fast_ids = {tname: layer.id() for tname, (layer, _) in typed.items()}
+    for tname, (layer, ft) in typed.items():
+        if ft["geometry"]:
+            apply_checks(layer, ft, id_refs, caption, fast_ids)
 
     # Ek-1e Sembol Hiyerarşisi Kataloğu
     cat_layer = QgsVectorLayer(f"{gpkg}|layername=mpyy_detay_katalogu", "Ek-1e Detay Kataloğu", "ogr")
@@ -657,6 +679,19 @@ def load_nip_layers(path: str, project: QgsProject | None = None, schema_type: s
     if str(schema_type).lower() in ("yerel_nip", "yerel", "mpyynipdb", "1", "klasik"):
         return load_yerel_nip_layers(path, project=project, **kwargs)
     return load_mpyy_117_layers(path, project=project, **kwargs)
+
+
+def find_mpyy_layer(tname: str, project: QgsProject | None = None):
+    """Projede MPYY nesne türüne ait katmanı bulur (önce yükleyici işareti, sonra veri kaynağı)."""
+    project = project or QgsProject.instance()
+    layers = [lyr for lyr in project.mapLayers().values() if isinstance(lyr, QgsVectorLayer)]
+    for lyr in layers:
+        if lyr.customProperty(MPYY_TYPE_PROPERTY) == tname:
+            return lyr
+    for lyr in layers:
+        if lyr.providerType() == "ogr" and re.search(rf"\|layername={re.escape(tname)}(\||$)", lyr.source()):
+            return lyr
+    return None
 
 
 # Geriye dönük uyumluluk takma adları
